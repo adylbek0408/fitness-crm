@@ -1,0 +1,85 @@
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from core.permissions import IsAdmin, IsAdminOrRegistrar
+from .models import Client
+from .serializers import ClientReadSerializer, ClientCreateSerializer, ClientUpdateSerializer
+from .services import ClientService
+from .filters import ClientFilter
+
+
+class ClientViewSet(viewsets.ModelViewSet):
+    service = ClientService()
+    filterset_class = ClientFilter
+    search_fields = ['first_name', 'last_name', 'phone']
+    ordering_fields = ['registered_at', 'last_name', 'status']
+
+    def get_queryset(self):
+        return Client.objects.select_related(
+            'group', 'trainer', 'registered_by'
+        ).prefetch_related(
+            'full_payment',
+            'installment_plan__payments'
+        ).order_by('-registered_at')
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAdminOrRegistrar()]
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAdmin()]
+        return [IsAuthenticated()]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ClientCreateSerializer
+        if self.action in ['update', 'partial_update']:
+            return ClientUpdateSerializer
+        return ClientReadSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = ClientCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data.copy()
+        if data.get('group'):
+            data['group_id'] = str(data.pop('group').id)
+        else:
+            data.pop('group', None)
+        if data.get('trainer'):
+            data['trainer_id'] = str(data.pop('trainer').id)
+        else:
+            data.pop('trainer', None)
+        client = self.service.create_client(data, registered_by=request.user)
+        return Response(
+            ClientReadSerializer(client).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = ClientUpdateSerializer(
+            instance, data=request.data, partial=partial
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data.copy()
+        if 'group' in data:
+            data['group_id'] = str(data.pop('group').id) if data['group'] else None
+        if 'trainer' in data:
+            data['trainer_id'] = str(data.pop('trainer').id) if data['trainer'] else None
+        client = self.service.update_client(str(instance.id), data)
+        return Response(ClientReadSerializer(client).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def change_status(self, request, pk=None):
+        new_status = request.data.get('status')
+        client = self.service.change_status(pk, new_status)
+        return Response(ClientReadSerializer(client).data)
+
+    @action(detail=True, methods=['get'])
+    def attendance(self, request, pk=None):
+        from apps.attendance.services import AttendanceService
+        from apps.attendance.serializers import AttendanceSerializer
+        records = AttendanceService().get_client_attendance(pk)
+        return Response(AttendanceSerializer(records, many=True).data)

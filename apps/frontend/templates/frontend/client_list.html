@@ -1,0 +1,147 @@
+{% extends 'frontend/base.html' %}
+{% block title %}Клиенты{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h2 class="text-xl font-bold text-gray-800">Клиенты</h2>
+  <a href="/mobile/clients/register/"
+     class="bg-blue-600 text-white text-sm px-4 py-2 rounded-xl">
+    + Добавить
+  </a>
+</div>
+
+<div class="space-y-3 mb-4">
+  <input
+    type="text" id="search-input" placeholder="Поиск по имени или телефону..."
+    class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm
+           focus:outline-none focus:ring-2 focus:ring-blue-400"
+  >
+  <select id="status-filter"
+    class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm
+           focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <option value="">Все статусы</option>
+    <option value="active">Активные</option>
+    <option value="completed">Завершили</option>
+    <option value="expelled">Отчислены</option>
+  </select>
+  <select id="format-filter"
+    class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm
+           focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <option value="">Онлайн и оффлайн</option>
+    <option value="online">Онлайн</option>
+    <option value="offline">Оффлайн</option>
+  </select>
+</div>
+
+<div id="clients-list" class="space-y-3">
+  <div class="text-center text-gray-400 py-8">Загрузка...</div>
+</div>
+
+<div id="pagination" class="flex justify-between mt-4 hidden">
+  <button id="prev-btn"
+    class="text-sm text-blue-600 disabled:text-gray-300"
+    onclick="changePage(-1)">← Назад</button>
+  <span id="page-info" class="text-sm text-gray-500"></span>
+  <button id="next-btn"
+    class="text-sm text-blue-600 disabled:text-gray-300"
+    onclick="changePage(1)">Вперёд →</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+let totalPages = 1;
+let searchTimeout;
+
+async function loadClients() {
+  const search = document.getElementById('search-input').value;
+  const status = document.getElementById('status-filter').value;
+  const format = document.getElementById('format-filter').value;
+
+  const params = new URLSearchParams({ page: currentPage });
+  if (search) params.append('search', search);
+  if (status) params.append('status', status);
+  if (format) params.append('training_format', format);
+
+  const container = document.getElementById('clients-list');
+
+  try {
+    const res = await fetch(`/api/clients/?${params}`, {
+      headers: authHeaders()
+    });
+    if (res.status === 401) { logout(); return; }
+    const data = await res.json();
+
+    const results = data.results || data;
+    const count = data.count !== undefined ? data.count : results.length;
+    totalPages = Math.max(1, Math.ceil(count / 25));
+    document.getElementById('page-info').textContent =
+      `Страница ${currentPage} из ${totalPages}`;
+
+    if (results.length === 0) {
+      container.innerHTML =
+        '<div class="text-center text-gray-400 py-8">Клиенты не найдены</div>';
+      document.getElementById('pagination').classList.add('hidden');
+      return;
+    }
+
+    const statusBadge = {
+      active: 'bg-green-100 text-green-700',
+      completed: 'bg-gray-100 text-gray-600',
+      expelled: 'bg-red-100 text-red-600',
+    };
+    const statusLabel = {
+      active: 'Активный', completed: 'Завершил', expelled: 'Отчислен'
+    };
+
+    container.innerHTML = results.map(c => `
+      <a href="/mobile/clients/${c.id}/"
+         class="block bg-white rounded-2xl p-4 shadow-sm border hover:border-blue-300 transition">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="font-medium text-gray-800">${c.full_name || (c.last_name + ' ' + c.first_name)}</p>
+            <p class="text-sm text-gray-500">${c.phone}</p>
+            <p class="text-xs text-gray-400 mt-1">
+              ${c.training_format === 'online' ? '🌐 Онлайн' : '🏋️ Оффлайн'} ·
+              ${c.group_type}
+            </p>
+          </div>
+          <span class="text-xs px-2 py-1 rounded-full ${statusBadge[c.status] || 'bg-gray-100 text-gray-600'}">
+            ${statusLabel[c.status] || c.status}
+          </span>
+        </div>
+      </a>
+    `).join('');
+
+    document.getElementById('pagination').classList.remove('hidden');
+    document.getElementById('prev-btn').disabled = currentPage <= 1;
+    document.getElementById('next-btn').disabled = currentPage >= totalPages;
+
+  } catch(e) {
+    container.innerHTML =
+      '<div class="text-center text-red-400 py-8">Ошибка загрузки</div>';
+  }
+}
+
+function changePage(delta) {
+  currentPage = Math.max(1, Math.min(totalPages, currentPage + delta));
+  loadClients();
+}
+
+document.getElementById('search-input').addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  currentPage = 1;
+  searchTimeout = setTimeout(loadClients, 400);
+});
+
+document.getElementById('status-filter').addEventListener('change', () => {
+  currentPage = 1; loadClients();
+});
+document.getElementById('format-filter').addEventListener('change', () => {
+  currentPage = 1; loadClients();
+});
+
+loadClients();
+</script>
+{% endblock %}

@@ -1,0 +1,218 @@
+{% extends 'frontend/base.html' %}
+{% block title %}Регистрация клиента{% endblock %}
+
+{% block content %}
+<h2 class="text-xl font-bold text-gray-800 mb-6">Новый клиент</h2>
+
+<div id="success-msg"
+     class="hidden bg-green-50 text-green-700 rounded-xl p-4 mb-4 text-sm"></div>
+<div id="error-msg"
+     class="hidden bg-red-50 text-red-600 rounded-xl p-4 mb-4 text-sm"></div>
+
+<form id="register-form" class="space-y-4">
+
+  <div class="bg-white rounded-2xl p-4 shadow-sm border space-y-3">
+    <h3 class="font-medium text-gray-700 text-sm">Личные данные</h3>
+    <input type="text" name="last_name" placeholder="Фамилия *" required
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <input type="text" name="first_name" placeholder="Имя *" required
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <input type="text" name="middle_name" placeholder="Отчество"
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <input type="tel" name="phone" placeholder="Телефон * (+998...)" required
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+  </div>
+
+  <div class="bg-white rounded-2xl p-4 shadow-sm border space-y-3">
+    <h3 class="font-medium text-gray-700 text-sm">Обучение</h3>
+    <select name="training_format" required
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <option value="">Формат обучения *</option>
+      <option value="online">Онлайн</option>
+      <option value="offline">Оффлайн</option>
+    </select>
+    <select name="group_type" required
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <option value="">Тип группы *</option>
+      <option value="1.5h">1.5 часа</option>
+      <option value="2.5h">2.5 часа</option>
+    </select>
+    <select name="group_id" id="group-select"
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <option value="">Поток (опционально)</option>
+    </select>
+    <select name="trainer_id" id="trainer-select"
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <option value="">Тренер (опционально)</option>
+    </select>
+  </div>
+
+  <div class="bg-white rounded-2xl p-4 shadow-sm border space-y-3">
+    <h3 class="font-medium text-gray-700 text-sm">Повторный клиент</h3>
+    <label class="flex items-center gap-3">
+      <input type="checkbox" name="is_repeat" id="is-repeat-check"
+        class="w-4 h-4 rounded text-blue-600">
+      <span class="text-sm text-gray-700">Повторный клиент</span>
+    </label>
+    <div id="discount-field" class="hidden">
+      <input type="number" name="discount" placeholder="Скидка (%)" min="0" max="100"
+        class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl p-4 shadow-sm border space-y-3">
+    <h3 class="font-medium text-gray-700 text-sm">Оплата</h3>
+    <select name="payment_type" id="payment-type" required
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <option value="">Тип оплаты *</option>
+      <option value="full">Полная оплата</option>
+      <option value="installment">Рассрочка</option>
+    </select>
+
+    <div id="full-payment-fields" class="hidden space-y-3">
+      <input type="number" name="full_amount" placeholder="Сумма (сум) *"
+        class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <label class="flex items-center gap-3">
+        <input type="checkbox" name="full_is_paid" class="w-4 h-4 rounded text-blue-600">
+        <span class="text-sm text-gray-700">Оплачено сейчас</span>
+      </label>
+    </div>
+
+    <div id="installment-fields" class="hidden space-y-3">
+      <input type="number" name="total_cost" placeholder="Общая стоимость (сум) *"
+        class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <label class="block text-sm text-gray-600">Дедлайн оплаты *</label>
+      <input type="date" name="deadline"
+        class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+    </div>
+  </div>
+
+  <button type="submit"
+    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium
+           py-4 rounded-2xl text-sm transition-colors">
+    Зарегистрировать клиента
+  </button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadOptions() {
+  try {
+    const [groupsRes, trainersRes] = await Promise.all([
+      fetch('/api/groups/?status=active', { headers: authHeaders() }),
+      fetch('/api/trainers/', { headers: authHeaders() }),
+    ]);
+
+    if (groupsRes.status === 401 || trainersRes.status === 401) {
+      logout();
+      return;
+    }
+
+    const groups = await groupsRes.json();
+    const trainers = await trainersRes.json();
+
+    const groupSel = document.getElementById('group-select');
+    (groups.results || groups).forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = `Поток #${g.number} (${g.group_type})`;
+      groupSel.appendChild(opt);
+    });
+
+    const trainerSel = document.getElementById('trainer-select');
+    (trainers.results || trainers).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.full_name || (t.last_name + ' ' + t.first_name);
+      trainerSel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+document.getElementById('payment-type').addEventListener('change', function() {
+  document.getElementById('full-payment-fields').classList.toggle(
+    'hidden', this.value !== 'full'
+  );
+  document.getElementById('installment-fields').classList.toggle(
+    'hidden', this.value !== 'installment'
+  );
+});
+
+document.getElementById('is-repeat-check').addEventListener('change', function() {
+  document.getElementById('discount-field').classList.toggle('hidden', !this.checked);
+});
+
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById('error-msg');
+  const successEl = document.getElementById('success-msg');
+  errorEl.classList.add('hidden');
+  successEl.classList.add('hidden');
+
+  const fd = new FormData(e.target);
+  const paymentType = fd.get('payment_type');
+
+  let paymentData = {};
+  if (paymentType === 'full') {
+    paymentData = { amount: fd.get('full_amount') };
+  } else if (paymentType === 'installment') {
+    paymentData = {
+      total_cost: fd.get('total_cost'),
+      deadline: fd.get('deadline'),
+    };
+  }
+
+  const body = {
+    first_name: fd.get('first_name'),
+    last_name: fd.get('last_name'),
+    middle_name: fd.get('middle_name') || '',
+    phone: fd.get('phone'),
+    training_format: fd.get('training_format'),
+    group_type: fd.get('group_type'),
+    is_repeat: fd.get('is_repeat') === 'on',
+    discount: fd.get('discount') || '0',
+    payment_type: paymentType,
+    payment_data: paymentData,
+  };
+
+  if (fd.get('group_id')) body.group = fd.get('group_id');
+  if (fd.get('trainer_id')) body.trainer = fd.get('trainer_id');
+
+  try {
+    const res = await fetch('/api/clients/', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      const msg = typeof data === 'object' && data !== null
+        ? (data.detail || Object.entries(data).map(([k,v]) => `${k}: ${JSON.stringify(v)}`).join('\n'))
+        : String(data);
+      errorEl.textContent = msg;
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    successEl.textContent = `Клиент ${data.full_name || (data.last_name + ' ' + data.first_name)} успешно зарегистрирован!`;
+    successEl.classList.remove('hidden');
+    e.target.reset();
+    document.getElementById('full-payment-fields').classList.add('hidden');
+    document.getElementById('installment-fields').classList.add('hidden');
+
+    setTimeout(() => {
+      window.location.href = `/mobile/clients/${data.id}/`;
+    }, 1500);
+
+  } catch(err) {
+    errorEl.textContent = 'Ошибка соединения';
+    errorEl.classList.remove('hidden');
+  }
+});
+
+loadOptions();
+</script>
+{% endblock %}
