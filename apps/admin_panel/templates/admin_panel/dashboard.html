@@ -1,0 +1,112 @@
+{% extends 'admin_panel/base.html' %}
+{% block title %}Дашборд{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-8">
+  <h2 class="text-2xl font-bold text-gray-800">Дашборд</h2>
+  <span id="today-date" class="text-sm text-gray-400"></span>
+</div>
+
+<div class="grid grid-cols-4 gap-5 mb-8">
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <p class="text-sm text-gray-500">Общий доход</p>
+    <p id="stat-revenue" class="text-2xl font-bold text-blue-600 mt-1">...</p>
+  </div>
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <p class="text-sm text-gray-500">Активных клиентов</p>
+    <p id="stat-active" class="text-2xl font-bold text-green-600 mt-1">...</p>
+  </div>
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <p class="text-sm text-gray-500">Активных потоков</p>
+    <p id="stat-groups" class="text-2xl font-bold text-purple-600 mt-1">...</p>
+  </div>
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <p class="text-sm text-gray-500">НБ всего</p>
+    <p id="stat-absences" class="text-2xl font-bold text-red-500 mt-1">...</p>
+  </div>
+</div>
+
+<div class="grid grid-cols-2 gap-5 mb-8">
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <h3 class="font-medium text-gray-700 mb-4">Доход по формату</h3>
+    <div class="space-y-3">
+      <div class="flex justify-between items-center">
+        <span class="text-sm text-gray-500">🌐 Онлайн</span>
+        <span id="stat-online" class="font-medium text-gray-800">...</span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm text-gray-500">🏋️ Оффлайн</span>
+        <span id="stat-offline" class="font-medium text-gray-800">...</span>
+      </div>
+    </div>
+  </div>
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <h3 class="font-medium text-gray-700 mb-4">Статус оплат</h3>
+    <div class="space-y-3">
+      <div class="flex justify-between items-center">
+        <span class="text-sm text-gray-500">✅ Закрытых (полная)</span>
+        <span id="stat-closed-full" class="font-medium text-green-600">...</span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm text-gray-500">✅ Закрытых (рассрочка)</span>
+        <span id="stat-closed-inst" class="font-medium text-green-600">...</span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm text-gray-500">⏳ Частичных</span>
+        <span id="stat-partial" class="font-medium text-orange-500">...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-3 gap-4">
+  <a href="/admin-panel/groups/add/"
+     class="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-5
+            text-center transition shadow-sm">
+    <div class="text-2xl mb-2">➕</div>
+    <div class="text-sm font-medium">Новый поток</div>
+  </a>
+  <a href="/admin-panel/trainers/add/"
+     class="bg-white hover:bg-gray-50 text-gray-700 rounded-2xl p-5
+            text-center transition shadow-sm border">
+    <div class="text-2xl mb-2">👤</div>
+    <div class="text-sm font-medium">Новый тренер</div>
+  </a>
+  <a href="/admin-panel/statistics/"
+     class="bg-white hover:bg-gray-50 text-gray-700 rounded-2xl p-5
+            text-center transition shadow-sm border">
+    <div class="text-2xl mb-2">📈</div>
+    <div class="text-sm font-medium">Статистика</div>
+  </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('today-date').textContent =
+    new Date().toLocaleDateString('ru-RU', {
+      day: 'numeric', month: 'long', year: 'numeric'
+    });
+
+  async function loadDashboard() {
+    const res = await fetch(`${API}/statistics/dashboard/`, {
+      headers: authHeaders()
+    });
+    if (res.status === 401) { logout(); return; }
+    const d = await res.json();
+
+    const fmt = v => Number(v).toLocaleString('ru-RU') + ' сум';
+    document.getElementById('stat-revenue').textContent = fmt(d.total_revenue);
+    document.getElementById('stat-active').textContent = d.active_clients;
+    document.getElementById('stat-groups').textContent = d.active_groups_count;
+    document.getElementById('stat-absences').textContent = d.total_absences;
+    document.getElementById('stat-online').textContent = fmt(d.online_revenue);
+    document.getElementById('stat-offline').textContent = fmt(d.offline_revenue);
+    document.getElementById('stat-closed-full').textContent = d.closed_full_payments;
+    document.getElementById('stat-closed-inst').textContent = d.closed_installment_plans;
+    document.getElementById('stat-partial').textContent = d.partial_installment_plans;
+  }
+
+  loadDashboard();
+</script>
+{% endblock %}

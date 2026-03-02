@@ -1,0 +1,185 @@
+{% extends 'admin_panel/base.html' %}
+{% block title %}Статистика{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-bold text-gray-800 mb-6">Статистика</h2>
+
+<div class="bg-white rounded-2xl p-4 shadow-sm border mb-6 flex gap-3 flex-wrap items-end">
+  <div>
+    <label class="block text-xs text-gray-500 mb-1">Дата от</label>
+    <input type="date" id="date-from"
+      class="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+  </div>
+  <div>
+    <label class="block text-xs text-gray-500 mb-1">Дата до</label>
+    <input type="date" id="date-to"
+      class="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+  </div>
+  <div>
+    <label class="block text-xs text-gray-500 mb-1">Формат</label>
+    <select id="format-filter"
+      class="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+      <option value="">Все</option>
+      <option value="online">Онлайн</option>
+      <option value="offline">Оффлайн</option>
+    </select>
+  </div>
+  <div>
+    <label class="block text-xs text-gray-500 mb-1">Тренер</label>
+    <select id="trainer-filter"
+      class="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+      <option value="">Все тренеры</option>
+    </select>
+  </div>
+  <button onclick="loadStats()"
+    class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl transition">
+    Применить
+  </button>
+  <button onclick="resetFilters()"
+    class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm px-4 py-2.5 rounded-xl transition">
+    Сбросить
+  </button>
+</div>
+
+<div class="grid grid-cols-4 gap-4 mb-6">
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <p class="text-xs text-gray-500 mb-1">Общий доход</p>
+    <p id="s-total" class="text-xl font-bold text-blue-600">—</p>
+  </div>
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <p class="text-xs text-gray-500 mb-1">Онлайн доход</p>
+    <p id="s-online" class="text-xl font-bold text-indigo-500">—</p>
+  </div>
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <p class="text-xs text-gray-500 mb-1">Оффлайн доход</p>
+    <p id="s-offline" class="text-xl font-bold text-purple-500">—</p>
+  </div>
+  <div class="bg-white rounded-2xl p-5 shadow-sm border">
+    <p class="text-xs text-gray-500 mb-1">Всего НБ</p>
+    <p id="s-abs" class="text-xl font-bold text-red-500">—</p>
+  </div>
+</div>
+
+<div class="bg-white rounded-2xl shadow-sm border overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b">
+    <h3 class="font-medium text-gray-700">Доход по потокам</h3>
+  </div>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Поток</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Статус</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Клиентов</th>
+        <th class="text-right px-5 py-3 font-medium text-gray-600">Доход</th>
+      </tr>
+    </thead>
+    <tbody id="by-group-table">
+      <tr><td colspan="5" class="text-center py-6 text-gray-400">Загрузка...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="bg-white rounded-2xl shadow-sm border overflow-hidden">
+  <div class="px-5 py-4 border-b">
+    <h3 class="font-medium text-gray-700">Доход по тренерам</h3>
+  </div>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Клиентов</th>
+        <th class="text-right px-5 py-3 font-medium text-gray-600">Доход</th>
+      </tr>
+    </thead>
+    <tbody id="by-trainer-table">
+      <tr><td colspan="3" class="text-center py-6 text-gray-400">Загрузка...</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const fmt = v => Number(v).toLocaleString('ru-RU') + ' сум';
+
+function getParams() {
+  const p = new URLSearchParams();
+  const df = document.getElementById('date-from').value;
+  const dt = document.getElementById('date-to').value;
+  const f = document.getElementById('format-filter').value;
+  const t = document.getElementById('trainer-filter').value;
+  if (df) p.append('date_from', df);
+  if (dt) p.append('date_to', dt);
+  if (f) p.append('training_format', f);
+  if (t) p.append('trainer_id', t);
+  return p;
+}
+
+async function loadStats() {
+  const params = getParams();
+
+  const [dashRes, groupRes, trainerRes] = await Promise.all([
+    fetch(`${API}/statistics/dashboard/?${params}`, { headers: authHeaders() }),
+    fetch(`${API}/statistics/by-group/?${params}`, { headers: authHeaders() }),
+    fetch(`${API}/statistics/by-trainer/?${params}`, { headers: authHeaders() }),
+  ]);
+
+  if (dashRes.status === 401) { logout(); return; }
+
+  const dash = await dashRes.json();
+  document.getElementById('s-total').textContent = fmt(dash.total_revenue);
+  document.getElementById('s-online').textContent = fmt(dash.online_revenue);
+  document.getElementById('s-offline').textContent = fmt(dash.offline_revenue);
+  document.getElementById('s-abs').textContent = dash.total_absences;
+
+  const groups = await groupRes.json();
+  const statusLabel = { recruitment: 'Набор', active: 'Активный', completed: 'Завершён' };
+  document.getElementById('by-group-table').innerHTML =
+    groups.length ? groups.map(g => `
+      <tr class="border-b hover:bg-gray-50">
+        <td class="px-5 py-3 font-medium text-gray-800">Поток #${g.group_number}</td>
+        <td class="px-5 py-3 text-gray-600">${g.trainer || '—'}</td>
+        <td class="px-5 py-3 text-gray-600">${statusLabel[g.status] || g.status}</td>
+        <td class="px-5 py-3 text-gray-600">${g.client_count}</td>
+        <td class="px-5 py-3 text-right font-medium text-blue-600">${fmt(g.revenue)}</td>
+      </tr>
+    `).join('') :
+    '<tr><td colspan="5" class="text-center py-6 text-gray-400">Нет данных</td></tr>';
+
+  const trainers = await trainerRes.json();
+  document.getElementById('by-trainer-table').innerHTML =
+    trainers.length ? trainers.map(t => `
+      <tr class="border-b hover:bg-gray-50">
+        <td class="px-5 py-3 font-medium text-gray-800">${t.trainer_name}</td>
+        <td class="px-5 py-3 text-gray-600">${t.client_count}</td>
+        <td class="px-5 py-3 text-right font-medium text-blue-600">${fmt(t.revenue)}</td>
+      </tr>
+    `).join('') :
+    '<tr><td colspan="3" class="text-center py-6 text-gray-400">Нет данных</td></tr>';
+}
+
+function resetFilters() {
+  document.getElementById('date-from').value = '';
+  document.getElementById('date-to').value = '';
+  document.getElementById('format-filter').value = '';
+  document.getElementById('trainer-filter').value = '';
+  loadStats();
+}
+
+async function loadTrainers() {
+  const res = await fetch(`${API}/trainers/?page_size=100`, { headers: authHeaders() });
+  const data = await res.json();
+  const sel = document.getElementById('trainer-filter');
+  (data.results || []).forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.full_name;
+    sel.appendChild(opt);
+  });
+}
+
+loadTrainers();
+loadStats();
+</script>
+{% endblock %}

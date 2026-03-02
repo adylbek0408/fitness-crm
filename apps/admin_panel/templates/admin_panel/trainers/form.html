@@ -1,0 +1,123 @@
+{% extends 'admin_panel/base.html' %}
+{% block title %}Тренер{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <a href="/admin-panel/trainers/" class="text-gray-400 hover:text-gray-600 text-sm">
+    ← Назад
+  </a>
+  <h2 id="form-title" class="text-2xl font-bold text-gray-800">Новый тренер</h2>
+</div>
+
+<div id="error-msg"
+     class="hidden bg-red-50 text-red-600 rounded-xl p-4 mb-4 text-sm"></div>
+<div id="success-msg"
+     class="hidden bg-green-50 text-green-700 rounded-xl p-4 mb-4 text-sm"></div>
+
+<div class="bg-white rounded-2xl shadow-sm border p-6 max-w-lg">
+  <form id="trainer-form" class="space-y-4">
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Фамилия *</label>
+        <input type="text" name="last_name" required
+          class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm
+                 focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Имя *</label>
+        <input type="text" name="first_name" required
+          class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm
+                 focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Телефон</label>
+      <input type="tel" name="phone" placeholder="+998..."
+        class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm
+               focus:outline-none focus:ring-2 focus:ring-blue-400">
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Рабочее расписание
+      </label>
+      <textarea name="schedule" rows="4"
+        placeholder="Пример: Пн-Пт 09:00-18:00&#10;Сб 10:00-14:00"
+        class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm
+               focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"></textarea>
+    </div>
+    <div class="flex gap-3 pt-2">
+      <button type="submit"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-medium
+               px-6 py-3 rounded-xl text-sm transition">
+        Сохранить
+      </button>
+      <a href="/admin-panel/trainers/"
+         class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium
+                px-6 py-3 rounded-xl text-sm transition">
+        Отмена
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const pathParts = window.location.pathname.split('/').filter(Boolean);
+const trainerId = pathParts[pathParts.length - 1];
+const isEdit = trainerId !== 'add';
+
+async function loadTrainer() {
+  if (!isEdit) return;
+  document.getElementById('form-title').textContent = 'Редактировать тренера';
+  const res = await fetch(`${API}/trainers/${trainerId}/`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) return;
+  const t = await res.json();
+  const form = document.getElementById('trainer-form');
+  form.first_name.value = t.first_name;
+  form.last_name.value = t.last_name;
+  form.phone.value = t.phone || '';
+  form.schedule.value = t.schedule || '';
+}
+
+document.getElementById('trainer-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('error-msg');
+  const sucEl = document.getElementById('success-msg');
+  errEl.classList.add('hidden');
+  sucEl.classList.add('hidden');
+
+  const fd = new FormData(e.target);
+  const body = {
+    first_name: fd.get('first_name'),
+    last_name: fd.get('last_name'),
+    phone: fd.get('phone') || '',
+    schedule: fd.get('schedule') || '',
+  };
+
+  const url = isEdit ? `${API}/trainers/${trainerId}/` : `${API}/trainers/`;
+  const method = isEdit ? 'PUT' : 'POST';
+
+  const res = await fetch(url, {
+    method, headers: authHeaders(), body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const data = await res.json();
+    errEl.textContent = typeof data === 'object'
+      ? Object.entries(data).map(([k,v]) => `${k}: ${v}`).join(' | ')
+      : data.detail;
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  sucEl.textContent = isEdit ? 'Тренер обновлён!' : 'Тренер создан!';
+  sucEl.classList.remove('hidden');
+  setTimeout(() => window.location.href = '/admin-panel/trainers/', 1200);
+});
+
+loadTrainer();
+</script>
+{% endblock %}

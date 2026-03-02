@@ -20,6 +20,7 @@ router.register(r'payments/installment', InstallmentPlanViewSet, basename='insta
 router.register(r'attendance', AttendanceViewSet, basename='attendance')
 
 urlpatterns = [
+    path('admin-panel/', include('apps.admin_panel.urls')),
     path('mobile/', include('apps.frontend.urls')),
     path('api/', include(router.urls)),
     path('api/accounts/', include('apps.accounts.urls')),

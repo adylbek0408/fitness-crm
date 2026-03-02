@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'apps.trainers',
     'apps.statistics',
     'apps.frontend',
+    'apps.admin_panel',
 ]
 
 MIDDLEWARE = [

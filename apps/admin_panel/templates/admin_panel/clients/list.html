@@ -1,0 +1,193 @@
+{% extends 'admin_panel/base.html' %}
+{% block title %}Клиенты{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h2 class="text-2xl font-bold text-gray-800">База клиентов</h2>
+</div>
+
+<div class="bg-white rounded-2xl p-4 shadow-sm border mb-5 flex gap-3 flex-wrap">
+  <input type="text" id="search-input" placeholder="Поиск по имени, телефону..."
+    class="border border-gray-300 rounded-xl px-3 py-2 text-sm
+           focus:outline-none focus:ring-2 focus:ring-blue-400 w-56">
+  <select id="status-filter"
+    class="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+    <option value="">Все статусы</option>
+    <option value="active">Активные</option>
+    <option value="completed">Завершили</option>
+    <option value="expelled">Отчислены</option>
+  </select>
+  <select id="format-filter"
+    class="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+    <option value="">Онлайн + Оффлайн</option>
+    <option value="online">Онлайн</option>
+    <option value="offline">Оффлайн</option>
+  </select>
+  <select id="group-filter"
+    class="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+    <option value="">Все потоки</option>
+  </select>
+  <label class="flex items-center gap-2 text-sm text-gray-600">
+    <input type="checkbox" id="repeat-filter" class="rounded"> Только повторные
+  </label>
+</div>
+
+<div class="bg-white rounded-2xl shadow-sm border overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 border-b">
+      <tr>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Клиент</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Телефон</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Формат</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Поток</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Оплата</th>
+        <th class="text-left px-5 py-3 font-medium text-gray-600">Статус</th>
+        <th class="px-5 py-3"></th>
+      </tr>
+    </thead>
+    <tbody id="clients-table">
+      <tr><td colspan="7" class="text-center py-10 text-gray-400">Загрузка...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div id="pagination" class="flex justify-between items-center mt-4 hidden">
+  <button id="prev-btn" onclick="changePage(-1)"
+    class="text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-300">
+    ← Назад
+  </button>
+  <span id="page-info" class="text-sm text-gray-500"></span>
+  <button id="next-btn" onclick="changePage(1)"
+    class="text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-300">
+    Вперёд →
+  </button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+let totalPages = 1;
+let searchTimeout;
+
+const statusBadge = {
+  active: 'bg-green-100 text-green-700',
+  completed: 'bg-gray-100 text-gray-500',
+  expelled: 'bg-red-100 text-red-600',
+};
+const statusLabel = {
+  active: 'Активный', completed: 'Завершил', expelled: 'Отчислен'
+};
+
+async function loadClients() {
+  const params = new URLSearchParams({ page: currentPage });
+  const s = document.getElementById('search-input').value;
+  const st = document.getElementById('status-filter').value;
+  const f = document.getElementById('format-filter').value;
+  const g = document.getElementById('group-filter').value;
+  const r = document.getElementById('repeat-filter').checked;
+
+  if (s) params.append('search', s);
+  if (st) params.append('status', st);
+  if (f) params.append('training_format', f);
+  if (g) params.append('group', g);
+  if (r) params.append('is_repeat', 'true');
+
+  const res = await fetch(`${API}/clients/?${params}`, {
+    headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  const tbody = document.getElementById('clients-table');
+
+  totalPages = Math.max(1, Math.ceil((data.count || 0) / 25));
+  document.getElementById('page-info').textContent =
+    `${data.count || 0} клиентов · стр. ${currentPage}/${totalPages}`;
+  document.getElementById('pagination').classList.remove('hidden');
+  document.getElementById('prev-btn').disabled = currentPage <= 1;
+  document.getElementById('next-btn').disabled = currentPage >= totalPages;
+
+  if (!(data.results || []).length) {
+    tbody.innerHTML =
+      '<tr><td colspan="7" class="text-center py-10 text-gray-400">Клиенты не найдены</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.results.map(c => {
+    const paymentStatus = c.payment_type === 'full'
+      ? (c.full_payment?.is_paid
+          ? '<span class="text-green-600 text-xs">✅ Оплачено</span>'
+          : '<span class="text-red-500 text-xs">⏳ Не оплачено</span>')
+      : (c.installment_plan?.is_closed
+          ? '<span class="text-green-600 text-xs">✅ Закрыта</span>'
+          : `<span class="text-orange-500 text-xs">⏳ ${
+              Number(c.installment_plan?.remaining || 0).toLocaleString('ru-RU')
+            } сум остаток</span>`);
+
+    return `
+      <tr class="border-b hover:bg-gray-50 transition">
+        <td class="px-5 py-4">
+          <p class="font-medium text-gray-800">${c.full_name}</p>
+          <p class="text-xs text-gray-400">${c.is_repeat ? '🔁 Повторный' : ''}</p>
+        </td>
+        <td class="px-5 py-4 text-gray-600">${c.phone}</td>
+        <td class="px-5 py-4 text-gray-600">
+          ${c.training_format === 'online' ? '🌐' : '🏋️'} ${c.group_type}
+        </td>
+        <td class="px-5 py-4 text-gray-600">
+          ${c.group ? `Поток #${c.group.number}` : '—'}
+        </td>
+        <td class="px-5 py-4">${paymentStatus}</td>
+        <td class="px-5 py-4">
+          <span class="px-2.5 py-1 rounded-full text-xs font-medium ${statusBadge[c.status] || 'bg-gray-100 text-gray-500'}">
+            ${statusLabel[c.status] || c.status}
+          </span>
+        </td>
+        <td class="px-5 py-4">
+          <a href="/admin-panel/clients/${c.id}/"
+             class="text-blue-500 hover:text-blue-700 text-xs font-medium">
+            Открыть
+          </a>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function changePage(delta) {
+  currentPage = Math.max(1, Math.min(totalPages, currentPage + delta));
+  loadClients();
+}
+
+async function loadGroups() {
+  const res = await fetch(`${API}/groups/?page_size=100`, {
+    headers: authHeaders()
+  });
+  const data = await res.json();
+  const sel = document.getElementById('group-filter');
+  (data.results || []).forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g.id;
+    opt.textContent = `Поток #${g.number}`;
+    sel.appendChild(opt);
+  });
+}
+
+document.getElementById('search-input').addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  currentPage = 1;
+  searchTimeout = setTimeout(loadClients, 400);
+});
+['status-filter','format-filter','group-filter'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    currentPage = 1; loadClients();
+  });
+});
+document.getElementById('repeat-filter').addEventListener('change', () => {
+  currentPage = 1; loadClients();
+});
+
+loadGroups();
+loadClients();
+</script>
+{% endblock %}
