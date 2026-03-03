@@ -1,16 +1,20 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from apps.payments.views import (
-    FullPaymentViewSet,
-    InstallmentPlanViewSet,
-    InstallmentPaymentViewSet,
-)
+from django.urls import re_path
+from .views import FullPaymentViewSet, InstallmentPlanViewSet
 
-router = DefaultRouter()
-router.register(r'full', FullPaymentViewSet, basename='full-payment')
-router.register(r'installment-plans', InstallmentPlanViewSet, basename='installment-plan')
-router.register(r'installment-payments', InstallmentPaymentViewSet, basename='installment-payment')
+UUID = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
 urlpatterns = [
-    path('', include(router.urls)),
+    re_path(r'^full/(?P<pk>' + UUID + r')/pay/$',
+            FullPaymentViewSet.as_view({'post': 'mark_paid'}),
+            name='full-payment-pay'),
+    re_path(r'^full/(?P<pk>' + UUID + r')/receipt/$',
+            FullPaymentViewSet.as_view({'post': 'upload_receipt'}),
+            name='full-payment-receipt'),
+    re_path(r'^installment/(?P<pk>' + UUID + r')/payments/$',
+            InstallmentPlanViewSet.as_view({'post': 'add_payment'}),
+            name='installment-add-payment'),
+    re_path(r'^installment/(?P<pk>' + UUID + r')/summary/$',
+            InstallmentPlanViewSet.as_view({'get': 'summary'}),
+            name='installment-summary'),
 ]
+

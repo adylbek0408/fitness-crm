@@ -81,3 +81,26 @@ class ClientService(BaseService):
         client.status = new_status
         client.save(update_fields=['status'])
         return client
+
+    @transaction.atomic
+    def assign_to_group(self, client_id: str, group_id: str) -> Client:
+        from apps.groups.models import Group
+        client = self.get_client_or_raise(client_id)
+        try:
+            group = Group.objects.get(id=group_id)
+        except Group.DoesNotExist:
+            raise NotFoundError(f"Group {group_id} not found")
+        if group.status == 'completed':
+            raise ValidationError("Cannot add client to a completed group")
+        client.group = group
+        client.save(update_fields=['group'])
+        return client
+
+    @transaction.atomic
+    def remove_from_group(self, client_id: str, group_id: str) -> Client:
+        client = self.get_client_or_raise(client_id)
+        client.group = None
+        client.save(update_fields=['group'])
+        return client
+
+    

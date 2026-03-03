@@ -38,6 +38,7 @@ class ClientReadSerializer(serializers.ModelSerializer):
     trainer = TrainerSerializer(read_only=True)
     full_payment = FullPaymentReadSerializer(read_only=True)
     installment_plan = InstallmentPlanReadSerializer(read_only=True)
+    registered_by_name = serializers.CharField(source='registered_by.username', read_only=True)
 
     class Meta:
         model = Client
@@ -45,7 +46,8 @@ class ClientReadSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'middle_name', 'full_name',
             'phone', 'training_format', 'group_type', 'group', 'trainer',
             'status', 'is_repeat', 'discount', 'payment_type',
-            'registered_at', 'full_payment', 'installment_plan', 'created_at'
+            'registered_at', 'registered_by_name',
+            'full_payment', 'installment_plan', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
 

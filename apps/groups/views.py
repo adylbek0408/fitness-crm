@@ -16,6 +16,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     filterset_class = GroupFilter
     search_fields = ['number', 'trainer__last_name']
     ordering_fields = ['number', 'start_date', 'status']
+    lookup_value_regex = r'[0-9a-f-]{36}'
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -58,3 +59,27 @@ class GroupViewSet(viewsets.ModelViewSet):
         from apps.clients.serializers import ClientReadSerializer
         serializer = ClientReadSerializer(clients, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin], url_path='add-client')
+    def add_client(self, request, pk=None):
+        client_id = request.data.get('client_id')
+        if not client_id:
+            return Response({'detail': 'client_id is required'}, status=400)
+        from apps.clients.services import ClientService
+        service = ClientService()
+        client = service.assign_to_group(str(client_id), str(pk))
+        from apps.clients.serializers import ClientReadSerializer
+        return Response(ClientReadSerializer(client).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin], url_path='remove-client')
+    def remove_client(self, request, pk=None):
+        client_id = request.data.get('client_id')
+        if not client_id:
+            return Response({'detail': 'client_id is required'}, status=400)
+        from apps.clients.services import ClientService
+        service = ClientService()
+        client = service.remove_from_group(str(client_id), str(pk))
+        from apps.clients.serializers import ClientReadSerializer
+        return Response(ClientReadSerializer(client).data)
+
+        

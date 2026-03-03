@@ -13,17 +13,24 @@ class FullPaymentReceiptSerializer(serializers.Serializer):
     receipt = serializers.ImageField()
 
 
+class FullPaymentUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FullPayment
+        fields = ['amount', 'is_paid', 'receipt']
+        extra_kwargs = {'receipt': {'required': False}}
+
+
 class InstallmentPaymentReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstallmentPayment
         fields = ['id', 'amount', 'paid_at', 'receipt', 'note']
 
 
-class InstallmentPaymentCreateSerializer(serializers.Serializer):
+class AddInstallmentPaymentSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     paid_at = serializers.DateField()
+    note = serializers.CharField(required=False, allow_blank=True, default='')
     receipt = serializers.ImageField(required=False, allow_null=True)
-    note = serializers.CharField(max_length=255, required=False, default='')
 
     def validate_amount(self, value):
         if value <= 0:
