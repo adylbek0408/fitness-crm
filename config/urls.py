@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/accounts/', include('apps.accounts.urls')),
     path('api/payments/', include('apps.payments.urls')),
+    path('api/cabinet/', include('apps.clients.cabinet_urls')),
 ]
 
 

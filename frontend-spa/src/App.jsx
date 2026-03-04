@@ -15,12 +15,16 @@ import MobileDashboard from './pages/mobile/MobileDashboard'
 import ClientRegister from './pages/mobile/ClientRegister'
 import ClientList from './pages/mobile/ClientList'
 import MobileClientDetail from './pages/mobile/ClientDetail'
+import CabinetLogin from './pages/cabinet/CabinetLogin'
+import CabinetProfile from './pages/cabinet/CabinetProfile'
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/cabinet" element={<CabinetLogin />} />
+        <Route path="/cabinet/profile" element={<CabinetProfile />} />
         <Route path="/admin" element={<ProtectedRoute role="admin" />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />

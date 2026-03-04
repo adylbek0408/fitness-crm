@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.utils import timezone
 from core.services import BaseService
 from core.exceptions import NotFoundError, ValidationError
 
@@ -18,13 +19,19 @@ class PaymentService(BaseService):
         payment.mark_as_paid()
         return payment
 
-    def upload_full_payment_receipt(self, client_id: str, receipt_file) -> FullPayment:
+    def upload_full_payment_receipt(self, client_id: str, receipt_file, amount=None) -> FullPayment:
         try:
             payment = FullPayment.objects.get(client_id=client_id)
         except FullPayment.DoesNotExist:
             raise NotFoundError(f"FullPayment for client {client_id} not found")
         payment.receipt = receipt_file
-        payment.save(update_fields=['receipt'])
+        payment.is_paid = True
+        payment.paid_at = timezone.now()
+        update_fields = ['receipt', 'is_paid', 'paid_at']
+        if amount is not None:
+            payment.amount = amount
+            update_fields.append('amount')
+        payment.save(update_fields=update_fields)
         return payment
 
     def add_installment_payment(self, plan_id: str, data: dict) -> InstallmentPayment:

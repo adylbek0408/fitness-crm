@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.permissions import IsAdmin, IsAdminOrRegistrar
+from core.exceptions import ValidationError
 from .models import Client
 from .serializers import ClientReadSerializer, ClientCreateSerializer, ClientUpdateSerializer
 from .services import ClientService
@@ -18,7 +19,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Client.objects.select_related(
-            'group', 'trainer', 'registered_by'
+            'group', 'trainer', 'registered_by', 'cabinet_account'
         ).prefetch_related(
             'full_payment',
             'installment_plan__payments'
@@ -51,10 +52,11 @@ class ClientViewSet(viewsets.ModelViewSet):
         else:
             data.pop('trainer', None)
         client = self.service.create_client(data, registered_by=request.user)
-        return Response(
-            ClientReadSerializer(client).data,
-            status=status.HTTP_201_CREATED
-        )
+        out = ClientReadSerializer(client).data
+        if getattr(client, '_cabinet_username_plain', None):
+            out['cabinet_username'] = client._cabinet_username_plain
+            out['cabinet_password'] = client._cabinet_password_plain
+        return Response(out, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -83,3 +85,12 @@ class ClientViewSet(viewsets.ModelViewSet):
         from apps.attendance.serializers import AttendanceSerializer
         records = AttendanceService().get_client_attendance(pk)
         return Response(AttendanceSerializer(records, many=True).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar])
+    def reset_cabinet_password(self, request, pk=None):
+        """Generate new cabinet password, set it, return once for manager to give to client."""
+        try:
+            plain = self.service.reset_cabinet_password(pk)
+            return Response({'password': plain})
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)

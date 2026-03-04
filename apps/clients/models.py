@@ -6,6 +6,29 @@ from django.db import models
 from core.models import UUIDTimestampedModel
 
 
+class ClientAccount(models.Model):
+    """Cabinet access for client: login + password, one per client."""
+    client = models.OneToOneField(
+        'Client',
+        on_delete=models.CASCADE,
+        related_name='cabinet_account',
+    )
+    username = models.CharField(max_length=150, unique=True)
+    password = models.CharField(max_length=128)  # hashed
+
+    def set_password(self, raw_password):
+        from django.contrib.auth.hashers import make_password
+        self.password = make_password(raw_password)
+        self.save(update_fields=['password'])
+
+    def check_password(self, raw_password):
+        from django.contrib.auth.hashers import check_password
+        return check_password(raw_password, self.password)
+
+    def __str__(self):
+        return f"Cabinet:{self.username}"
+
+
 class Client(UUIDTimestampedModel):
     TRAINING_FORMAT_CHOICES = [
         ('online', 'Online'),
@@ -30,7 +53,6 @@ class Client(UUIDTimestampedModel):
 
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    middle_name = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=20, unique=True)
 
     training_format = models.CharField(max_length=10, choices=TRAINING_FORMAT_CHOICES)
@@ -56,6 +78,11 @@ class Client(UUIDTimestampedModel):
     discount = models.DecimalField(
         max_digits=5, decimal_places=2, default=0,
         help_text="Discount percentage (0-100)"
+    )
+
+    bonus_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="Client bonus balance (visible in cabinet)"
     )
 
     payment_type = models.CharField(max_length=15, choices=PAYMENT_TYPE_CHOICES)
@@ -87,7 +114,4 @@ class Client(UUIDTimestampedModel):
 
     @property
     def full_name(self):
-        parts = [self.last_name, self.first_name]
-        if self.middle_name:
-            parts.append(self.middle_name)
-        return ' '.join(parts)
+        return f"{self.last_name} {self.first_name}"

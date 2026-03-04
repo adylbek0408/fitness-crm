@@ -30,7 +30,9 @@ export default function AddPaymentForm({ planId, onSuccess }) {
       setPaidAt('')
       setNote('')
       setReceipt(null)
-      if (onSuccess) onSuccess()
+      if (onSuccess) {
+        setTimeout(() => onSuccess(), 100)
+      }
     } catch (e) {
       const d = e.response?.data
       setError(typeof d === 'object' ? JSON.stringify(d) : (d?.detail || 'Ошибка'))

@@ -29,8 +29,9 @@ class FullPaymentViewSet(viewsets.GenericViewSet):
     def upload_receipt(self, request, pk=None):
         serializer = FullPaymentReceiptSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         payment = self.service.upload_full_payment_receipt(
-            pk, serializer.validated_data['receipt']
+            pk, receipt_file=data['receipt'], amount=data.get('amount')
         )
         return Response(FullPaymentReadSerializer(payment).data)
 

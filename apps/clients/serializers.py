@@ -6,7 +6,7 @@ from apps.trainers.models import Trainer
 from apps.trainers.serializers import TrainerSerializer
 from apps.payments.models import FullPayment, InstallmentPlan, InstallmentPayment
 
-from .models import Client
+from .models import Client, ClientAccount
 
 
 class FullPaymentReadSerializer(serializers.ModelSerializer):
@@ -39,17 +39,24 @@ class ClientReadSerializer(serializers.ModelSerializer):
     full_payment = FullPaymentReadSerializer(read_only=True)
     installment_plan = InstallmentPlanReadSerializer(read_only=True)
     registered_by_name = serializers.CharField(source='registered_by.username', read_only=True)
+    cabinet_username = serializers.SerializerMethodField()
 
     class Meta:
         model = Client
         fields = [
-            'id', 'first_name', 'last_name', 'middle_name', 'full_name',
+            'id', 'first_name', 'last_name', 'full_name',
             'phone', 'training_format', 'group_type', 'group', 'trainer',
-            'status', 'is_repeat', 'discount', 'payment_type',
+            'status', 'is_repeat', 'discount', 'bonus_balance', 'payment_type',
             'registered_at', 'registered_by_name',
-            'full_payment', 'installment_plan', 'created_at'
+            'full_payment', 'installment_plan', 'cabinet_username', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+    def get_cabinet_username(self, obj):
+        try:
+            return obj.cabinet_account.username
+        except ClientAccount.DoesNotExist:
+            return None
 
 
 class PaymentDataFullSerializer(serializers.Serializer):
@@ -64,7 +71,6 @@ class PaymentDataInstallmentSerializer(serializers.Serializer):
 class ClientCreateSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=100)
     last_name = serializers.CharField(max_length=100)
-    middle_name = serializers.CharField(max_length=100, required=False, default='')
     phone = serializers.CharField(max_length=20)
 
     training_format = serializers.ChoiceField(choices=Client.TRAINING_FORMAT_CHOICES)
@@ -106,7 +112,7 @@ class ClientUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         fields = [
-            'first_name', 'last_name', 'middle_name', 'phone',
+            'first_name', 'last_name', 'phone',
             'training_format', 'group_type', 'group', 'trainer',
-            'status', 'is_repeat', 'discount'
+            'status', 'is_repeat', 'discount', 'bonus_balance'
         ]

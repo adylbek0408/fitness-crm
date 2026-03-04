@@ -6,7 +6,8 @@ const api = axios.create({
 })
 
 api.interceptors.request.use(cfg => {
-  const token = localStorage.getItem('access_token')
+  const url = cfg.url || ''
+  const token = url.includes('cabinet') ? localStorage.getItem('cabinet_access_token') : localStorage.getItem('access_token')
   if (token) cfg.headers.Authorization = `Bearer ${token}`
   return cfg
 })
@@ -15,8 +16,17 @@ api.interceptors.response.use(
   r => r,
   err => {
     if (err.response?.status === 401) {
-      localStorage.clear()
-      window.location.href = '/login'
+      const isCabinet = err.config?.url?.includes?.('cabinet')
+      const isLoginRequest = err.config?.url?.includes?.('cabinet/login')
+      if (isCabinet && !isLoginRequest) {
+        localStorage.removeItem('cabinet_access_token')
+        localStorage.removeItem('cabinet_refresh_token')
+        window.location.href = '/cabinet'
+      } else if (!isCabinet) {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(err)
   }

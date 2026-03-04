@@ -11,6 +11,7 @@ class FullPaymentReadSerializer(serializers.ModelSerializer):
 
 class FullPaymentReceiptSerializer(serializers.Serializer):
     receipt = serializers.ImageField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
 
 
 class FullPaymentUpdateSerializer(serializers.ModelSerializer):

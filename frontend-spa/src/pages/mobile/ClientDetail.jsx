@@ -11,6 +11,10 @@ export default function MobileClientDetail() {
   const [client, setClient] = useState(null)
   const [planId, setPlanId] = useState(null)
   const [receipt, setReceipt] = useState(null)
+  const [fullAmount, setFullAmount] = useState('')
+  const [repeatLoading, setRepeatLoading] = useState(false)
+  const [newPassword, setNewPassword] = useState(null)
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
 
   const load = async () => {
     const r = await api.get(`/clients/${id}/`)
@@ -19,13 +23,46 @@ export default function MobileClientDetail() {
   }
 
   useEffect(() => { load() }, [id])
+  useEffect(() => setNewPassword(null), [id])
+
+  const setRepeat = async (isRepeat) => {
+    if (!client) return
+    const prev = client.is_repeat
+    setClient(c => c ? { ...c, is_repeat: isRepeat } : c)
+    setRepeatLoading(true)
+    try {
+      await api.patch(`/clients/${id}/`, { is_repeat: isRepeat, discount: '0' })
+      load()
+    } catch (e) {
+      setClient(c => c ? { ...c, is_repeat: prev } : c)
+      console.error(e)
+    } finally {
+      setRepeatLoading(false)
+    }
+  }
+
+  const resetCabinetPassword = async () => {
+    setResetPasswordLoading(true)
+    setNewPassword(null)
+    try {
+      const r = await api.post(`/clients/${id}/reset_cabinet_password/`)
+      setNewPassword(r.data.password)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setResetPasswordLoading(false)
+    }
+  }
 
   const uploadReceipt = async e => {
     e.preventDefault()
     if (!receipt) return
     const fd = new FormData()
     fd.append('receipt', receipt)
+    if (fullAmount && Number(fullAmount) > 0) fd.append('amount', fullAmount)
     await api.post(`/payments/full/${id}/receipt/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    setReceipt(null)
+    setFullAmount('')
     load()
   }
 
@@ -33,7 +70,23 @@ export default function MobileClientDetail() {
 
   const plan = client.installment_plan
   const full = client.full_payment
-  const pct = plan && plan.total_cost > 0 ? Math.min(Math.round((plan.total_paid / plan.total_cost) * 100), 100) : 0
+  const pct = plan && Number(plan.total_cost) > 0 ? Math.min(Math.round((Number(plan.total_paid) / Number(plan.total_cost)) * 100), 100) : 0
+
+  const allReceipts = []
+  if (client.payment_type === 'full' && full?.receipt) {
+    allReceipts.push({ id: full.id, date: full.paid_at || client.registered_at, amount: full.amount, label: 'Полная оплата', receipt: full.receipt })
+  }
+  if (client.payment_type === 'installment' && plan?.payments?.length) {
+    plan.payments.forEach((p, i) => {
+      allReceipts.push({
+        id: p.id,
+        date: p.paid_at,
+        amount: p.amount,
+        label: `Платёж ${i + 1}`,
+        receipt: p.receipt || null
+      })
+    })
+  }
 
   return (
     <MobileLayout>
@@ -44,6 +97,24 @@ export default function MobileClientDetail() {
               <h2 className="text-xl font-bold text-gray-800">{client.full_name}</h2>
               <p className="text-sm text-gray-500 mt-1">{client.phone}</p>
               <p className="text-xs text-gray-400 mt-1">{client.training_format === 'online' ? '🌐 Онлайн' : '🏋️ Оффлайн'} · {client.group_type}</p>
+              {client.bonus_balance != null && Number(client.bonus_balance) > 0 && (
+                <p className="text-sm text-green-600 mt-1">Бонусы: {fmtMoney(client.bonus_balance)}</p>
+              )}
+              {client.cabinet_username && (
+                <p className="text-xs text-gray-400 mt-1">Логин кабинета: <span className="font-mono">{client.cabinet_username}</span></p>
+              )}
+              {newPassword && (
+                <p className="text-sm text-green-700 mt-1">Новый пароль: <span className="font-mono bg-green-100 px-1 rounded">{newPassword}</span></p>
+              )}
+              {client.cabinet_username && (
+                <p className="text-xs text-gray-500 mt-2">Вход в кабинет: <a href="/cabinet" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">/cabinet</a></p>
+              )}
+              {client.cabinet_username && (
+                <button type="button" onClick={resetCabinetPassword} disabled={resetPasswordLoading}
+                  className="mt-2 text-xs text-blue-600 hover:underline disabled:opacity-60">
+                  {resetPasswordLoading ? 'Создаём...' : 'Сбросить пароль (получить новый)'}
+                </button>
+              )}
             </div>
             <span className={`text-xs px-3 py-1 rounded-full ${STATUS_BADGE[client.status]}`}>{STATUS_LABEL[client.status]}</span>
           </div>
@@ -51,10 +122,34 @@ export default function MobileClientDetail() {
         <div className="bg-white rounded-2xl p-5 shadow-sm border">
           <h3 className="font-medium text-gray-700 mb-3">💳 Оплата</h3>
           {client.payment_type === 'full' && full && (
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Сумма</span><span className="font-medium">{fmtMoney(full.amount)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Статус</span><span className={full.is_paid ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>{full.is_paid ? '✅ Оплачено' : '⏳ Не оплачено'}</span></div>
-              {full.receipt && <a href={full.receipt} target="_blank" rel="noreferrer" className="text-blue-500 text-xs">Открыть чек →</a>}
+            <div className="space-y-3">
+              {full.is_paid ? (
+                <>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Сумма</span><span className="font-medium">{fmtMoney(full.amount)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Статус</span><span className="text-green-600 font-medium">✅ Оплачено</span></div>
+                  {full.receipt && <a href={full.receipt} target="_blank" rel="noreferrer" className="text-blue-500 text-sm block">Открыть чек →</a>}
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Статус</span><span className="text-red-500 font-medium">⏳ Не оплачено</span></div>
+                  <div className="pt-3 border-t border-gray-100">
+                    <p className="text-sm text-gray-600 mb-2">Укажите сумму и загрузите чек — платёж будет отмечен как оплаченный.</p>
+                    <form onSubmit={uploadReceipt} className="space-y-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Сумма (сом) *</label>
+                        <input type="number" min="1" step="1" required value={fullAmount} onChange={e => setFullAmount(e.target.value)} placeholder="Введите сумму"
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Чек *</label>
+                        <input type="file" accept="image/*" required onChange={e => setReceipt(e.target.files[0])}
+                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm" />
+                      </div>
+                      <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl text-sm">Загрузить чек</button>
+                    </form>
+                  </div>
+                </>
+              )}
             </div>
           )}
           {client.payment_type === 'installment' && plan && (
@@ -75,14 +170,7 @@ export default function MobileClientDetail() {
                       <span>{p.paid_at}</span>
                       <span className="font-medium">{fmtMoney(p.amount)}</span>
                       {p.receipt && (
-                        <a
-                          href={p.receipt}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-500 hover:text-blue-700"
-                        >
-                          Посмотреть чек
-                        </a>
+                        <a href={p.receipt} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700">Чек</a>
                       )}
                     </div>
                   ))}
@@ -91,22 +179,45 @@ export default function MobileClientDetail() {
             </div>
           )}
         </div>
-        {client.payment_type === 'installment' && plan && !plan.is_closed && (
+        {allReceipts.length > 0 && (
+          <div className="bg-white rounded-2xl p-5 shadow-sm border">
+            <h3 className="font-medium text-gray-700 mb-3">📄 История чеков</h3>
+            <div className="space-y-2">
+              {allReceipts.map((r, i) => (
+                <div key={`receipt-${r.id}-${i}`} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-xl text-sm">
+                  <span className="text-gray-600">{r.date}</span>
+                  <span className="font-medium">{r.label} — {fmtMoney(r.amount)}</span>
+                  {r.receipt ? (
+                    <a href={r.receipt} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 font-medium">Открыть чек →</a>
+                  ) : (
+                    <span className="text-gray-400 text-xs">Чек не прикреплён</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {client.payment_type === 'installment' && plan && Number(plan.remaining) > 0 && (
           <div className="bg-white rounded-2xl p-5 shadow-sm border">
             <h3 className="font-medium text-gray-700 mb-3">Добавить платёж</h3>
             <AddPaymentForm planId={planId} onSuccess={load} />
           </div>
         )}
-        {client.payment_type === 'full' && full && !full.is_paid && (
-          <div className="bg-white rounded-2xl p-5 shadow-sm border">
-            <h3 className="font-medium text-gray-700 mb-3">📎 Загрузить чек</h3>
-            <form onSubmit={uploadReceipt} className="space-y-3">
-              <input type="file" accept="image/*" required onChange={e => setReceipt(e.target.files[0])}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm" />
-              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl text-sm">Загрузить чек</button>
-            </form>
-          </div>
-        )}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border">
+          <h3 className="font-medium text-gray-700 mb-3">Повторный клиент</h3>
+          <p className="text-sm text-gray-500 mb-3">Отметьте, если клиент повторный — ему начислится бонус на баланс.</p>
+          <button
+            type="button"
+            disabled={repeatLoading}
+            onClick={() => setRepeat(!client.is_repeat)}
+            className="w-full flex items-center gap-3 py-3 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 active:bg-blue-100 cursor-pointer select-none transition text-left disabled:opacity-60"
+          >
+            <input type="checkbox" checked={!!client.is_repeat} readOnly tabIndex={-1}
+              className="rounded w-5 h-5 pointer-events-none" />
+            <span className="text-sm font-medium">Клиент повторный</span>
+            {repeatLoading && <span className="text-xs text-gray-400">Сохранение...</span>}
+          </button>
+        </div>
       </div>
     </MobileLayout>
   )

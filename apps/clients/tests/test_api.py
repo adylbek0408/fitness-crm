@@ -35,15 +35,6 @@ def registrar_user(db):
     )
 
 
-@pytest.fixture
-def attendance_manager_user(db):
-    return User.objects.create_user(
-        username='attendance_mgr',
-        password='attpass123',
-        role='attendance_manager'
-    )
-
-
 def get_jwt_token(user):
     refresh = RefreshToken.for_user(user)
     return str(refresh.access_token)
@@ -140,17 +131,3 @@ class TestClientAPI:
         }
         response = api_client.post('/api/clients/', data, format='json')
         assert response.status_code == 201
-
-    def test_attendance_manager_cannot_create_client(self, api_client, attendance_manager_user):
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {get_jwt_token(attendance_manager_user)}')
-        data = {
-            'first_name': 'Bob',
-            'last_name': 'Test',
-            'phone': '+79991234571',
-            'training_format': 'offline',
-            'group_type': '1.5h',
-            'payment_type': 'full',
-            'payment_data': {'amount': '5000.00'},
-        }
-        response = api_client.post('/api/clients/', data, format='json')
-        assert response.status_code == 403

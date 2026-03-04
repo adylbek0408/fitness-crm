@@ -3,7 +3,7 @@ import MobileLayout from '../../components/MobileLayout'
 
 export default function MobileDashboard() {
   const { user } = useOutletContext()
-  const roleMap = { admin: 'Администратор', registrar: 'Регистратор', attendance_manager: 'Менеджер посещаемости' }
+  const roleMap = { admin: 'Администратор', registrar: 'Регистратор' }
   return (
     <MobileLayout>
       <h2 className="text-xl font-bold text-gray-800 mb-6">Добро пожаловать</h2>

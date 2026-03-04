@@ -25,19 +25,7 @@ class TestClientModel:
         assert client.training_format == 'offline'
         assert client.payment_type == 'full'
 
-    def test_client_full_name_with_middle_name(self):
-        client = Client.objects.create(
-            first_name='John',
-            last_name='Doe',
-            middle_name='Michael',
-            phone='+79991234568',
-            training_format='online',
-            group_type='2.5h',
-            payment_type='installment'
-        )
-        assert client.full_name == 'Doe John Michael'
-
-    def test_client_full_name_without_middle_name(self):
+    def test_client_full_name(self):
         client = Client.objects.create(
             first_name='Jane',
             last_name='Smith',

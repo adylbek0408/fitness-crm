@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
-import { STATUS_BADGE, STATUS_LABEL } from '../../utils/format'
+import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate, GROUP_TYPE_LABEL } from '../../utils/format'
 
 export default function ClientList() {
   const { user } = useOutletContext()
@@ -12,6 +12,9 @@ export default function ClientList() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [format, setFormat] = useState('')
+  const [paymentStatus, setPaymentStatus] = useState('')
+  const [registeredFrom, setRegisteredFrom] = useState('')
+  const [registeredTo, setRegisteredTo] = useState('')
   const totalPages = Math.ceil(count / 25)
   const timer = useRef(null)
 
@@ -20,6 +23,9 @@ export default function ClientList() {
     if (search) params.append('search', search)
     if (status) params.append('status', status)
     if (format) params.append('training_format', format)
+    if (paymentStatus) params.append('payment_status', paymentStatus)
+    if (registeredFrom) params.append('registered_from', registeredFrom)
+    if (registeredTo) params.append('registered_to', registeredTo)
     const r = await api.get(`/clients/?${params}`)
     setClients(r.data.results || []); setCount(r.data.count || 0)
   }
@@ -27,9 +33,36 @@ export default function ClientList() {
   useEffect(() => {
     clearTimeout(timer.current)
     timer.current = setTimeout(() => { setPage(1); load(1) }, 300)
-  }, [search, status, format])
+  }, [search, status, format, paymentStatus, registeredFrom, registeredTo])
 
   useEffect(() => { load() }, [page])
+
+  const resetFilters = () => {
+    setSearch('')
+    setStatus('')
+    setFormat('')
+    setPaymentStatus('')
+    setRegisteredFrom('')
+    setRegisteredTo('')
+    setPage(1)
+    setTimeout(() => load(1), 0)
+  }
+
+  const paymentLabel = (c) => {
+    if (c.payment_type === 'full' && c.full_payment) {
+      return c.full_payment.is_paid
+        ? { text: '✅ Оплачено', cls: 'text-green-600', sub: fmtMoney(c.full_payment.amount) }
+        : { text: '⏳ Не оплачено', cls: 'text-red-600', sub: fmtMoney(c.full_payment.amount) }
+    }
+    if (c.payment_type === 'installment' && c.installment_plan) {
+      const plan = c.installment_plan
+      const remaining = Number(plan.remaining)
+      return remaining <= 0
+        ? { text: '✅ Закрыта', cls: 'text-green-600', sub: `Оплачено ${fmtMoney(plan.total_paid)}` }
+        : { text: `Остаток ${fmtMoney(remaining)}`, cls: 'text-orange-600', sub: `из ${fmtMoney(plan.total_cost)} · дедлайн ${plan.deadline}` }
+    }
+    return null
+  }
 
   return (
     <MobileLayout>
@@ -40,35 +73,68 @@ export default function ClientList() {
       <div className="space-y-3 mb-4">
         <input type="text" placeholder="Поиск по имени или телефону..." value={search} onChange={e => setSearch(e.target.value)}
           className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-        <select value={status} onChange={e => setStatus(e.target.value)}
+        <div className="grid grid-cols-2 gap-2">
+          <select value={status} onChange={e => setStatus(e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">Все статусы</option>
+            <option value="active">Активные</option>
+            <option value="completed">Завершили</option>
+            <option value="expelled">Отчислены</option>
+          </select>
+          <select value={format} onChange={e => setFormat(e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">Онлайн и Оффлайн</option>
+            <option value="online">Онлайн</option>
+            <option value="offline">Оффлайн</option>
+          </select>
+        </div>
+        <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)}
           className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <option value="">Все статусы</option>
-          <option value="active">Активные</option>
-          <option value="completed">Завершили</option>
-          <option value="expelled">Отчислены</option>
+          <option value="">Все по оплате</option>
+          <option value="paid">Оплатили полностью</option>
+          <option value="unpaid">Есть остаток</option>
         </select>
-        <select value={format} onChange={e => setFormat(e.target.value)}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <option value="">Онлайн и Оффлайн</option>
-          <option value="online">Онлайн</option>
-          <option value="offline">Оффлайн</option>
-        </select>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Регистрация с</label>
+            <input type="date" value={registeredFrom} onChange={e => setRegisteredFrom(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Регистрация по</label>
+            <input type="date" value={registeredTo} onChange={e => setRegisteredTo(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          </div>
+        </div>
+        <button type="button" onClick={resetFilters}
+          className="w-full py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-300 transition">
+          Сбросить фильтры
+        </button>
       </div>
       <div className="space-y-3">
         {clients.length === 0
           ? <div className="text-center text-gray-400 py-8">Клиенты не найдены</div>
-          : clients.map(c => (
-            <Link key={c.id} to={`/mobile/clients/${c.id}`} className="block bg-white rounded-2xl p-4 shadow-sm border hover:border-blue-300 transition">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-medium text-gray-800">{c.full_name}</p>
-                  <p className="text-sm text-gray-500">{c.phone}</p>
-                  <p className="text-xs text-gray-400 mt-1">{c.training_format === 'online' ? '🌐 Онлайн' : '🏋️ Оффлайн'} · {c.group_type}</p>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
-              </div>
-            </Link>
-          ))}
+          : clients.map(c => {
+              const pay = paymentLabel(c)
+              return (
+                <Link key={c.id} to={`/mobile/clients/${c.id}`} className="block bg-white rounded-2xl p-4 shadow-sm border hover:border-blue-300 transition">
+                  <div className="flex justify-between items-start">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-gray-800">{c.full_name}</p>
+                      <p className="text-sm text-gray-500">{c.phone}</p>
+                      <p className="text-xs text-gray-400 mt-1">{c.training_format === 'online' ? '🌐 Онлайн' : '🏋️ Оффлайн'} · {GROUP_TYPE_LABEL[c.group_type] || c.group_type}</p>
+                      <p className="text-xs text-gray-500 mt-1">Рег.: {fmtDate(c.registered_at)}</p>
+                      {pay && (
+                        <p className={`text-xs font-medium mt-1.5 ${pay.cls}`}>
+                          {pay.text} {pay.sub && <span className="text-gray-500 font-normal">— {pay.sub}</span>}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full shrink-0 ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
+                  </div>
+                </Link>
+              )
+            })}
       </div>
       {totalPages > 1 && (
         <div className="flex justify-between mt-4">
