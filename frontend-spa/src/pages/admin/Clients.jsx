@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
+import { CheckCircle, Clock, Globe, Dumbbell, RotateCcw } from 'lucide-react'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate } from '../../utils/format'
@@ -126,16 +127,21 @@ export default function Clients() {
               ? <tr><td colSpan={9} className="text-center py-10 text-gray-400">Клиенты не найдены</td></tr>
               : clients.map(c => {
                 const payStatus = c.payment_type === 'full'
-                  ? (c.full_payment?.is_paid ? <span className="text-green-600 text-xs">✅ Оплачено</span> : <span className="text-red-500 text-xs">⏳ Не оплачено</span>)
-                  : (c.installment_plan && Number(c.installment_plan.remaining) <= 0 ? <span className="text-green-600 text-xs">✅ Закрыта</span> : <span className="text-orange-500 text-xs">⏳ {fmtMoney(c.installment_plan?.remaining || 0)} остаток</span>)
+                  ? (c.full_payment?.is_paid ? <span className="text-green-600 text-xs flex items-center gap-1"><CheckCircle size={12} /> Оплачено</span> : <span className="text-red-500 text-xs flex items-center gap-1"><Clock size={12} /> Не оплачено</span>)
+                  : (c.installment_plan && Number(c.installment_plan.remaining) <= 0 ? <span className="text-green-600 text-xs flex items-center gap-1"><CheckCircle size={12} /> Закрыта</span> : <span className="text-orange-500 text-xs flex items-center gap-1"><Clock size={12} /> {fmtMoney(c.installment_plan?.remaining || 0)} остаток</span>)
                 return (
                   <tr key={c.id} className="border-b hover:bg-gray-50">
                     <td className="px-5 py-4">
                       <p className="font-medium text-gray-800">{c.full_name}</p>
-                      {c.is_repeat && <p className="text-xs text-gray-400">🔁 Повторный</p>}
+                      {c.is_repeat && <p className="text-xs text-gray-400 flex items-center gap-1"><RotateCcw size={12} /> Повторный</p>}
                     </td>
                     <td className="px-5 py-4 text-gray-600">{c.phone}</td>
-                    <td className="px-5 py-4 text-gray-600">{c.training_format === 'online' ? '🌐' : '🏋️'} {c.group_type}</td>
+                    <td className="px-5 py-4 text-gray-600">
+                      <span className="inline-flex items-center gap-1">
+                        {c.training_format === 'online' ? <Globe size={14} /> : <Dumbbell size={14} />}
+                        {c.group_type}
+                      </span>
+                    </td>
                     <td className="px-5 py-4 text-gray-600">{c.group ? `Поток #${c.group.number}` : '—'}</td>
                     <td className="px-5 py-4">{payStatus}</td>
                     <td className="px-5 py-4 text-gray-500 text-xs">{fmtDate(c.registered_at)}</td>

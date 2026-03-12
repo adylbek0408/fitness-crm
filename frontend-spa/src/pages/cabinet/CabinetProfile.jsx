@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Check } from 'lucide-react'
 import api from '../../api/axios'
 import { fmtMoney, fmtDate, STATUS_LABEL, GROUP_TYPE_LABEL } from '../../utils/format'
 
@@ -150,7 +151,7 @@ export default function CabinetProfile() {
             <ul className="space-y-2">
               {profile.completed_flows.map((f, i) => (
                 <li key={i} className="flex items-center gap-2 text-sm">
-                  <span className="text-emerald-600">✓</span>
+                  <Check size={16} className="text-emerald-600 shrink-0" />
                   <span className="font-medium">Поток #{f.number}</span>
                   <span className="text-slate-400">·</span>
                   <span className="text-slate-500">{GROUP_TYPE_LABEL[f.group_type] || f.group_type}</span>

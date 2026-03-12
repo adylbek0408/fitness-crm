@@ -108,6 +108,15 @@ class ClientCreateSerializer(serializers.Serializer):
         return data
 
 
+class ClientListMinimalSerializer(serializers.ModelSerializer):
+    """Minimal client fields for manager's clients list."""
+    full_name = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Client
+        fields = ('id', 'full_name', 'phone', 'registered_at', 'status')
+
+
 class ClientUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client

@@ -17,7 +17,9 @@ export default function Login() {
       localStorage.setItem('access_token', r.data.access)
       localStorage.setItem('refresh_token', r.data.refresh)
       const role = r.data.role
-      nav(role === 'admin' ? '/admin/dashboard' : '/mobile')
+      const isNarrow = typeof window !== 'undefined' && window.innerWidth <= 768
+      if (isNarrow) nav('/mobile')
+      else nav(role === 'admin' ? '/admin/dashboard' : '/mobile')
     } catch {
       setError('Неверный логин или пароль')
     } finally {
@@ -28,7 +30,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-md p-8">
-        <h1 className="text-2xl font-bold text-center text-blue-600 mb-1">Fitness CRM</h1>
+        <h1 className="text-2xl font-bold text-center text-blue-600 mb-1">Асылзада CRM</h1>
         <p className="text-center text-gray-400 text-sm mb-6">Войдите в систему</p>
         <p className="text-center text-gray-400 text-xs mb-2">Вход для сотрудников (админ, менеджер)</p>
         {error && <div className="bg-red-50 text-red-600 text-sm rounded-xl p-3 mb-4">{error}</div>}

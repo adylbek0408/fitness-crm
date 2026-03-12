@@ -11,7 +11,7 @@ from apps.statistics.views import StatisticsViewSet
 
 router = DefaultRouter()
 router.register(r'statistics', StatisticsViewSet, basename='statistics')
-router.register(r'triners', TrainerViewSet, basename='trainer')
+router.register(r'trainers', TrainerViewSet, basename='trainer')
 router.register(r'groups', GroupViewSet, basename='group')
 router.register(r'clients', ClientViewSet, basename='client')
 router.register(r'attendance', AttendanceViewSet, basename='attendance')

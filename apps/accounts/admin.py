@@ -13,9 +13,9 @@ class UserAdmin(BaseUserAdmin):
     filter_horizontal = ()
 
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Fitness CRM', {'fields': ('role', 'phone')}),
+        ('Асылзада CRM', {'fields': ('role', 'phone')}),
     )
 
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
-        ('Fitness CRM', {'fields': ('role', 'phone')}),
+        ('Асылзада CRM', {'fields': ('role', 'phone')}),
     )

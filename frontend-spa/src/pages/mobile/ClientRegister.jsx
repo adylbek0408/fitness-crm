@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
+import { useRefresh } from '../../contexts/RefreshContext'
 
 export default function ClientRegister() {
   const { user } = useOutletContext()
   const nav = useNavigate()
+  useRefresh(null)
   const [paymentType, setPaymentType] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')

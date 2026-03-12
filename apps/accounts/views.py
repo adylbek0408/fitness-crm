@@ -1,4 +1,5 @@
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,6 +13,8 @@ from apps.accounts.serializers import (
     ManagerSerializer,
     ManagerCreateSerializer,
 )
+from apps.clients.models import Client
+from apps.clients.serializers import ClientListMinimalSerializer
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -46,3 +49,17 @@ class ManagerViewSet(viewsets.ModelViewSet):
             role='registrar',
         )
         serializer.save(user=user)
+
+    @action(detail=True, methods=['post'], url_path='deactivate')
+    def deactivate(self, request, pk=None):
+        profile = self.get_object()
+        profile.user.is_active = False
+        profile.user.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['get'], url_path='clients')
+    def clients(self, request, pk=None):
+        profile = self.get_object()
+        qs = Client.objects.filter(registered_by=profile.user).order_by('-registered_at')
+        serializer = ClientListMinimalSerializer(qs, many=True)
+        return Response(serializer.data)

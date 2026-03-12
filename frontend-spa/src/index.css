@@ -1,3 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Safe area for notched devices (PWA / standalone) */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
+/* Prevent double-tap zoom on buttons */
+.touch-manipulation { touch-action: manipulation; }

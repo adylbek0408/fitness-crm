@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useOutletContext } from 'react-router-dom'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
+import { KeyRound, Globe, Dumbbell, CreditCard, CheckCircle, Clock, Receipt } from 'lucide-react'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 
@@ -117,7 +118,9 @@ export default function ClientDetail() {
       </div>
       {/* Логин и пароль кабинета — всегда на виду */}
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-5">
-        <h3 className="font-medium text-blue-900 mb-2">🔐 Данные для входа в кабинет клиента</h3>
+        <h3 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
+          <KeyRound size={18} /> Данные для входа в кабинет клиента
+        </h3>
         {client.cabinet_username ? (
           <div className="space-y-2 text-sm">
             <p><span className="text-gray-600">Логин:</span> <code className="bg-white px-2 py-1 rounded font-mono text-blue-800">{client.cabinet_username}</code></p>
@@ -139,8 +142,11 @@ export default function ClientDetail() {
         <div className="grid grid-cols-2 gap-5 mb-5">
         <div className="bg-white rounded-2xl p-5 shadow-sm border space-y-2 text-sm">
           <h3 className="font-medium text-gray-700 mb-3">Информация о клиенте</h3>
-          {[['Телефон', client.phone], ['Формат', client.training_format === 'online' ? '🌐 Онлайн' : '🏋️ Оффлайн'], ['Тип группы', GROUP_TYPE_LABEL[client.group_type]], ['Поток', client.group ? `Поток #${client.group.number}` : '—'], ['Тренер', client.trainer?.full_name || '—'], ['Повторный', client.is_repeat ? 'Да' : 'Нет'], ['Дата регистрации', client.registered_at], ['Баланс бонусов', fmtMoney(client.bonus_balance ?? 0)]].map(([k,v]) => (
-            <div key={k} className="flex justify-between"><span className="text-gray-500">{k}</span><span>{v}</span></div>
+          {[['Телефон', client.phone], ['Формат', client.training_format], ['Тип группы', GROUP_TYPE_LABEL[client.group_type]], ['Поток', client.group ? `Поток #${client.group.number}` : '—'], ['Тренер', client.trainer?.full_name || '—'], ['Повторный', client.is_repeat ? 'Да' : 'Нет'], ['Дата регистрации', client.registered_at], ['Баланс бонусов', fmtMoney(client.bonus_balance ?? 0)]].map(([k, v]) => (
+            <div key={k} className="flex justify-between items-center">
+              <span className="text-gray-500">{k}</span>
+              <span>{k === 'Формат' ? (v === 'online' ? <span className="flex items-center gap-1"><Globe size={14} /> Онлайн</span> : <span className="flex items-center gap-1"><Dumbbell size={14} /> Оффлайн</span>) : v}</span>
+            </div>
           ))}
           {client.cabinet_username && (
             <div className="pt-2 border-t">
@@ -153,11 +159,13 @@ export default function ClientDetail() {
           </div>
         </div>
         <div className="bg-white rounded-2xl p-5 shadow-sm border">
-          <h3 className="font-medium text-gray-700 mb-3">💳 Оплата</h3>
+          <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+            <CreditCard size={18} /> Оплата
+          </h3>
           {client.payment_type === 'full' && full && (
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">Сумма</span><span className="font-medium">{fmtMoney(full.amount)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Статус</span><span className={full.is_paid ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>{full.is_paid ? '✅ Оплачено' : '⏳ Не оплачено'}</span></div>
+              <div className="flex justify-between items-center"><span className="text-gray-500">Статус</span><span className={`flex items-center gap-1 ${full.is_paid ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}`}>{full.is_paid ? <><CheckCircle size={14} /> Оплачено</> : <><Clock size={14} /> Не оплачено</>}</span></div>
               {full.receipt && <a href={full.receipt} target="_blank" rel="noreferrer" className="text-blue-500 text-xs block">Открыть чек →</a>}
             </div>
           )}
@@ -170,7 +178,7 @@ export default function ClientDetail() {
                 <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(plan.total_cost > 0 ? (Number(plan.total_paid) / Number(plan.total_cost)) * 100 : 0, 100)}%` }} />
               </div>
               <div className="flex justify-between"><span className="text-gray-500">Дедлайн</span><span>{plan.deadline}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Статус</span><span className={Number(plan.remaining) <= 0 ? 'text-green-600 font-medium' : 'text-orange-500 font-medium'}>{Number(plan.remaining) <= 0 ? '✅ Закрыта' : '⏳ Частичная (остаток — можно добавить платёж ниже)'}</span></div>
+              <div className="flex justify-between items-center"><span className="text-gray-500">Статус</span><span className={`flex items-center gap-1 ${Number(plan.remaining) <= 0 ? 'text-green-600 font-medium' : 'text-orange-500 font-medium'}`}>{Number(plan.remaining) <= 0 ? <><CheckCircle size={14} /> Закрыта</> : <><Clock size={14} /> Частичная (остаток — можно добавить платёж ниже)</>}</span></div>
               {plan.payments?.length > 0 && (
                 <div className="pt-2 border-t">
                   <p className="text-gray-500 mb-1">История платежей:</p>
@@ -198,7 +206,9 @@ export default function ClientDetail() {
       </div>
       {allReceipts.length > 0 && (
         <div className="bg-white rounded-2xl p-5 shadow-sm border mb-5">
-          <h3 className="font-medium text-gray-700 mb-3">📄 История чеков</h3>
+          <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+            <Receipt size={18} /> История чеков
+          </h3>
           <p className="text-sm text-gray-500 mb-3">Все чеки этого клиента — открывайте по ссылке.</p>
           <div className="space-y-2">
             {allReceipts.map((r, i) => (

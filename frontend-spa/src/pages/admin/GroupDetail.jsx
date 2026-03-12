@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useOutletContext } from 'react-router-dom'
+import { AlertTriangle } from 'lucide-react'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import { STATUS_BADGE, STATUS_LABEL, GROUP_TYPE_LABEL } from '../../utils/format'
@@ -149,7 +150,7 @@ export default function GroupDetail() {
                       <td className="px-5 py-4 text-gray-600">{c.phone}</td>
                       <td className="px-5 py-4">
                         <span className={`px-2 py-0.5 rounded-full text-xs ${c.group_type === group.group_type ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'}`}>
-                          {GROUP_TYPE_LABEL[c.group_type]}{c.group_type !== group.group_type && ' ⚠️'}
+                          {GROUP_TYPE_LABEL[c.group_type]}{c.group_type !== group.group_type && <AlertTriangle className="inline-block ml-1 text-amber-500" size={14} />}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-gray-500">{c.group ? `Поток #${c.group.number}` : '—'}</td>

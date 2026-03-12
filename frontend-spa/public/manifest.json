@@ -1,0 +1,18 @@
+{
+  "name": "Асылзада CRM",
+  "short_name": "Асылзада CRM",
+  "description": "Мобильное приложение Асылзада CRM",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

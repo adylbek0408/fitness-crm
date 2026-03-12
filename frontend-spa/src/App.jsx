@@ -17,6 +17,7 @@ import ClientList from './pages/mobile/ClientList'
 import MobileClientDetail from './pages/mobile/ClientDetail'
 import CabinetLogin from './pages/cabinet/CabinetLogin'
 import CabinetProfile from './pages/cabinet/CabinetProfile'
+import { RefreshProvider } from './contexts/RefreshContext'
 
 export default function App() {
   return (
@@ -40,7 +41,7 @@ export default function App() {
           <Route path="statistics" element={<Statistics />} />
           <Route path="managers" element={<Managers />} />
         </Route>
-        <Route path="/mobile" element={<ProtectedRoute role="any" />}>
+        <Route path="/mobile" element={<RefreshProvider><ProtectedRoute role="any" /></RefreshProvider>}>
           <Route index element={<MobileDashboard />} />
           <Route path="clients" element={<ClientList />} />
           <Route path="clients/register" element={<ClientRegister />} />

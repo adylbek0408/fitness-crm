@@ -2,6 +2,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from apps.accounts.models import User, ManagerProfile
+from apps.clients.models import Client
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -23,6 +24,7 @@ class ManagerSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     role = serializers.CharField(source='user.role', read_only=True)
     is_active = serializers.BooleanField(source='user.is_active', read_only=True)
+    clients_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ManagerProfile
@@ -34,8 +36,12 @@ class ManagerSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'phone',
+            'clients_count',
         )
         read_only_fields = ('id', 'username', 'role', 'is_active')
+
+    def get_clients_count(self, obj):
+        return Client.objects.filter(registered_by=obj.user).count()
 
 
 class ManagerCreateSerializer(serializers.ModelSerializer):
