@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
+import MobileDateField from '../../components/MobileDateField'
 import { useRefresh } from '../../contexts/RefreshContext'
-import { CheckCircle, Clock, Globe, Dumbbell, ChevronDown, ChevronUp } from 'lucide-react'
+import { CheckCircle, Clock, Globe, Dumbbell, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate, GROUP_TYPE_LABEL } from '../../utils/format'
 
 export default function ClientList() {
@@ -23,6 +24,14 @@ export default function ClientList() {
   const timer = useRef(null)
 
   useRefresh(() => load(1))
+
+  const activeFiltersCount = [
+    status,
+    format,
+    paymentStatus,
+    registeredFrom,
+    registeredTo,
+  ].filter(Boolean).length
 
   const load = async (p = page) => {
     setLoading(true)
@@ -79,55 +88,74 @@ export default function ClientList() {
     <MobileLayout>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-800">Клиенты</h2>
-        <Link to="/mobile/clients/register" className="bg-blue-600 text-white text-sm px-4 py-2 rounded-xl">+ Добавить</Link>
+        <Link to="/mobile/clients/register" className="crm-btn-primary rounded-2xl px-4 py-2.5">+ Добавить</Link>
       </div>
+
       <div className="space-y-3 mb-4">
         <input type="text" placeholder="Поиск по имени или телефону..." value={search} onChange={e => setSearch(e.target.value)}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          className="crm-mobile-input" />
+
         <button type="button" onClick={() => setFiltersOpen(o => !o)}
-          className="w-full flex items-center justify-between py-3 px-4 rounded-xl border border-gray-300 bg-white text-sm font-medium text-gray-700 touch-manipulation min-h-[44px]">
-          <span>Фильтры</span>
+          className="w-full flex items-center justify-between py-3 px-4 rounded-2xl border border-slate-300 bg-white text-[16px] font-semibold text-slate-800 touch-manipulation min-h-[48px]">
+          <span className="inline-flex items-center gap-2">
+            <SlidersHorizontal size={18} />
+            Фильтры
+            {activeFiltersCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-blue-600 text-white text-xs font-semibold">
+                {activeFiltersCount}
+              </span>
+            )}
+          </span>
           {filtersOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
         </button>
+
+        {!filtersOpen && activeFiltersCount > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {status && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">Статус: {STATUS_LABEL[status]}</span>}
+            {format && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">Формат: {format === 'online' ? 'Онлайн' : 'Оффлайн'}</span>}
+            {paymentStatus && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">Оплата: {paymentStatus === 'paid' ? 'Оплачено' : 'Есть остаток'}</span>}
+            {registeredFrom && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">С: {registeredFrom}</span>}
+            {registeredTo && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">По: {registeredTo}</span>}
+          </div>
+        )}
+
         {filtersOpen && (
-          <div className="space-y-3 pt-1">
+          <div className="space-y-3 pt-1 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <select value={status} onChange={e => setStatus(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                className="crm-mobile-select">
                 <option value="">Все статусы</option>
                 <option value="active">Активные</option>
                 <option value="completed">Завершили</option>
                 <option value="expelled">Отчислены</option>
               </select>
               <select value={format} onChange={e => setFormat(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                className="crm-mobile-select">
                 <option value="">Онлайн и Оффлайн</option>
                 <option value="online">Онлайн</option>
                 <option value="offline">Оффлайн</option>
               </select>
             </div>
             <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              className="crm-mobile-select">
               <option value="">Все по оплате</option>
               <option value="paid">Оплатили полностью</option>
               <option value="unpaid">Есть остаток</option>
             </select>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Регистрация с</label>
-                <input type="date" value={registeredFrom} onChange={e => setRegisteredFrom(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Регистрация по</label>
-                <input type="date" value={registeredTo} onChange={e => setRegisteredTo(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              </div>
+              <MobileDateField label="Регистрация с" value={registeredFrom} onChange={setRegisteredFrom} />
+              <MobileDateField label="Регистрация по" value={registeredTo} onChange={setRegisteredTo} />
             </div>
-            <button type="button" onClick={resetFilters}
-              className="w-full py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-300 transition touch-manipulation min-h-[44px]">
-              Сбросить фильтры
-            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setFiltersOpen(false)}
+                className="crm-btn-primary flex-1 min-h-[48px]">
+                Применить
+              </button>
+              <button type="button" onClick={resetFilters}
+                className="crm-btn-secondary flex-1 min-h-[48px]">
+                Сбросить
+              </button>
+            </div>
           </div>
         )}
       </div>

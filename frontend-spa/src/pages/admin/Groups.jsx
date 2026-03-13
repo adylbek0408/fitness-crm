@@ -62,7 +62,33 @@ export default function Groups() {
         </select>
       </div>
       <div className="crm-card overflow-hidden">
-        <div className="crm-table-wrap">
+        <div className="md:hidden p-3 space-y-3">
+          {groups.length === 0
+            ? <div className="text-center py-10 text-gray-400">Потоки не найдены</div>
+            : groups.map(g => (
+              <div key={g.id} className="rounded-2xl border border-slate-200 p-4 bg-white">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-slate-900">Поток #{g.number}</p>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[g.status]}`}>{STATUS_LABEL[g.status]}</span>
+                </div>
+                <div className="mt-2 text-sm text-slate-600 space-y-1">
+                  <p>Тип: {g.group_type}</p>
+                  <p>Тренер: {g.trainer?.full_name || '—'}</p>
+                  <p>Старт: {g.start_date || '—'}</p>
+                  <p>Клиентов: {g.client_count}</p>
+                </div>
+                <div className="flex items-center gap-3 mt-3">
+                  <Link to={`/admin/groups/${g.id}/detail`} className="crm-link-action-primary">Клиенты</Link>
+                  <Link to={`/admin/groups/${g.id}`} className="crm-link-action">Изменить</Link>
+                  {g.status !== 'completed' && (
+                    <button onClick={() => closeGroup(g.id)} className="crm-link-action-danger">Закрыть</button>
+                  )}
+                </div>
+              </div>
+            ))}
+        </div>
+
+        <div className="crm-table-wrap hidden md:block">
         <table className="crm-table min-w-[860px]">
           <thead>
             <tr>

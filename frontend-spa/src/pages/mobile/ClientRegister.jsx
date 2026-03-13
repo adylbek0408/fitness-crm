@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
+import MobileDateField from '../../components/MobileDateField'
 import { useRefresh } from '../../contexts/RefreshContext'
 
 export default function ClientRegister() {
@@ -12,18 +13,37 @@ export default function ClientRegister() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [createdCredentials, setCreatedCredentials] = useState(null)
+  const [form, setForm] = useState({
+    first_name: '',
+    last_name: '',
+    phone: '',
+    training_format: '',
+    group_type: '',
+    payment_type: '',
+    total_cost: '',
+    deadline: '',
+  })
+
+  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
   const handleSubmit = async e => {
     e.preventDefault(); setError(''); setSuccess('')
-    const fd = new FormData(e.target)
-    const pt = fd.get('payment_type')
+    const pt = form.payment_type
+    if (!pt) {
+      setError('Выберите тип оплаты')
+      return
+    }
+    if (pt === 'installment' && (!form.total_cost || !form.deadline)) {
+      setError('Для рассрочки заполните сумму и дедлайн оплаты')
+      return
+    }
     let paymentData = {}
     if (pt === 'full') paymentData = { amount: 0 }
-    if (pt === 'installment') paymentData = { total_cost: fd.get('total_cost'), deadline: fd.get('deadline') }
+    if (pt === 'installment') paymentData = { total_cost: form.total_cost, deadline: form.deadline }
     const body = {
-      first_name: fd.get('first_name'), last_name: fd.get('last_name'),
-      phone: fd.get('phone'),
-      training_format: fd.get('training_format'), group_type: fd.get('group_type'),
+      first_name: form.first_name, last_name: form.last_name,
+      phone: form.phone,
+      training_format: form.training_format, group_type: form.group_type,
       is_repeat: false,
       discount: '0',
       payment_type: pt, payment_data: paymentData,
@@ -36,7 +56,17 @@ export default function ClientRegister() {
         ? `Клиент ${name} зарегистрирован. Данные для входа в кабинет: логин ${cabinet.login}, пароль ${cabinet.password} (сохраните и передайте клиенту).`
         : `Клиент ${name} успешно зарегистрирован!`)
       setCreatedCredentials(cabinet)
-      e.target.reset(); setPaymentType('')
+      setForm({
+        first_name: '',
+        last_name: '',
+        phone: '',
+        training_format: '',
+        group_type: '',
+        payment_type: '',
+        total_cost: '',
+        deadline: '',
+      })
+      setPaymentType('')
       setTimeout(() => {
         if (!cabinet) nav(`/mobile/clients/${r.data.id}`)
       }, 1500)
@@ -67,21 +97,21 @@ export default function ClientRegister() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="bg-white rounded-2xl p-4 shadow-sm border space-y-3">
           <h3 className="font-medium text-gray-700 text-sm">Личные данные</h3>
-          {[['last_name','Фамилия *',true],['first_name','Имя *',true]].map(([n,p,r]) => (
-            <input key={n} type="text" name={n} placeholder={p} required={r}
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-          ))}
-          <input type="tel" name="phone" placeholder="Телефон *" required
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          <input type="text" placeholder="Фамилия *" required value={form.last_name} onChange={e => set('last_name', e.target.value)}
+            className="crm-mobile-input" />
+          <input type="text" placeholder="Имя *" required value={form.first_name} onChange={e => set('first_name', e.target.value)}
+            className="crm-mobile-input" />
+          <input type="tel" placeholder="Телефон *" required value={form.phone} onChange={e => set('phone', e.target.value)}
+            className="crm-mobile-input" />
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm border space-y-3">
           <h3 className="font-medium text-gray-700 text-sm">Обучение</h3>
-          <select name="training_format" required className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select required value={form.training_format} onChange={e => set('training_format', e.target.value)} className="crm-mobile-select">
             <option value="">Формат обучения *</option>
             <option value="online">Онлайн</option>
             <option value="offline">Оффлайн</option>
           </select>
-          <select name="group_type" required className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select required value={form.group_type} onChange={e => set('group_type', e.target.value)} className="crm-mobile-select">
             <option value="">Тип группы *</option>
             <option value="1.5h">1.5 часа</option>
             <option value="2.5h">2.5 часа</option>
@@ -89,19 +119,18 @@ export default function ClientRegister() {
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm border space-y-3">
           <h3 className="font-medium text-gray-700 text-sm">Оплата</h3>
-          <select name="payment_type" required value={paymentType} onChange={e => setPaymentType(e.target.value)}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select required value={paymentType} onChange={e => { setPaymentType(e.target.value); set('payment_type', e.target.value) }}
+            className="crm-mobile-select">
             <option value="">Тип оплаты *</option>
             <option value="full">Полная оплата</option>
             <option value="installment">Рассрочка</option>
           </select>
           {paymentType === 'installment' && (
             <>
-              <input type="number" name="total_cost" placeholder="Общая стоимость (сом) *" required
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              <label className="block text-sm text-gray-600">Дедлайн оплаты *</label>
-              <input type="date" name="deadline" required
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <input type="number" placeholder="Общая стоимость (сом) *" required value={form.total_cost}
+                onChange={e => set('total_cost', e.target.value)}
+                className="crm-mobile-input" />
+              <MobileDateField label="Дедлайн оплаты *" value={form.deadline} onChange={(v) => set('deadline', v)} />
             </>
           )}
         </div>

@@ -111,7 +111,40 @@ export default function Clients() {
         </button>
       </div>
       <div className="crm-card overflow-hidden">
-        <div className="crm-table-wrap">
+        <div className="md:hidden p-3 space-y-3">
+          {clients.length === 0
+            ? <div className="text-center py-10 text-gray-400">Клиенты не найдены</div>
+            : clients.map(c => {
+              const payStatus = c.payment_type === 'full'
+                ? (c.full_payment?.is_paid ? <span className="text-green-600 text-xs inline-flex items-center gap-1"><CheckCircle size={12} /> Оплачено</span> : <span className="text-red-500 text-xs inline-flex items-center gap-1"><Clock size={12} /> Не оплачено</span>)
+                : (c.installment_plan && Number(c.installment_plan.remaining) <= 0 ? <span className="text-green-600 text-xs inline-flex items-center gap-1"><CheckCircle size={12} /> Закрыта</span> : <span className="text-orange-500 text-xs inline-flex items-center gap-1"><Clock size={12} /> Остаток {fmtMoney(c.installment_plan?.remaining || 0)}</span>)
+              return (
+                <div key={c.id} className="rounded-2xl border border-slate-200 p-4 bg-white">
+                  <div className="flex justify-between items-start gap-2">
+                    <p className="font-semibold text-slate-900 break-words">{c.full_name}</p>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-600 space-y-1">
+                    <p>{c.phone}</p>
+                    <p className="inline-flex items-center gap-1">
+                      {c.training_format === 'online' ? <Globe size={14} /> : <Dumbbell size={14} />}
+                      {c.group_type}
+                    </p>
+                    <p>Поток: {c.group ? `#${c.group.number}` : '—'}</p>
+                    <p>Регистрация: {fmtDate(c.registered_at)}</p>
+                    <p>Менеджер: {c.registered_by_name || '—'}</p>
+                    {c.is_repeat && <p className="text-xs text-slate-500 inline-flex items-center gap-1"><RotateCcw size={12} /> Повторный</p>}
+                    <div>{payStatus}</div>
+                  </div>
+                  <div className="mt-3">
+                    <Link to={`/admin/clients/${c.id}`} className="crm-link-action-primary">Открыть карточку</Link>
+                  </div>
+                </div>
+              )
+            })}
+        </div>
+
+        <div className="crm-table-wrap hidden md:block">
         <table className="crm-table min-w-[1080px]">
           <thead>
             <tr>

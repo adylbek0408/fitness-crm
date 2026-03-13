@@ -30,7 +30,23 @@ export default function Trainers() {
         <Link to="/admin/trainers/add" className="crm-btn-primary">+ Новый тренер</Link>
       </div>
       <div className="crm-card overflow-hidden">
-        <div className="crm-table-wrap">
+        <div className="md:hidden p-3 space-y-3">
+          {trainers.length === 0
+            ? <div className="text-center py-10 text-gray-400">Нет тренеров</div>
+            : trainers.map(t => (
+              <div key={t.id} className="rounded-2xl border border-slate-200 p-4 bg-white">
+                <p className="font-semibold text-slate-900">{t.full_name}</p>
+                <p className="text-sm text-slate-500 mt-1">{t.phone || '—'}</p>
+                <p className="text-sm text-slate-500 mt-1">{t.schedule || '—'}</p>
+                <div className="flex items-center gap-3 mt-3">
+                  <Link to={`/admin/trainers/${t.id}`} className="crm-link-action-primary">Изменить</Link>
+                  <button onClick={() => deactivate(t.id, t.full_name)} className="crm-link-action-danger">Деактивировать</button>
+                </div>
+              </div>
+            ))}
+        </div>
+
+        <div className="crm-table-wrap hidden md:block">
         <table className="crm-table min-w-[760px]">
           <thead>
             <tr>

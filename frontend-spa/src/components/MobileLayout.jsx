@@ -10,16 +10,16 @@ export default function MobileLayout({ children }) {
 
   const tabClass = (isActive) =>
     `flex flex-col items-center justify-center gap-1 py-2 px-3 min-w-0 flex-1 text-xs font-medium transition ${
-      isActive ? 'text-blue-600' : 'text-gray-500'
+      isActive ? 'text-blue-600' : 'text-slate-500'
     }`
 
   const tabBarHeight = 'calc(56px + env(safe-area-inset-bottom, 0px))'
 
   return (
-    <div className="bg-gray-50 min-h-[100dvh] flex flex-col">
+    <div className="bg-slate-50 min-h-[100dvh] flex flex-col">
       {/* Top bar: compact, safe area */}
       <header
-        className="bg-white shadow-sm px-4 flex items-center justify-between shrink-0 z-20"
+        className="bg-white/95 backdrop-blur border-b border-slate-200 px-4 flex items-center justify-between shrink-0 z-20"
         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: '0.75rem' }}
       >
         <span className="font-bold text-blue-600 text-lg">Асылзада CRM</span>
@@ -44,7 +44,7 @@ export default function MobileLayout({ children }) {
 
       {/* Fixed bottom tab bar — always visible */}
       <nav
-        className="bg-white border-t border-gray-200 flex items-stretch fixed left-0 right-0 bottom-0 z-30 w-full"
+        className="bg-white/95 backdrop-blur border-t border-slate-200 flex items-stretch fixed left-0 right-0 bottom-0 z-30 w-full shadow-[0_-6px_20px_rgba(15,23,42,0.05)]"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)', minHeight: '56px' }}
       >
         <NavLink to="/mobile" end className={({ isActive }) => tabClass(isActive)}>

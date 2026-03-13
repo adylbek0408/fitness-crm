@@ -97,7 +97,20 @@ export default function Statistics() {
       )}
       <div className="crm-card overflow-hidden mb-6">
         <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по потокам</h3></div>
-        <div className="crm-table-wrap">
+        <div className="md:hidden p-3 space-y-2">
+          {byGroup.length === 0
+            ? <div className="text-center py-6 text-gray-400">Нет данных</div>
+            : byGroup.map(g => (
+              <div key={g.group_id} className="rounded-xl border border-slate-200 p-3">
+                <p className="font-semibold text-slate-900">Поток #{g.group_number}</p>
+                <p className="text-sm text-slate-500 mt-1">Тренер: {g.trainer || '—'}</p>
+                <p className="text-sm text-slate-500">Статус: {statusLabel[g.status] || g.status}</p>
+                <p className="text-sm text-slate-500">Клиентов: {g.client_count}</p>
+                <p className="text-sm font-semibold text-blue-600 mt-1">{fmtMoney(g.revenue)}</p>
+              </div>
+            ))}
+        </div>
+        <div className="crm-table-wrap hidden md:block">
         <table className="crm-table min-w-[760px]">
           <thead><tr>
             <th>Поток</th>
@@ -123,7 +136,18 @@ export default function Statistics() {
       </div>
       <div className="crm-card overflow-hidden">
         <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по тренерам</h3></div>
-        <div className="crm-table-wrap">
+        <div className="md:hidden p-3 space-y-2">
+          {byTrainer.length === 0
+            ? <div className="text-center py-6 text-gray-400">Нет данных</div>
+            : byTrainer.map(t => (
+              <div key={t.trainer_id} className="rounded-xl border border-slate-200 p-3">
+                <p className="font-semibold text-slate-900">{t.trainer_name}</p>
+                <p className="text-sm text-slate-500 mt-1">Клиентов: {t.client_count}</p>
+                <p className="text-sm font-semibold text-blue-600 mt-1">{fmtMoney(t.revenue)}</p>
+              </div>
+            ))}
+        </div>
+        <div className="crm-table-wrap hidden md:block">
         <table className="crm-table min-w-[620px]">
           <thead><tr>
             <th>Тренер</th>

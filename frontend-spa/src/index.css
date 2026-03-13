@@ -17,6 +17,10 @@
     min-height: 100%;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply antialiased;
     color: var(--crm-text);
@@ -52,6 +56,17 @@
 
   .crm-input {
     @apply w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500;
+  }
+
+  .crm-mobile-input {
+    @apply w-full border border-slate-300 rounded-2xl px-4 py-3 bg-white text-[16px] leading-6 text-slate-800 shadow-[0_1px_0_rgba(15,23,42,0.02)] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500;
+  }
+
+  .crm-mobile-select {
+    @apply crm-mobile-input appearance-none pr-10 bg-no-repeat;
+    background-position: right 14px center;
+    background-size: 16px 16px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' viewBox='0 0 24 24'%3E%3Cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
 
   .crm-btn {
@@ -105,6 +120,36 @@
   .crm-table tbody tr {
     @apply border-b border-slate-100 hover:bg-slate-50 transition-colors;
   }
+}
+
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+  }
+}
+
+.mobile-daypicker-wrap .rdp {
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: #2563eb;
+  --rdp-background-color: #dbeafe;
+  margin: 0;
+}
+
+.mobile-daypicker-wrap .rdp-months {
+  justify-content: center;
+}
+
+.mobile-daypicker-wrap .rdp-caption_label {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mobile-daypicker-wrap .rdp-head_cell,
+.mobile-daypicker-wrap .rdp-day {
+  font-size: 14px;
 }
 
 /* Safe area for notched devices (PWA / standalone) */

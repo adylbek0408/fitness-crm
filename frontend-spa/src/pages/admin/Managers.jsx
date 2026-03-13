@@ -81,7 +81,32 @@ export default function Managers() {
         </div>
       )}
       <div className="crm-card overflow-hidden">
-        <div className="crm-table-wrap">
+        <div className="md:hidden p-3 space-y-3">
+          {managers.length === 0
+            ? <div className="text-center py-10 text-gray-400">Менеджеры не найдены</div>
+            : managers.map(m => (
+              <div key={m.id} className="rounded-2xl border border-slate-200 p-4 bg-white">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-slate-900">{m.last_name} {m.first_name}</p>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${m.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {m.is_active ? 'Активен' : 'Деактивирован'}
+                  </span>
+                </div>
+                <div className="mt-2 text-sm text-slate-600 space-y-1">
+                  <p>Логин: {m.username}</p>
+                  <p>Телефон: {m.phone || '—'}</p>
+                  <button onClick={() => viewClients(m)} className="crm-link-action-primary text-sm mt-1">{m.clients_count} клиентов →</button>
+                </div>
+                {m.is_active && (
+                  <div className="mt-3">
+                    <button onClick={() => deactivate(m.id, `${m.last_name} ${m.first_name}`)} className="crm-link-action-danger">Деактивировать</button>
+                  </div>
+                )}
+              </div>
+            ))}
+        </div>
+
+        <div className="crm-table-wrap hidden md:block">
         <table className="crm-table min-w-[860px]">
           <thead>
             <tr>
@@ -118,7 +143,21 @@ export default function Managers() {
               <button onClick={() => setShowClients(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <div className="overflow-auto flex-1">
-              <table className="w-full min-w-[700px] text-sm">
+              <div className="md:hidden p-3 space-y-2">
+                {managerClients.length === 0
+                  ? <div className="text-center py-8 text-gray-400">Нет клиентов</div>
+                  : managerClients.map(c => (
+                    <div key={c.id} className="rounded-xl border border-slate-200 p-3">
+                      <Link to={`/admin/clients/${c.id}`} onClick={() => setShowClients(false)} className="font-medium text-slate-800 hover:text-blue-600">
+                        {c.full_name}
+                      </Link>
+                      <p className="text-sm text-slate-500 mt-1">{c.phone}</p>
+                      <p className="text-xs text-slate-400 mt-1">{c.registered_at}</p>
+                    </div>
+                  ))}
+              </div>
+
+              <table className="hidden md:table w-full min-w-[700px] text-sm">
                 <thead className="bg-gray-50 border-b sticky top-0">
                   <tr>
                     <th className="text-left px-5 py-3 font-medium text-gray-600">Клиент</th>
