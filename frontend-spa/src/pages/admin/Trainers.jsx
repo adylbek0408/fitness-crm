@@ -23,13 +23,13 @@ export default function Trainers() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <h2 className="text-2xl font-bold text-gray-800">Тренеры</h2>
-        <Link to="/admin/trainers/add" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl">+ Новый тренер</Link>
+        <h2 className="crm-page-title">Тренеры</h2>
+        <Link to="/admin/trainers/add" className="crm-btn-primary">+ Новый тренер</Link>
       </div>
-      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead className="bg-gray-50 border-b">
+      <div className="crm-card overflow-hidden">
+        <div className="crm-table-wrap">
+        <table className="crm-table min-w-[760px]">
+          <thead>
             <tr>
               <th className="text-left px-5 py-3 font-medium text-gray-600">ФИО</th>
               <th className="text-left px-5 py-3 font-medium text-gray-600">Телефон</th>
@@ -41,13 +41,13 @@ export default function Trainers() {
             {trainers.length === 0
               ? <tr><td colSpan={4} className="text-center py-10 text-gray-400">Нет тренеров</td></tr>
               : trainers.map(t => (
-                <tr key={t.id} className="border-b hover:bg-gray-50">
+                <tr key={t.id}>
                   <td className="px-5 py-4 font-medium text-gray-800">{t.full_name}</td>
                   <td className="px-5 py-4 text-gray-600">{t.phone || '—'}</td>
                   <td className="px-5 py-4 text-gray-500 max-w-xs truncate">{t.schedule || '—'}</td>
                   <td className="px-5 py-4 flex gap-3">
-                    <Link to={`/admin/trainers/${t.id}`} className="text-blue-500 hover:text-blue-700 text-xs font-medium">Изменить</Link>
-                    <button onClick={() => deactivate(t.id, t.full_name)} className="text-red-400 hover:text-red-600 text-xs font-medium">Деактивировать</button>
+                    <Link to={`/admin/trainers/${t.id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Изменить</Link>
+                    <button onClick={() => deactivate(t.id, t.full_name)} className="text-red-500 hover:text-red-700 text-xs font-medium">Деактивировать</button>
                   </td>
                 </tr>
               ))}

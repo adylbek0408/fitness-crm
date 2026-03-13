@@ -2,6 +2,87 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --crm-bg: #f3f6fb;
+    --crm-surface: #ffffff;
+    --crm-surface-muted: #f8fafc;
+    --crm-border: #e2e8f0;
+    --crm-text: #0f172a;
+    --crm-text-soft: #64748b;
+    --crm-primary: #2563eb;
+  }
+
+  html, body, #root {
+    min-height: 100%;
+  }
+
+  body {
+    @apply antialiased;
+    color: var(--crm-text);
+    background: var(--crm-bg);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+}
+
+@layer components {
+  .crm-page-title {
+    @apply text-2xl font-semibold tracking-tight text-slate-900;
+  }
+
+  .crm-card {
+    @apply bg-white rounded-2xl border border-slate-200 shadow-sm;
+  }
+
+  .crm-muted {
+    @apply text-slate-500;
+  }
+
+  .crm-input {
+    @apply w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500;
+  }
+
+  .crm-btn {
+    @apply inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-1;
+  }
+
+  .crm-btn-primary {
+    @apply crm-btn bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500/50;
+  }
+
+  .crm-btn-secondary {
+    @apply crm-btn bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-300;
+  }
+
+  .crm-btn-danger {
+    @apply crm-btn bg-red-50 text-red-600 hover:bg-red-100 focus:ring-red-300;
+  }
+
+  .crm-table-wrap {
+    @apply overflow-x-auto;
+  }
+
+  .crm-table {
+    @apply w-full text-sm;
+  }
+
+  .crm-table thead {
+    @apply bg-slate-50 border-b border-slate-200;
+  }
+
+  .crm-table th {
+    @apply text-left px-5 py-3 font-medium text-slate-600;
+  }
+
+  .crm-table td {
+    @apply px-5 py-4 align-middle;
+  }
+
+  .crm-table tbody tr {
+    @apply border-b border-slate-100 hover:bg-slate-50 transition-colors;
+  }
+}
+
 /* Safe area for notched devices (PWA / standalone) */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }

@@ -54,33 +54,33 @@ export default function Managers() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <h2 className="text-2xl font-bold text-gray-800">Менеджеры (Регистраторы)</h2>
-        <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl transition">+ Новый менеджер</button>
+        <h2 className="crm-page-title">Менеджеры (Регистраторы)</h2>
+        <button onClick={() => setShowForm(!showForm)} className="crm-btn-primary">+ Новый менеджер</button>
       </div>
       {success && <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-xl text-sm">{success}</div>}
       {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</div>}
       {showForm && (
-        <div className="bg-white rounded-2xl shadow-sm border p-6 mb-6 max-w-lg">
-          <h3 className="font-medium text-gray-700 mb-4">Новый менеджер</h3>
+        <div className="crm-card p-6 mb-6 max-w-lg">
+          <h3 className="font-medium text-slate-700 mb-4">Новый менеджер</h3>
           <form onSubmit={handleCreate} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input required placeholder="Фамилия *" value={form.last_name} onChange={e => set('last_name', e.target.value)} className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              <input required placeholder="Имя *" value={form.first_name} onChange={e => set('first_name', e.target.value)} className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <input required placeholder="Фамилия *" value={form.last_name} onChange={e => set('last_name', e.target.value)} className="crm-input" />
+              <input required placeholder="Имя *" value={form.first_name} onChange={e => set('first_name', e.target.value)} className="crm-input" />
             </div>
-            <input placeholder="Телефон" value={form.phone} onChange={e => set('phone', e.target.value)} className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            <input required placeholder="Логин (username) *" value={form.username} onChange={e => set('username', e.target.value)} className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            <input required type="password" placeholder="Пароль * (мин. 6 символов)" value={form.password} onChange={e => set('password', e.target.value)} className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <input placeholder="Телефон" value={form.phone} onChange={e => set('phone', e.target.value)} className="crm-input" />
+            <input required placeholder="Логин (username) *" value={form.username} onChange={e => set('username', e.target.value)} className="crm-input" />
+            <input required type="password" placeholder="Пароль * (мин. 6 символов)" value={form.password} onChange={e => set('password', e.target.value)} className="crm-input" />
             <div className="flex gap-3 pt-1">
-              <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm">Создать</button>
-              <button type="button" onClick={() => setShowForm(false)} className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2.5 rounded-xl text-sm">Отмена</button>
+              <button type="submit" className="crm-btn-primary">Создать</button>
+              <button type="button" onClick={() => setShowForm(false)} className="crm-btn-secondary">Отмена</button>
             </div>
           </form>
         </div>
       )}
-      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-sm">
-          <thead className="bg-gray-50 border-b">
+      <div className="crm-card overflow-hidden">
+        <div className="crm-table-wrap">
+        <table className="crm-table min-w-[860px]">
+          <thead>
             <tr>
               <th className="text-left px-5 py-3 font-medium text-gray-600">ФИО</th>
               <th className="text-left px-5 py-3 font-medium text-gray-600">Логин</th>
@@ -94,13 +94,13 @@ export default function Managers() {
             {managers.length === 0
               ? <tr><td colSpan={6} className="text-center py-10 text-gray-400">Менеджеры не найдены</td></tr>
               : managers.map(m => (
-                <tr key={m.id} className="border-b hover:bg-gray-50">
+                <tr key={m.id}>
                   <td className="px-5 py-4 font-medium text-gray-800">{m.last_name} {m.first_name}</td>
                   <td className="px-5 py-4 text-gray-600">{m.username}</td>
                   <td className="px-5 py-4 text-gray-500">{m.phone || '—'}</td>
-                  <td className="px-5 py-4"><button onClick={() => viewClients(m)} className="text-blue-500 hover:underline text-sm">{m.clients_count} клиентов →</button></td>
+                  <td className="px-5 py-4"><button onClick={() => viewClients(m)} className="text-blue-600 hover:underline text-sm">{m.clients_count} клиентов →</button></td>
                   <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-medium ${m.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{m.is_active ? 'Активен' : 'Деактивирован'}</span></td>
-                  <td className="px-5 py-4">{m.is_active && <button onClick={() => deactivate(m.id, `${m.last_name} ${m.first_name}`)} className="text-red-400 hover:text-red-600 text-xs font-medium">Деактивировать</button>}</td>
+                  <td className="px-5 py-4">{m.is_active && <button onClick={() => deactivate(m.id, `${m.last_name} ${m.first_name}`)} className="text-red-500 hover:text-red-700 text-xs font-medium">Деактивировать</button>}</td>
                 </tr>
               ))}
           </tbody>

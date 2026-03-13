@@ -44,12 +44,12 @@ export default function Statistics() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <h2 className="text-2xl font-bold text-gray-800">Статистика</h2>
+        <h2 className="crm-page-title">Статистика</h2>
         <button
           type="button"
           onClick={() => generatePDF(statsRef, filename)}
           disabled={isGenerating}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+          className="crm-btn-primary disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           {isGenerating ? (
             <>
@@ -64,39 +64,39 @@ export default function Statistics() {
           )}
         </button>
       </div>
-      <div className="bg-white rounded-2xl p-4 shadow-sm border mb-6 flex gap-3 flex-wrap items-end">
+      <div className="crm-card p-4 mb-6 flex gap-3 flex-wrap items-end">
         {[['date_from','Дата от'],['date_to','Дата до']].map(([k,label]) => (
           <div key={k}><label className="block text-xs text-gray-500 mb-1">{label}</label>
-          <input type="date" value={filters[k]} onChange={e => set(k, e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto" /></div>
+          <input type="date" value={filters[k]} onChange={e => set(k, e.target.value)} className="crm-input w-full sm:w-auto" /></div>
         ))}
         <div><label className="block text-xs text-gray-500 mb-1">Формат</label>
-          <select value={filters.training_format} onChange={e => set('training_format', e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
+          <select value={filters.training_format} onChange={e => set('training_format', e.target.value)} className="crm-input w-full sm:w-auto">
             <option value="">Все</option><option value="online">Онлайн</option><option value="offline">Оффлайн</option>
           </select></div>
         <div><label className="block text-xs text-gray-500 mb-1">Тренер</label>
-          <select value={filters.trainer_id} onChange={e => set('trainer_id', e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
+          <select value={filters.trainer_id} onChange={e => set('trainer_id', e.target.value)} className="crm-input w-full sm:w-auto">
             <option value="">Все тренеры</option>
             {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
           </select></div>
-        <button onClick={() => loadStats(filters)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl transition">Применить</button>
-        <button onClick={() => { const f={date_from:'',date_to:'',training_format:'',trainer_id:''}; setFilters(f); loadStats(f) }} className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm px-4 py-2.5 rounded-xl transition">Сбросить</button>
+        <button onClick={() => loadStats(filters)} className="crm-btn-primary">Применить</button>
+        <button onClick={() => { const f={date_from:'',date_to:'',training_format:'',trainer_id:''}; setFilters(f); loadStats(f) }} className="crm-btn-secondary">Сбросить</button>
       </div>
       <div ref={statsRef}>
       {dash && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           {[['Общий доход', fmtMoney(dash.total_revenue), 'text-blue-600'], ['Онлайн доход', fmtMoney(dash.online_revenue), 'text-indigo-500'], ['Оффлайн доход', fmtMoney(dash.offline_revenue), 'text-purple-500'], ['Всего НБ', dash.total_absences, 'text-red-500']].map(([label, val, color]) => (
-            <div key={label} className="bg-white rounded-2xl p-5 shadow-sm border">
+            <div key={label} className="crm-card p-5">
               <p className="text-xs text-gray-500 mb-1">{label}</p>
               <p className={`text-xl font-bold ${color}`}>{val}</p>
             </div>
           ))}
         </div>
       )}
-      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden mb-6">
+      <div className="crm-card overflow-hidden mb-6">
         <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по потокам</h3></div>
-        <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead className="bg-gray-50"><tr>
+        <div className="crm-table-wrap">
+        <table className="crm-table min-w-[760px]">
+          <thead><tr>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Поток</th>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Статус</th>
@@ -106,7 +106,7 @@ export default function Statistics() {
           <tbody>
             {byGroup.length === 0 ? <tr><td colSpan={5} className="text-center py-6 text-gray-400">Нет данных</td></tr>
               : byGroup.map(g => (
-                <tr key={g.group_id} className="border-b hover:bg-gray-50">
+                <tr key={g.group_id}>
                   <td className="px-5 py-3 font-medium text-gray-800">Поток #{g.group_number}</td>
                   <td className="px-5 py-3 text-gray-600">{g.trainer || '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{statusLabel[g.status] || g.status}</td>
@@ -118,11 +118,11 @@ export default function Statistics() {
         </table>
         </div>
       </div>
-      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+      <div className="crm-card overflow-hidden">
         <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по тренерам</h3></div>
-        <div className="overflow-x-auto">
-        <table className="w-full min-w-[620px] text-sm">
-          <thead className="bg-gray-50"><tr>
+        <div className="crm-table-wrap">
+        <table className="crm-table min-w-[620px]">
+          <thead><tr>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Клиентов</th>
             <th className="text-right px-5 py-3 font-medium text-gray-600">Доход</th>
@@ -130,7 +130,7 @@ export default function Statistics() {
           <tbody>
             {byTrainer.length === 0 ? <tr><td colSpan={3} className="text-center py-6 text-gray-400">Нет данных</td></tr>
               : byTrainer.map(t => (
-                <tr key={t.trainer_id} className="border-b hover:bg-gray-50">
+                <tr key={t.trainer_id}>
                   <td className="px-5 py-3 font-medium text-gray-800">{t.trainer_name}</td>
                   <td className="px-5 py-3 text-gray-600">{t.client_count}</td>
                   <td className="px-5 py-3 text-right font-medium text-blue-600">{fmtMoney(t.revenue)}</td>

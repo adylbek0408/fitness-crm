@@ -64,26 +64,26 @@ export default function Clients() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">База клиентов</h2>
+        <h2 className="crm-page-title">База клиентов</h2>
       </div>
-      <div className="bg-white rounded-2xl p-4 shadow-sm border mb-5 flex gap-3 flex-wrap items-center">
+      <div className="crm-card p-4 mb-5 flex gap-3 flex-wrap items-center">
         <input type="text" placeholder="Поиск по имени, телефону..." value={search} onChange={e => setSearch(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-56" />
+          className="crm-input w-full sm:w-56" />
         <select value={status} onChange={e => setStatus(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
+          className="crm-input w-full sm:w-auto">
           <option value="">Все статусы</option>
           <option value="active">Активные</option>
           <option value="completed">Завершили</option>
           <option value="expelled">Отчислены</option>
         </select>
         <select value={format} onChange={e => setFormat(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
+          className="crm-input w-full sm:w-auto">
           <option value="">Онлайн + Оффлайн</option>
           <option value="online">Онлайн</option>
           <option value="offline">Оффлайн</option>
         </select>
         <select value={group} onChange={e => setGroup(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
+          className="crm-input w-full sm:w-auto">
           <option value="">Все потоки</option>
           {groups.map(g => <option key={g.id} value={g.id}>Поток #{g.number}</option>)}
         </select>
@@ -92,25 +92,25 @@ export default function Clients() {
           Только повторные
         </label>
         <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
+          className="crm-input w-full sm:w-auto">
           <option value="">Все по оплате</option>
           <option value="paid">Оплатили полностью</option>
           <option value="unpaid">Есть остаток</option>
         </select>
         <span className="text-gray-400 text-sm">Рег.:</span>
         <input type="date" value={registeredFrom} onChange={e => setRegisteredFrom(e.target.value)} placeholder="с"
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-40" />
+          className="crm-input w-full sm:w-40" />
         <input type="date" value={registeredTo} onChange={e => setRegisteredTo(e.target.value)} placeholder="по"
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-40" />
+          className="crm-input w-full sm:w-40" />
         <button type="button" onClick={resetFilters}
-          className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-300 transition">
+          className="crm-btn-secondary">
           Сбросить фильтры
         </button>
       </div>
-      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <div className="overflow-x-auto">
-        <table className="w-full min-w-[1080px] text-sm">
-          <thead className="bg-gray-50 border-b">
+      <div className="crm-card overflow-hidden">
+        <div className="crm-table-wrap">
+        <table className="crm-table min-w-[1080px]">
+          <thead>
             <tr>
               <th className="text-left px-5 py-3 font-medium text-gray-600">Клиент</th>
               <th className="text-left px-5 py-3 font-medium text-gray-600">Телефон</th>
@@ -131,7 +131,7 @@ export default function Clients() {
                   ? (c.full_payment?.is_paid ? <span className="text-green-600 text-xs flex items-center gap-1"><CheckCircle size={12} /> Оплачено</span> : <span className="text-red-500 text-xs flex items-center gap-1"><Clock size={12} /> Не оплачено</span>)
                   : (c.installment_plan && Number(c.installment_plan.remaining) <= 0 ? <span className="text-green-600 text-xs flex items-center gap-1"><CheckCircle size={12} /> Закрыта</span> : <span className="text-orange-500 text-xs flex items-center gap-1"><Clock size={12} /> {fmtMoney(c.installment_plan?.remaining || 0)} остаток</span>)
                 return (
-                  <tr key={c.id} className="border-b hover:bg-gray-50">
+                  <tr key={c.id}>
                     <td className="px-5 py-4">
                       <p className="font-medium text-gray-800">{c.full_name}</p>
                       {c.is_repeat && <p className="text-xs text-gray-400 flex items-center gap-1"><RotateCcw size={12} /> Повторный</p>}
@@ -148,7 +148,7 @@ export default function Clients() {
                     <td className="px-5 py-4 text-gray-500 text-xs">{fmtDate(c.registered_at)}</td>
                     <td className="px-5 py-4 text-gray-500 text-xs">{c.registered_by_name || '—'}</td>
                     <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span></td>
-                    <td className="px-5 py-4"><Link to={`/admin/clients/${c.id}`} className="text-blue-500 hover:text-blue-700 text-xs font-medium">Открыть</Link></td>
+                    <td className="px-5 py-4"><Link to={`/admin/clients/${c.id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Открыть</Link></td>
                   </tr>
                 )
               })}
