@@ -22,3 +22,11 @@ export const GROUP_TYPE_LABEL = {
   '1.5h': '1.5 часа',
   '2.5h': '2.5 часа',
 }
+
+export const toAbsoluteUrl = (url) => {
+  if (!url) return ''
+  if (/^https?:\/\//i.test(url)) return url
+  if (url.startsWith('//')) return `${window.location.protocol}${url}`
+  const normalized = url.startsWith('/') ? url : `/${url}`
+  return `${window.location.origin}${normalized}`
+}

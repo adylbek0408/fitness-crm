@@ -68,7 +68,12 @@ export default function ClientRegister() {
       })
       setPaymentType('')
       setTimeout(() => {
-        if (!cabinet) nav(`/mobile/clients/${r.data.id}`)
+        nav(`/mobile/clients/${r.data.id}`, {
+          state: {
+            justCreated: true,
+            cabinet: cabinet || null,
+          },
+        })
       }, 1500)
     } catch (e) {
       const d = e.response?.data

@@ -97,6 +97,15 @@
     @apply crm-link-action text-red-500 hover:text-red-700;
   }
 
+  .crm-num {
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: 0.01em;
+  }
+
+  .crm-money {
+    @apply crm-num font-semibold tracking-tight;
+  }
+
   .crm-table-wrap {
     @apply overflow-x-auto;
   }
@@ -127,7 +136,7 @@
   select,
   textarea,
   button {
-    font-size: 16px;
+    font-size: 16px !important;
   }
 }
 

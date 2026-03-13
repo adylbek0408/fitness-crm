@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link, useOutletContext } from 'react-router-dom'
+import { useParams, useNavigate, Link, useOutletContext, useLocation } from 'react-router-dom'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
 import { useRefresh } from '../../contexts/RefreshContext'
 import { Globe, Dumbbell, CreditCard, CheckCircle, Clock, Receipt, ArrowLeft, AlertCircle } from 'lucide-react'
-import { STATUS_BADGE, STATUS_LABEL, fmtMoney } from '../../utils/format'
+import { STATUS_BADGE, STATUS_LABEL, fmtMoney, toAbsoluteUrl } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 
 export default function MobileClientDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useOutletContext()
   useRefresh(null)
   const [client, setClient] = useState(null)
@@ -115,6 +116,7 @@ export default function MobileClientDetail() {
   const plan = client.installment_plan
   const full = client.full_payment
   const pct = plan && Number(plan.total_cost) > 0 ? Math.min(Math.round((Number(plan.total_paid) / Number(plan.total_cost)) * 100), 100) : 0
+  const justCreatedCreds = location.state?.cabinet
 
   const allReceipts = []
   if (client.payment_type === 'full' && full?.receipt) {
@@ -135,6 +137,15 @@ export default function MobileClientDetail() {
   return (
     <MobileLayout>
       <div className="space-y-4">
+        {justCreatedCreds && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+            <p className="text-emerald-800 font-semibold text-[15px]">Клиент успешно создан</p>
+            <p className="text-emerald-700 text-sm mt-1">Данные для входа в кабинет клиента:</p>
+            <p className="text-emerald-700 text-sm mt-1 break-all">Логин: <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded">{justCreatedCreds.login}</span></p>
+            <p className="text-emerald-700 text-sm mt-1 break-all">Пароль: <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded">{justCreatedCreds.password}</span></p>
+          </div>
+        )}
+
         <Link to="/mobile/clients" className="inline-flex items-center gap-2 text-sm text-blue-600 font-medium touch-manipulation min-h-[44px] -mb-1">
           <ArrowLeft size={18} /> К списку клиентов
         </Link>
@@ -177,9 +188,9 @@ export default function MobileClientDetail() {
             <div className="space-y-3">
               {full.is_paid ? (
                 <>
-                  <div className="flex justify-between text-sm"><span className="text-gray-500">Сумма</span><span className="font-medium">{fmtMoney(full.amount)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Сумма</span><span className="crm-money">{fmtMoney(full.amount)}</span></div>
                   <div className="flex justify-between text-sm items-center"><span className="text-gray-500">Статус</span><span className="text-green-600 font-medium flex items-center gap-1"><CheckCircle size={14} /> Оплачено</span></div>
-                  {full.receipt && <a href={full.receipt} target="_blank" rel="noreferrer" className="text-blue-500 text-sm block">Открыть чек →</a>}
+                  {full.receipt && <a href={toAbsoluteUrl(full.receipt)} target="_blank" rel="noreferrer" className="text-blue-500 text-sm block">Открыть чек →</a>}
                 </>
               ) : (
                 <>
@@ -206,9 +217,9 @@ export default function MobileClientDetail() {
           )}
           {client.payment_type === 'installment' && plan && (
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Общая стоимость</span><span className="font-medium">{fmtMoney(plan.total_cost)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Оплачено</span><span className="font-medium text-green-600">{fmtMoney(plan.total_paid)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Остаток</span><span className="font-medium text-red-500">{fmtMoney(plan.remaining)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Общая стоимость</span><span className="crm-money">{fmtMoney(plan.total_cost)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Оплачено</span><span className="crm-money text-green-600">{fmtMoney(plan.total_paid)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Остаток</span><span className="crm-money text-red-500">{fmtMoney(plan.remaining)}</span></div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
               </div>
@@ -220,9 +231,9 @@ export default function MobileClientDetail() {
                   {plan.payments.map(p => (
                     <div key={p.id} className="flex justify-between items-center text-xs py-1 border-b border-gray-50 gap-3">
                       <span>{p.paid_at}</span>
-                      <span className="font-medium">{fmtMoney(p.amount)}</span>
+                      <span className="crm-money">{fmtMoney(p.amount)}</span>
                       {p.receipt && (
-                        <a href={p.receipt} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700">Чек</a>
+                        <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700">Чек</a>
                       )}
                     </div>
                   ))}
@@ -240,9 +251,9 @@ export default function MobileClientDetail() {
               {allReceipts.map((r, i) => (
                 <div key={`receipt-${r.id}-${i}`} className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 bg-gray-50 rounded-xl text-sm gap-2">
                   <span className="text-gray-600">{r.date}</span>
-                  <span className="font-medium break-words">{r.label} — {fmtMoney(r.amount)}</span>
+                  <span className="crm-money break-words">{r.label} — {fmtMoney(r.amount)}</span>
                   {r.receipt ? (
-                    <a href={r.receipt} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 font-medium">Открыть чек →</a>
+                    <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 font-medium">Открыть чек →</a>
                   ) : (
                     <span className="text-gray-400 text-xs">Чек не прикреплён</span>
                   )}

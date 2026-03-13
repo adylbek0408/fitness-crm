@@ -3,7 +3,7 @@ import { useParams, Link, useOutletContext } from 'react-router-dom'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import { KeyRound, Globe, Dumbbell, CreditCard, CheckCircle, Clock, Receipt } from 'lucide-react'
-import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL } from '../../utils/format'
+import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL, toAbsoluteUrl } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 
 function BonusBalanceForm({ clientId, currentBalance, onSuccess }) {
@@ -164,16 +164,16 @@ export default function ClientDetail() {
           </h3>
           {client.payment_type === 'full' && full && (
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Сумма</span><span className="font-medium">{fmtMoney(full.amount)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Сумма</span><span className="crm-money">{fmtMoney(full.amount)}</span></div>
               <div className="flex justify-between items-center"><span className="text-gray-500">Статус</span><span className={`flex items-center gap-1 ${full.is_paid ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}`}>{full.is_paid ? <><CheckCircle size={14} /> Оплачено</> : <><Clock size={14} /> Не оплачено</>}</span></div>
-              {full.receipt && <a href={full.receipt} target="_blank" rel="noreferrer" className="text-blue-500 text-xs block">Открыть чек →</a>}
+              {full.receipt && <a href={toAbsoluteUrl(full.receipt)} target="_blank" rel="noreferrer" className="text-blue-500 text-xs block">Открыть чек →</a>}
             </div>
           )}
           {client.payment_type === 'installment' && plan && (
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Общая стоимость</span><span className="font-medium">{fmtMoney(plan.total_cost)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Оплачено</span><span className="font-medium text-green-600">{fmtMoney(plan.total_paid)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Остаток</span><span className={`font-medium ${Number(plan.remaining) > 0 ? 'text-red-500' : 'text-green-600'}`}>{fmtMoney(plan.remaining)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Общая стоимость</span><span className="crm-money">{fmtMoney(plan.total_cost)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Оплачено</span><span className="crm-money text-green-600">{fmtMoney(plan.total_paid)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Остаток</span><span className={`crm-money ${Number(plan.remaining) > 0 ? 'text-red-500' : 'text-green-600'}`}>{fmtMoney(plan.remaining)}</span></div>
               <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                 <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(plan.total_cost > 0 ? (Number(plan.total_paid) / Number(plan.total_cost)) * 100 : 0, 100)}%` }} />
               </div>
@@ -185,10 +185,10 @@ export default function ClientDetail() {
                   {plan.payments.map(p => (
                     <div key={p.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs py-1 border-b border-gray-50 gap-2">
                       <span>{p.paid_at}</span>
-                      <span className="font-medium">{fmtMoney(p.amount)}</span>
+                      <span className="crm-money">{fmtMoney(p.amount)}</span>
                       {p.receipt && (
                         <a
-                          href={p.receipt}
+                          href={toAbsoluteUrl(p.receipt)}
                           target="_blank"
                           rel="noreferrer"
                           className="text-blue-500 hover:text-blue-700"
@@ -214,10 +214,10 @@ export default function ClientDetail() {
             {allReceipts.map((r, i) => (
               <div key={`receipt-${r.id}-${i}`} className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 bg-gray-50 rounded-xl text-sm gap-2">
                 <span className="text-gray-600">{r.date}</span>
-                <span className="font-medium break-words">{r.label} — {fmtMoney(r.amount)}</span>
+                <span className="crm-money break-words">{r.label} — {fmtMoney(r.amount)}</span>
                 {r.receipt ? (
                   <a
-                    href={r.receipt}
+                    href={toAbsoluteUrl(r.receipt)}
                     target="_blank"
                     rel="noreferrer"
                     className="text-blue-600 hover:text-blue-800 font-medium"
