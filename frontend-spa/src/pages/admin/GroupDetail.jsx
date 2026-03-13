@@ -64,11 +64,11 @@ export default function GroupDetail() {
     <AdminLayout user={user}>
       <div className="flex items-center gap-3 mb-6 flex-wrap">
         <Link to="/admin/groups" className="text-gray-400 hover:text-gray-600 text-sm">← Назад</Link>
-        <h2 className="text-2xl font-bold text-gray-800">Поток #{group.number} — {GROUP_TYPE_LABEL[group.group_type]}</h2>
+        <h2 className="text-2xl font-bold text-gray-800 break-words">Поток #{group.number} — {GROUP_TYPE_LABEL[group.group_type]}</h2>
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[group.status]}`}>{STATUS_LABEL[group.status]}</span>
         <Link to={`/admin/groups/${id}`} className="ml-auto text-sm text-blue-500 hover:underline">Редактировать</Link>
       </div>
-      <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6 grid grid-cols-3 gap-4 text-sm">
+      <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 text-sm">
         <div><span className="text-gray-500">Тренер: </span><span className="font-medium">{group.trainer?.full_name || '—'}</span></div>
         <div><span className="text-gray-500">Старт: </span><span className="font-medium">{group.start_date || '—'}</span></div>
         <div><span className="text-gray-500">Клиентов: </span><span className="font-medium">{groupClients.length}</span></div>
@@ -86,7 +86,8 @@ export default function GroupDetail() {
       </div>
       {tab === 'current' && (
         <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="text-left px-5 py-3 font-medium text-gray-600">Клиент</th>
@@ -112,13 +113,14 @@ export default function GroupDetail() {
                 ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
       {tab === 'add' && (
         <div>
           <div className="bg-white rounded-2xl p-4 shadow-sm border mb-4 flex gap-3 flex-wrap items-center">
             <input type="text" placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)}
-              className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-64" />
+              className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-64" />
             <div className="flex gap-2">
               {[{ val: '', label: 'Все' }, { val: '1.5h', label: '1.5 часа' }, { val: '2.5h', label: '2.5 часа' }].map(opt => (
                 <button key={opt.val} onClick={() => setFilterType(opt.val)}
@@ -130,7 +132,8 @@ export default function GroupDetail() {
             <p className="text-xs text-gray-400 ml-auto">Поток типа <strong>{GROUP_TYPE_LABEL[group.group_type]}</strong></p>
           </div>
           <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left px-5 py-3 font-medium text-gray-600">Клиент</th>
@@ -162,6 +165,7 @@ export default function GroupDetail() {
                   ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}

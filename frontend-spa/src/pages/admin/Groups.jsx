@@ -38,7 +38,7 @@ export default function Groups() {
 
   return (
     <AdminLayout user={user}>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h2 className="text-2xl font-bold text-gray-800">Потоки</h2>
         <Link to="/admin/groups/add" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl transition">
           + Новый поток
@@ -46,20 +46,21 @@ export default function Groups() {
       </div>
       <div className="bg-white rounded-2xl p-4 shadow-sm border mb-5 flex gap-3 flex-wrap">
         <select value={status} onChange={e => setStatus(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto">
           <option value="">Все статусы</option>
           <option value="recruitment">Набор</option>
           <option value="active">Активные</option>
           <option value="completed">Завершённые</option>
         </select>
         <select value={trainer} onChange={e => setTrainer(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto">
           <option value="">Все тренеры</option>
           {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
         </select>
       </div>
       <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-5 py-3 font-medium text-gray-600">Поток</th>
@@ -99,6 +100,7 @@ export default function Groups() {
               ))}
           </tbody>
         </table>
+        </div>
       </div>
     </AdminLayout>
   )

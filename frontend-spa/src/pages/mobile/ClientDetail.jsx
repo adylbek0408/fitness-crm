@@ -151,10 +151,10 @@ export default function MobileClientDetail() {
                 <p className="text-sm text-green-600 mt-1">Бонусы: {fmtMoney(client.bonus_balance)}</p>
               )}
               {client.cabinet_username && (
-                <p className="text-xs text-gray-400 mt-1">Логин кабинета: <span className="font-mono">{client.cabinet_username}</span></p>
+                <p className="text-xs text-gray-400 mt-1 break-all">Логин кабинета: <span className="font-mono">{client.cabinet_username}</span></p>
               )}
               {newPassword && (
-                <p className="text-sm text-green-700 mt-1">Новый пароль: <span className="font-mono bg-green-100 px-1 rounded">{newPassword}</span></p>
+                <p className="text-sm text-green-700 mt-1 break-all">Новый пароль: <span className="font-mono bg-green-100 px-1 rounded">{newPassword}</span></p>
               )}
               {client.cabinet_username && (
                 <p className="text-xs text-gray-500 mt-2">Вход в кабинет: <a href="/cabinet" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">/cabinet</a></p>
@@ -238,9 +238,9 @@ export default function MobileClientDetail() {
             </h3>
             <div className="space-y-2">
               {allReceipts.map((r, i) => (
-                <div key={`receipt-${r.id}-${i}`} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-xl text-sm">
+                <div key={`receipt-${r.id}-${i}`} className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 bg-gray-50 rounded-xl text-sm gap-2">
                   <span className="text-gray-600">{r.date}</span>
-                  <span className="font-medium">{r.label} — {fmtMoney(r.amount)}</span>
+                  <span className="font-medium break-words">{r.label} — {fmtMoney(r.amount)}</span>
                   {r.receipt ? (
                     <a href={r.receipt} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 font-medium">Открыть чек →</a>
                   ) : (

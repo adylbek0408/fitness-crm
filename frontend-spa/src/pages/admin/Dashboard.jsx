@@ -22,13 +22,13 @@ export default function Dashboard() {
 
   return (
     <AdminLayout user={user}>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 gap-3 flex-wrap">
         <h2 className="text-2xl font-bold text-gray-800">Дашборд</h2>
         <span className="text-sm text-gray-400">
           {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
         </span>
       </div>
-      <div className="grid grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
         {stats ? cards.map(c => (
           <div key={c.label} className="bg-white rounded-2xl p-5 shadow-sm border">
             <p className="text-sm text-gray-500">{c.label}</p>
@@ -42,7 +42,7 @@ export default function Dashboard() {
         ))}
       </div>
       {stats && (
-        <div className="grid grid-cols-2 gap-5 mb-8">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-8">
           <div className="bg-white rounded-2xl p-5 shadow-sm border">
             <h3 className="font-medium text-gray-700 mb-4">Доход по формату</h3>
             <div className="space-y-3 text-sm">
@@ -60,7 +60,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <Link to="/admin/groups/add" className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-5 text-center transition shadow-sm">
           <Plus className="mx-auto mb-2" size={28} strokeWidth={2} />
           <div className="text-sm font-medium">Новый поток</div>

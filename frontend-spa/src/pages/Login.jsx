@@ -17,9 +17,7 @@ export default function Login() {
       localStorage.setItem('access_token', r.data.access)
       localStorage.setItem('refresh_token', r.data.refresh)
       const role = r.data.role
-      const isNarrow = typeof window !== 'undefined' && window.innerWidth <= 768
-      if (isNarrow) nav('/mobile')
-      else nav(role === 'admin' ? '/admin/dashboard' : '/mobile')
+      nav(role === 'admin' ? '/admin/dashboard' : '/mobile')
     } catch {
       setError('Неверный логин или пароль')
     } finally {

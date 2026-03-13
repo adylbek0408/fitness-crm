@@ -24,11 +24,11 @@ function BonusBalanceForm({ clientId, currentBalance, onSuccess }) {
     }
   }
   return (
-    <form onSubmit={submit} className="flex gap-2 items-end">
-      <div>
+    <form onSubmit={submit} className="flex gap-2 items-end flex-wrap">
+      <div className="min-w-0">
         <label className="block text-xs text-gray-500 mb-1">Сумма (сом)</label>
         <input type="number" min="0" step="0.01" value={value} onChange={e => setValue(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm w-32" />
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm w-full sm:w-32" />
       </div>
       <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-xl hover:bg-blue-700 disabled:opacity-60">Сохранить</button>
       {error && <span className="text-red-500 text-sm">{error}</span>}
@@ -111,9 +111,9 @@ export default function ClientDetail() {
 
   return (
     <AdminLayout user={user}>
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
         <Link to="/admin/clients" className="text-gray-400 hover:text-gray-600 text-sm">← Назад</Link>
-        <h2 className="text-2xl font-bold text-gray-800">{client.full_name}</h2>
+        <h2 className="text-2xl font-bold text-gray-800 break-words">{client.full_name}</h2>
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[client.status]}`}>{STATUS_LABEL[client.status]}</span>
       </div>
       {/* Логин и пароль кабинета — всегда на виду */}
@@ -123,9 +123,9 @@ export default function ClientDetail() {
         </h3>
         {client.cabinet_username ? (
           <div className="space-y-2 text-sm">
-            <p><span className="text-gray-600">Логин:</span> <code className="bg-white px-2 py-1 rounded font-mono text-blue-800">{client.cabinet_username}</code></p>
+            <p className="break-all"><span className="text-gray-600">Логин:</span> <code className="bg-white px-2 py-1 rounded font-mono text-blue-800">{client.cabinet_username}</code></p>
             {newPassword && (
-              <p><span className="text-gray-600">Новый пароль:</span> <code className="bg-green-100 px-2 py-1 rounded font-mono text-green-800">{newPassword}</code> <span className="text-gray-500 text-xs">— передайте клиенту, сохраните. Больше не показывается.</span></p>
+              <p className="break-all"><span className="text-gray-600">Новый пароль:</span> <code className="bg-green-100 px-2 py-1 rounded font-mono text-green-800">{newPassword}</code> <span className="text-gray-500 text-xs">— передайте клиенту, сохраните. Больше не показывается.</span></p>
             )}
             {!newPassword && (
               <p className="text-gray-600">Пароль выдаётся при регистрации или по кнопке ниже. Вход: <a href="/cabinet" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">/cabinet</a></p>
@@ -139,7 +139,7 @@ export default function ClientDetail() {
           <p className="text-sm text-gray-700">У этого клиента кабинет не создан (запись создана до обновления). Логин и пароль создаются при регистрации нового клиента в разделе <strong>Регистрация</strong> и показываются сразу после создания.</p>
         )}
       </div>
-        <div className="grid grid-cols-2 gap-5 mb-5">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
         <div className="bg-white rounded-2xl p-5 shadow-sm border space-y-2 text-sm">
           <h3 className="font-medium text-gray-700 mb-3">Информация о клиенте</h3>
           {[['Телефон', client.phone], ['Формат', client.training_format], ['Тип группы', GROUP_TYPE_LABEL[client.group_type]], ['Поток', client.group ? `Поток #${client.group.number}` : '—'], ['Тренер', client.trainer?.full_name || '—'], ['Повторный', client.is_repeat ? 'Да' : 'Нет'], ['Дата регистрации', client.registered_at], ['Баланс бонусов', fmtMoney(client.bonus_balance ?? 0)]].map(([k, v]) => (
@@ -183,7 +183,7 @@ export default function ClientDetail() {
                 <div className="pt-2 border-t">
                   <p className="text-gray-500 mb-1">История платежей:</p>
                   {plan.payments.map(p => (
-                    <div key={p.id} className="flex justify-between items-center text-xs py-1 border-b border-gray-50 gap-3">
+                    <div key={p.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs py-1 border-b border-gray-50 gap-2">
                       <span>{p.paid_at}</span>
                       <span className="font-medium">{fmtMoney(p.amount)}</span>
                       {p.receipt && (
@@ -212,9 +212,9 @@ export default function ClientDetail() {
           <p className="text-sm text-gray-500 mb-3">Все чеки этого клиента — открывайте по ссылке.</p>
           <div className="space-y-2">
             {allReceipts.map((r, i) => (
-              <div key={`receipt-${r.id}-${i}`} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-xl text-sm">
+              <div key={`receipt-${r.id}-${i}`} className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 bg-gray-50 rounded-xl text-sm gap-2">
                 <span className="text-gray-600">{r.date}</span>
-                <span className="font-medium">{r.label} — {fmtMoney(r.amount)}</span>
+                <span className="font-medium break-words">{r.label} — {fmtMoney(r.amount)}</span>
                 {r.receipt ? (
                   <a
                     href={r.receipt}
@@ -241,7 +241,7 @@ export default function ClientDetail() {
       )}
       <div className="bg-white rounded-2xl p-5 shadow-sm border">
         <h3 className="font-medium text-gray-700 mb-3">Изменить статус</h3>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           {['active', 'completed', 'expelled'].map(s => (
             <button key={s} type="button" onClick={() => changeStatus(s)} disabled={client.status === s}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition ${client.status === s ? 'opacity-40 cursor-not-allowed bg-gray-100 text-gray-500' : `${STATUS_BADGE[s]} hover:opacity-80 cursor-pointer`}`}>

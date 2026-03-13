@@ -16,7 +16,7 @@ export default function MobileLayout({ children }) {
   const tabBarHeight = 'calc(56px + env(safe-area-inset-bottom, 0px))'
 
   return (
-    <div className="bg-gray-50 h-[100dvh] min-h-screen flex flex-col overflow-hidden">
+    <div className="bg-gray-50 min-h-[100dvh] flex flex-col">
       {/* Top bar: compact, safe area */}
       <header
         className="bg-white shadow-sm px-4 flex items-center justify-between shrink-0 z-20"
@@ -34,7 +34,7 @@ export default function MobileLayout({ children }) {
       </header>
 
       {/* Scrollable content with pull-to-refresh; padding so content doesn't hide under fixed tab bar */}
-      <main className="max-w-lg mx-auto w-full flex-1 min-h-0 px-4 py-4 overflow-hidden flex flex-col">
+      <main className="max-w-lg mx-auto w-full flex-1 min-h-0 px-4 py-4 flex flex-col">
         <PullToRefresh onRefresh={refreshFn}>
           <div className="min-h-full" style={{ paddingBottom: tabBarHeight }}>
             {children}

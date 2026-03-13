@@ -67,14 +67,14 @@ export default function Statistics() {
       <div className="bg-white rounded-2xl p-4 shadow-sm border mb-6 flex gap-3 flex-wrap items-end">
         {[['date_from','Дата от'],['date_to','Дата до']].map(([k,label]) => (
           <div key={k}><label className="block text-xs text-gray-500 mb-1">{label}</label>
-          <input type="date" value={filters[k]} onChange={e => set(k, e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" /></div>
+          <input type="date" value={filters[k]} onChange={e => set(k, e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto" /></div>
         ))}
         <div><label className="block text-xs text-gray-500 mb-1">Формат</label>
-          <select value={filters.training_format} onChange={e => set('training_format', e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          <select value={filters.training_format} onChange={e => set('training_format', e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
             <option value="">Все</option><option value="online">Онлайн</option><option value="offline">Оффлайн</option>
           </select></div>
         <div><label className="block text-xs text-gray-500 mb-1">Тренер</label>
-          <select value={filters.trainer_id} onChange={e => set('trainer_id', e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          <select value={filters.trainer_id} onChange={e => set('trainer_id', e.target.value)} className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
             <option value="">Все тренеры</option>
             {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
           </select></div>
@@ -83,7 +83,7 @@ export default function Statistics() {
       </div>
       <div ref={statsRef}>
       {dash && (
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           {[['Общий доход', fmtMoney(dash.total_revenue), 'text-blue-600'], ['Онлайн доход', fmtMoney(dash.online_revenue), 'text-indigo-500'], ['Оффлайн доход', fmtMoney(dash.offline_revenue), 'text-purple-500'], ['Всего НБ', dash.total_absences, 'text-red-500']].map(([label, val, color]) => (
             <div key={label} className="bg-white rounded-2xl p-5 shadow-sm border">
               <p className="text-xs text-gray-500 mb-1">{label}</p>
@@ -94,7 +94,8 @@ export default function Statistics() {
       )}
       <div className="bg-white rounded-2xl shadow-sm border overflow-hidden mb-6">
         <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по потокам</h3></div>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-gray-50"><tr>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Поток</th>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
@@ -115,10 +116,12 @@ export default function Statistics() {
               ))}
           </tbody>
         </table>
+        </div>
       </div>
       <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
         <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по тренерам</h3></div>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[620px] text-sm">
           <thead className="bg-gray-50"><tr>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
             <th className="text-left px-5 py-3 font-medium text-gray-600">Клиентов</th>
@@ -135,6 +138,7 @@ export default function Statistics() {
               ))}
           </tbody>
         </table>
+        </div>
       </div>
       </div>
     </AdminLayout>

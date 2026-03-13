@@ -91,7 +91,7 @@ export default function ClientList() {
         </button>
         {filtersOpen && (
           <div className="space-y-3 pt-1">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <select value={status} onChange={e => setStatus(e.target.value)}
                 className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
                 <option value="">Все статусы</option>
@@ -112,7 +112,7 @@ export default function ClientList() {
               <option value="paid">Оплатили полностью</option>
               <option value="unpaid">Есть остаток</option>
             </select>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Регистрация с</label>
                 <input type="date" value={registeredFrom} onChange={e => setRegisteredFrom(e.target.value)}
@@ -152,7 +152,7 @@ export default function ClientList() {
                 <Link key={c.id} to={`/mobile/clients/${c.id}`} className="block bg-white rounded-2xl p-4 shadow-sm border hover:border-blue-300 transition">
                   <div className="flex justify-between items-start">
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-800">{c.full_name}</p>
+                      <p className="font-medium text-gray-800 break-words">{c.full_name}</p>
                       <p className="text-sm text-gray-500">{c.phone}</p>
                       <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                         {c.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
@@ -166,7 +166,7 @@ export default function ClientList() {
                         </p>
                       )}
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full shrink-0 ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
+                    <span className={`text-xs px-2 py-1 rounded-full shrink-0 ml-2 ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
                   </div>
                 </Link>
               )

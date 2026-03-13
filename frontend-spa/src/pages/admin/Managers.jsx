@@ -53,7 +53,7 @@ export default function Managers() {
 
   return (
     <AdminLayout user={user}>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h2 className="text-2xl font-bold text-gray-800">Менеджеры (Регистраторы)</h2>
         <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl transition">+ Новый менеджер</button>
       </div>
@@ -63,7 +63,7 @@ export default function Managers() {
         <div className="bg-white rounded-2xl shadow-sm border p-6 mb-6 max-w-lg">
           <h3 className="font-medium text-gray-700 mb-4">Новый менеджер</h3>
           <form onSubmit={handleCreate} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input required placeholder="Фамилия *" value={form.last_name} onChange={e => set('last_name', e.target.value)} className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
               <input required placeholder="Имя *" value={form.first_name} onChange={e => set('first_name', e.target.value)} className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
             </div>
@@ -78,7 +78,8 @@ export default function Managers() {
         </div>
       )}
       <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-5 py-3 font-medium text-gray-600">ФИО</th>
@@ -104,16 +105,17 @@ export default function Managers() {
               ))}
           </tbody>
         </table>
+        </div>
       </div>
       {showClients && selectedManager && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">Клиенты: {selectedManager.last_name} {selectedManager.first_name}</h3>
+              <h3 className="font-semibold text-gray-800 break-words pr-3">Клиенты: {selectedManager.last_name} {selectedManager.first_name}</h3>
               <button onClick={() => setShowClients(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <div className="overflow-auto flex-1">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[700px] text-sm">
                 <thead className="bg-gray-50 border-b sticky top-0">
                   <tr>
                     <th className="text-left px-5 py-3 font-medium text-gray-600">Клиент</th>

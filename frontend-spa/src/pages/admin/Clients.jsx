@@ -68,22 +68,22 @@ export default function Clients() {
       </div>
       <div className="bg-white rounded-2xl p-4 shadow-sm border mb-5 flex gap-3 flex-wrap items-center">
         <input type="text" placeholder="Поиск по имени, телефону..." value={search} onChange={e => setSearch(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-56" />
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-56" />
         <select value={status} onChange={e => setStatus(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
           <option value="">Все статусы</option>
           <option value="active">Активные</option>
           <option value="completed">Завершили</option>
           <option value="expelled">Отчислены</option>
         </select>
         <select value={format} onChange={e => setFormat(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
           <option value="">Онлайн + Оффлайн</option>
           <option value="online">Онлайн</option>
           <option value="offline">Оффлайн</option>
         </select>
         <select value={group} onChange={e => setGroup(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
           <option value="">Все потоки</option>
           {groups.map(g => <option key={g.id} value={g.id}>Поток #{g.number}</option>)}
         </select>
@@ -92,23 +92,24 @@ export default function Clients() {
           Только повторные
         </label>
         <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-auto">
           <option value="">Все по оплате</option>
           <option value="paid">Оплатили полностью</option>
           <option value="unpaid">Есть остаток</option>
         </select>
         <span className="text-gray-400 text-sm">Рег.:</span>
         <input type="date" value={registeredFrom} onChange={e => setRegisteredFrom(e.target.value)} placeholder="с"
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-40" />
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-40" />
         <input type="date" value={registeredTo} onChange={e => setRegisteredTo(e.target.value)} placeholder="по"
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-40" />
+          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none w-full sm:w-40" />
         <button type="button" onClick={resetFilters}
           className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-300 transition">
           Сбросить фильтры
         </button>
       </div>
       <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[1080px] text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-5 py-3 font-medium text-gray-600">Клиент</th>
@@ -153,6 +154,7 @@ export default function Clients() {
               })}
           </tbody>
         </table>
+        </div>
       </div>
       {totalPages > 1 && (
         <div className="flex justify-between items-center mt-4">

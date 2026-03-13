@@ -22,12 +22,13 @@ export default function Trainers() {
 
   return (
     <AdminLayout user={user}>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h2 className="text-2xl font-bold text-gray-800">Тренеры</h2>
         <Link to="/admin/trainers/add" className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-xl">+ Новый тренер</Link>
       </div>
       <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-5 py-3 font-medium text-gray-600">ФИО</th>
@@ -52,6 +53,7 @@ export default function Trainers() {
               ))}
           </tbody>
         </table>
+        </div>
       </div>
     </AdminLayout>
   )

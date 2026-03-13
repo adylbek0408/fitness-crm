@@ -55,8 +55,8 @@ export default function ClientRegister() {
           {createdCredentials && (
             <div className="mt-3 pt-3 border-t border-green-200">
               <p className="font-medium mb-1">Данные для кабинета клиента:</p>
-              <p>Логин: <code className="bg-green-100 px-1 rounded">{createdCredentials.login}</code></p>
-              <p>Пароль: <code className="bg-green-100 px-1 rounded">{createdCredentials.password}</code></p>
+              <p className="break-all">Логин: <code className="bg-green-100 px-1 rounded">{createdCredentials.login}</code></p>
+              <p className="break-all">Пароль: <code className="bg-green-100 px-1 rounded">{createdCredentials.password}</code></p>
               <button type="button" onClick={() => nav(`/mobile/clients`)}
                 className="mt-3 text-blue-600 font-medium text-xs">Перейти к списку клиентов</button>
             </div>
