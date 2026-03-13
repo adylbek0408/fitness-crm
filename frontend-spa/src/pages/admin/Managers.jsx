@@ -54,7 +54,10 @@ export default function Managers() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <h2 className="crm-page-title">Менеджеры (Регистраторы)</h2>
+        <div>
+          <h2 className="crm-page-title">Менеджеры (Регистраторы)</h2>
+          <p className="crm-page-subtitle mt-1">Управление доступом сотрудников и их клиентской базой</p>
+        </div>
         <button onClick={() => setShowForm(!showForm)} className="crm-btn-primary">+ Новый менеджер</button>
       </div>
       {success && <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-xl text-sm">{success}</div>}
@@ -82,12 +85,12 @@ export default function Managers() {
         <table className="crm-table min-w-[860px]">
           <thead>
             <tr>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">ФИО</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Логин</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Телефон</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Клиентов добавил</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Статус</th>
-              <th className="px-5 py-3"></th>
+              <th>ФИО</th>
+              <th>Логин</th>
+              <th>Телефон</th>
+              <th>Клиентов добавил</th>
+              <th>Статус</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -98,9 +101,9 @@ export default function Managers() {
                   <td className="px-5 py-4 font-medium text-gray-800">{m.last_name} {m.first_name}</td>
                   <td className="px-5 py-4 text-gray-600">{m.username}</td>
                   <td className="px-5 py-4 text-gray-500">{m.phone || '—'}</td>
-                  <td className="px-5 py-4"><button onClick={() => viewClients(m)} className="text-blue-600 hover:underline text-sm">{m.clients_count} клиентов →</button></td>
+                  <td className="px-5 py-4"><button onClick={() => viewClients(m)} className="crm-link-action-primary text-sm">{m.clients_count} клиентов →</button></td>
                   <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-medium ${m.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{m.is_active ? 'Активен' : 'Деактивирован'}</span></td>
-                  <td className="px-5 py-4">{m.is_active && <button onClick={() => deactivate(m.id, `${m.last_name} ${m.first_name}`)} className="text-red-500 hover:text-red-700 text-xs font-medium">Деактивировать</button>}</td>
+                  <td className="px-5 py-4">{m.is_active && <button onClick={() => deactivate(m.id, `${m.last_name} ${m.first_name}`)} className="crm-link-action-danger">Деактивировать</button>}</td>
                 </tr>
               ))}
           </tbody>

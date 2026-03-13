@@ -23,8 +23,11 @@ export default function Dashboard() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-8 gap-3 flex-wrap">
-        <h2 className="crm-page-title">Дашборд</h2>
-        <span className="text-sm crm-muted">
+        <div>
+          <h2 className="crm-page-title">Дашборд</h2>
+          <p className="crm-page-subtitle mt-1">Оперативные метрики и быстрые действия по системе</p>
+        </div>
+        <span className="text-sm crm-muted bg-white border border-slate-200 rounded-xl px-3 py-1.5">
           {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
         </span>
       </div>

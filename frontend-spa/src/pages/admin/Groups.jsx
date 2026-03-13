@@ -39,7 +39,10 @@ export default function Groups() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <h2 className="crm-page-title">Потоки</h2>
+        <div>
+          <h2 className="crm-page-title">Потоки</h2>
+          <p className="crm-page-subtitle mt-1">Набор, активные и завершенные учебные группы</p>
+        </div>
         <Link to="/admin/groups/add" className="crm-btn-primary">
           + Новый поток
         </Link>
@@ -63,14 +66,14 @@ export default function Groups() {
         <table className="crm-table min-w-[860px]">
           <thead>
             <tr>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Поток</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Тип</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">График</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Старт</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Клиенты</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Статус</th>
-              <th className="px-5 py-3"></th>
+              <th>Поток</th>
+              <th>Тип</th>
+              <th>Тренер</th>
+              <th>График</th>
+              <th>Старт</th>
+              <th>Клиенты</th>
+              <th>Статус</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -90,10 +93,10 @@ export default function Groups() {
                     </span>
                   </td>
                   <td className="px-5 py-4 flex gap-2 flex-wrap">
-                    <Link to={`/admin/groups/${g.id}/detail`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Клиенты</Link>
-                    <Link to={`/admin/groups/${g.id}`} className="text-slate-600 hover:text-slate-800 text-xs font-medium">Изменить</Link>
+                    <Link to={`/admin/groups/${g.id}/detail`} className="crm-link-action-primary">Клиенты</Link>
+                    <Link to={`/admin/groups/${g.id}`} className="crm-link-action">Изменить</Link>
                     {g.status !== 'completed' && (
-                      <button onClick={() => closeGroup(g.id)} className="text-red-500 hover:text-red-700 text-xs font-medium">Закрыть</button>
+                      <button onClick={() => closeGroup(g.id)} className="crm-link-action-danger">Закрыть</button>
                     )}
                   </td>
                 </tr>

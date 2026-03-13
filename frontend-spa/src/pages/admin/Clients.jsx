@@ -64,7 +64,10 @@ export default function Clients() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="crm-page-title">База клиентов</h2>
+        <div>
+          <h2 className="crm-page-title">База клиентов</h2>
+          <p className="crm-page-subtitle mt-1">Поиск, фильтры и статусы оплат по всей клиентской базе</p>
+        </div>
       </div>
       <div className="crm-card p-4 mb-5 flex gap-3 flex-wrap items-center">
         <input type="text" placeholder="Поиск по имени, телефону..." value={search} onChange={e => setSearch(e.target.value)}
@@ -112,15 +115,15 @@ export default function Clients() {
         <table className="crm-table min-w-[1080px]">
           <thead>
             <tr>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Клиент</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Телефон</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Формат</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Поток</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Оплата</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Дата рег.</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Менеджер</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Статус</th>
-              <th className="px-5 py-3"></th>
+              <th>Клиент</th>
+              <th>Телефон</th>
+              <th>Формат</th>
+              <th>Поток</th>
+              <th>Оплата</th>
+              <th>Дата рег.</th>
+              <th>Менеджер</th>
+              <th>Статус</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -148,7 +151,7 @@ export default function Clients() {
                     <td className="px-5 py-4 text-gray-500 text-xs">{fmtDate(c.registered_at)}</td>
                     <td className="px-5 py-4 text-gray-500 text-xs">{c.registered_by_name || '—'}</td>
                     <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span></td>
-                    <td className="px-5 py-4"><Link to={`/admin/clients/${c.id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Открыть</Link></td>
+                    <td className="px-5 py-4"><Link to={`/admin/clients/${c.id}`} className="crm-link-action-primary">Открыть</Link></td>
                   </tr>
                 )
               })}
@@ -158,9 +161,9 @@ export default function Clients() {
       </div>
       {totalPages > 1 && (
         <div className="flex justify-between items-center mt-4">
-          <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page <= 1} className="text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-300">← Назад</button>
+          <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page <= 1} className="crm-link-action-primary disabled:text-gray-300">← Назад</button>
           <span className="text-sm text-gray-500">{count} клиентов · стр. {page}/{totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page >= totalPages} className="text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-300">Вперёд →</button>
+          <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page >= totalPages} className="crm-link-action-primary disabled:text-gray-300">Вперёд →</button>
         </div>
       )}
     </AdminLayout>

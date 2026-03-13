@@ -44,7 +44,10 @@ export default function Statistics() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <h2 className="crm-page-title">Статистика</h2>
+        <div>
+          <h2 className="crm-page-title">Статистика</h2>
+          <p className="crm-page-subtitle mt-1">Финансовая аналитика по потокам, тренерам и форматам обучения</p>
+        </div>
         <button
           type="button"
           onClick={() => generatePDF(statsRef, filename)}
@@ -97,11 +100,11 @@ export default function Statistics() {
         <div className="crm-table-wrap">
         <table className="crm-table min-w-[760px]">
           <thead><tr>
-            <th className="text-left px-5 py-3 font-medium text-gray-600">Поток</th>
-            <th className="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
-            <th className="text-left px-5 py-3 font-medium text-gray-600">Статус</th>
-            <th className="text-left px-5 py-3 font-medium text-gray-600">Клиентов</th>
-            <th className="text-right px-5 py-3 font-medium text-gray-600">Доход</th>
+            <th>Поток</th>
+            <th>Тренер</th>
+            <th>Статус</th>
+            <th>Клиентов</th>
+            <th className="text-right">Доход</th>
           </tr></thead>
           <tbody>
             {byGroup.length === 0 ? <tr><td colSpan={5} className="text-center py-6 text-gray-400">Нет данных</td></tr>
@@ -123,9 +126,9 @@ export default function Statistics() {
         <div className="crm-table-wrap">
         <table className="crm-table min-w-[620px]">
           <thead><tr>
-            <th className="text-left px-5 py-3 font-medium text-gray-600">Тренер</th>
-            <th className="text-left px-5 py-3 font-medium text-gray-600">Клиентов</th>
-            <th className="text-right px-5 py-3 font-medium text-gray-600">Доход</th>
+            <th>Тренер</th>
+            <th>Клиентов</th>
+            <th className="text-right">Доход</th>
           </tr></thead>
           <tbody>
             {byTrainer.length === 0 ? <tr><td colSpan={3} className="text-center py-6 text-gray-400">Нет данных</td></tr>

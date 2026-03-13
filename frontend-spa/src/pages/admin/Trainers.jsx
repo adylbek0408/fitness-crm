@@ -23,7 +23,10 @@ export default function Trainers() {
   return (
     <AdminLayout user={user}>
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <h2 className="crm-page-title">Тренеры</h2>
+        <div>
+          <h2 className="crm-page-title">Тренеры</h2>
+          <p className="crm-page-subtitle mt-1">Состав команды и управление активностью тренеров</p>
+        </div>
         <Link to="/admin/trainers/add" className="crm-btn-primary">+ Новый тренер</Link>
       </div>
       <div className="crm-card overflow-hidden">
@@ -31,10 +34,10 @@ export default function Trainers() {
         <table className="crm-table min-w-[760px]">
           <thead>
             <tr>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">ФИО</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Телефон</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">Расписание</th>
-              <th className="px-5 py-3"></th>
+              <th>ФИО</th>
+              <th>Телефон</th>
+              <th>Расписание</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -46,8 +49,8 @@ export default function Trainers() {
                   <td className="px-5 py-4 text-gray-600">{t.phone || '—'}</td>
                   <td className="px-5 py-4 text-gray-500 max-w-xs truncate">{t.schedule || '—'}</td>
                   <td className="px-5 py-4 flex gap-3">
-                    <Link to={`/admin/trainers/${t.id}`} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Изменить</Link>
-                    <button onClick={() => deactivate(t.id, t.full_name)} className="text-red-500 hover:text-red-700 text-xs font-medium">Деактивировать</button>
+                    <Link to={`/admin/trainers/${t.id}`} className="crm-link-action-primary">Изменить</Link>
+                    <button onClick={() => deactivate(t.id, t.full_name)} className="crm-link-action-danger">Деактивировать</button>
                   </td>
                 </tr>
               ))}
