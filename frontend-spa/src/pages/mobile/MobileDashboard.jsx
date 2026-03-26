@@ -1,30 +1,116 @@
+import { useState, useEffect } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { UserPlus, Users } from 'lucide-react'
+import { UserPlus, Users, TrendingUp, UserCheck, Sparkles } from 'lucide-react'
 import MobileLayout from '../../components/MobileLayout'
 import { useRefresh } from '../../contexts/RefreshContext'
+import api from '../../api/axios'
+import { fmtMoney } from '../../utils/format'
 
 export default function MobileDashboard() {
   const { user } = useOutletContext()
-  useRefresh(() => Promise.resolve())
+  const [stats, setStats] = useState(null)
+  useRefresh(() => api.get('/statistics/dashboard/').then(r => setStats(r.data)))
+
+  useEffect(() => {
+    api.get('/statistics/dashboard/').then(r => setStats(r.data)).catch(() => {})
+  }, [])
+
   const roleMap = { admin: 'Администратор', registrar: 'Регистратор' }
+  const greeting = () => {
+    const h = new Date().getHours()
+    if (h < 12) return 'Доброе утро'
+    if (h < 18) return 'Добрый день'
+    return 'Добрый вечер'
+  }
+
   return (
     <MobileLayout>
-      <h2 className="text-xl font-bold text-gray-800 mb-6">Добро пожаловать</h2>
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <Link to="/mobile/clients/register" className="bg-blue-600 text-white rounded-2xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:bg-blue-700 transition">
-          <UserPlus className="mb-2" size={32} strokeWidth={2} />
-          <span className="text-sm font-medium">Регистрация клиента</span>
+      {/* Приветствие */}
+      <div className="mb-6">
+        <p className="text-sm mb-0.5" style={{ color: 'var(--text-xs)' }}>{greeting()},</p>
+        <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>
+          {user?.username}
+        </h2>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-xs)' }}>
+          {roleMap[user?.role] || user?.role}
+        </p>
+      </div>
+
+      {/* Быстрые действия */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <Link to="/mobile/clients/register"
+          className="relative overflow-hidden rounded-2xl p-5 flex flex-col items-center justify-center text-center text-white min-h-[110px] active:scale-[0.97] transition-transform"
+          style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)', boxShadow: '0 6px 20px rgba(190,24,93,0.30)' }}>
+          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full opacity-20"
+               style={{ background: 'radial-gradient(circle,#fff,transparent)' }} />
+          <UserPlus size={28} strokeWidth={2} className="mb-2 relative z-10" />
+          <span className="text-sm font-semibold relative z-10">Регистрация</span>
+          <span className="text-xs opacity-70 mt-0.5 relative z-10">нового клиента</span>
         </Link>
-        <Link to="/mobile/clients" className="bg-white text-gray-700 rounded-2xl p-5 flex flex-col items-center justify-center text-center shadow-sm hover:bg-gray-50 transition border">
-          <Users className="mb-2 text-gray-600" size={32} strokeWidth={2} />
-          <span className="text-sm font-medium">База клиентов</span>
+
+        <Link to="/mobile/clients"
+          className="rounded-2xl p-5 flex flex-col items-center justify-center text-center min-h-[110px] active:scale-[0.97] transition-transform"
+          style={{ background: '#fff', border: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(120,40,80,0.05)' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-2"
+               style={{ background: '#fce7f3' }}>
+            <Users size={20} style={{ color: '#be185d' }} />
+          </div>
+          <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>База клиентов</span>
+          {stats && (
+            <span className="text-xs mt-0.5" style={{ color: 'var(--text-xs)' }}>
+              {stats.active_clients} активных
+            </span>
+          )}
         </Link>
       </div>
-      <div className="bg-white rounded-2xl p-4 shadow-sm border">
-        <p className="text-sm text-gray-500">Вы вошли как:</p>
-        <p className="font-medium text-gray-800">{user?.username}</p>
-        <p className="text-xs text-blue-500 mt-1">{roleMap[user?.role] || user?.role}</p>
-      </div>
+
+      {/* Статистика (только если загрузилась) */}
+      {stats && (
+        <div className="rounded-2xl overflow-hidden mb-4"
+             style={{ background: '#fff', border: '1px solid var(--border)' }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-soft)' }}>
+            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-xs)' }}>
+              Сводка
+            </p>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-y" style={{ borderColor: 'var(--border-soft)' }}>
+            {[
+              { icon: TrendingUp, label: 'Общий доход', value: fmtMoney(stats.total_revenue), color: '#be185d', bg: '#fce7f3' },
+              { icon: UserCheck, label: 'Активных', value: stats.active_clients, color: '#7c3aed', bg: '#ede9fe' },
+              { icon: Sparkles, label: 'Потоков', value: stats.active_groups_count, color: '#d97706', bg: '#fef3c7' },
+              { icon: Users, label: 'Пропусков', value: stats.total_absences, color: '#6b7280', bg: '#f3f4f6' },
+            ].map(({ icon: Icon, label, value, color, bg }) => (
+              <div key={label} className="p-4 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                     style={{ background: bg }}>
+                  <Icon size={16} style={{ color }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs truncate" style={{ color: 'var(--text-xs)' }}>{label}</p>
+                  <p className="font-bold text-sm leading-tight" style={{ color: 'var(--text)' }}>{value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Скелетон статистики */}
+      {!stats && (
+        <div className="rounded-2xl overflow-hidden mb-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+          <div className="grid grid-cols-2">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="p-4 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl skeleton" />
+                <div className="flex-1">
+                  <div className="h-2 skeleton rounded w-2/3 mb-2" />
+                  <div className="h-4 skeleton rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </MobileLayout>
   )
 }

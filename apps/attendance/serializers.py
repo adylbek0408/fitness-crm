@@ -19,12 +19,18 @@ class AttendanceMarkSerializer(serializers.Serializer):
     client_id = serializers.UUIDField()
     lesson_date = serializers.DateField()
     is_absent = serializers.BooleanField(default=False)
-    note = serializers.CharField(max_length=255, required=False, default='')
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+
+
+class BulkAttendanceRecordSerializer(serializers.Serializer):
+    client_id = serializers.UUIDField()
+    is_absent = serializers.BooleanField(default=False)
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
 
 
 class BulkAttendanceMarkSerializer(serializers.Serializer):
     lesson_date = serializers.DateField()
-    records = AttendanceMarkSerializer(many=True)
+    records = BulkAttendanceRecordSerializer(many=True)
 
     def validate_records(self, value):
         if not value:

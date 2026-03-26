@@ -10,7 +10,6 @@ from apps.payments.models import FullPayment, InstallmentPlan
 
 
 def get_repeat_client_bonus_amount():
-    """Return bonus amount (in som) for repeat clients from SystemSetting, default 800."""
     from core.models import SystemSetting
     try:
         s = SystemSetting.objects.get(key='repeat_client_bonus')
@@ -20,7 +19,6 @@ def get_repeat_client_bonus_amount():
 
 
 def _generate_cabinet_username(client):
-    """Normal login: phone digits only (e.g. 998901234567)."""
     import re
     digits = re.sub(r'\D', '', getattr(client, 'phone', '') or '')
     if not digits:
@@ -56,18 +54,16 @@ class ClientService(BaseService):
 
         client = Client.objects.create(**data, registered_by=registered_by)
 
-        # Cabinet account: login = phone digits, random password
         plain_password = _generate_cabinet_password()
         username = _generate_cabinet_username(client)
         base_username = username
         counter = 0
         while ClientAccount.objects.filter(username=username).exists():
             counter += 1
-            username = f"{base_username}_{counter}" if base_username.startswith('client_') else f"{base_username}_{counter}"
+            username = f"{base_username}_{counter}"
         account = ClientAccount.objects.create(client=client, username=username)
         account.set_password(plain_password)
 
-        # Repeat client bonus
         if client.is_repeat:
             bonus = get_repeat_client_bonus_amount()
             client.bonus_balance = bonus
@@ -81,7 +77,6 @@ class ClientService(BaseService):
             raise ValidationError(f"Invalid payment_type: {payment_type}")
 
         self.logger.info(f"Client created: {client.id}, payment_type: {payment_type}")
-        # Attach one-time credentials for response (consumed by view)
         client._cabinet_password_plain = plain_password
         client._cabinet_username_plain = username
         return client
@@ -116,7 +111,6 @@ class ClientService(BaseService):
             setattr(client, field, value)
         client.save()
 
-        # Credit repeat bonus when first time set as repeat
         if is_repeat and not was_repeat:
             bonus = get_repeat_client_bonus_amount()
             client.bonus_balance = (client.bonus_balance or Decimal('0')) + bonus
@@ -125,7 +119,8 @@ class ClientService(BaseService):
         return client
 
     def change_status(self, client_id: str, new_status: str) -> Client:
-        valid_statuses = ['active', 'completed', 'expelled']
+        # frozen — заморозка клиента
+        valid_statuses = ['active', 'completed', 'expelled', 'frozen']
         if new_status not in valid_statuses:
             raise ValidationError(f"Invalid status: {new_status}")
         client = self.get_client_or_raise(client_id)
@@ -155,7 +150,6 @@ class ClientService(BaseService):
         return client
 
     def reset_cabinet_password(self, client_id: str) -> str:
-        """Set a new random password for client cabinet; return plain password (show once)."""
         client = self.get_client_or_raise(client_id)
         try:
             account = client.cabinet_account
@@ -164,4 +158,3 @@ class ClientService(BaseService):
         plain = _generate_cabinet_password()
         account.set_password(plain)
         return plain
-    

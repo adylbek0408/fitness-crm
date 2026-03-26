@@ -5,16 +5,18 @@ export const fmtDate = d =>
   d ? new Date(d).toLocaleDateString('ru-RU') : '—'
 
 export const STATUS_BADGE = {
-  active:      'bg-green-100 text-green-700',
-  completed:   'bg-gray-100 text-gray-600',
-  expelled:    'bg-red-100 text-red-600',
-  recruitment: 'bg-yellow-100 text-yellow-700',
+  active:      'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  completed:   'bg-slate-100 text-slate-600 border border-slate-200',
+  expelled:    'bg-red-50 text-red-600 border border-red-200',
+  frozen:      'bg-sky-50 text-sky-700 border border-sky-200',
+  recruitment: 'bg-amber-50 text-amber-700 border border-amber-200',
 }
 
 export const STATUS_LABEL = {
   active:      'Активный',
   completed:   'Завершил',
   expelled:    'Отчислен',
+  frozen:      'Заморозка',
   recruitment: 'Набор',
 }
 

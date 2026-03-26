@@ -8,16 +8,26 @@ from apps.clients.models import Client
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
-        data['role'] = self.user.role
+        # superuser всегда считается admin, даже если поле role не выставлено
+        role = 'admin' if (self.user.is_superuser or self.user.role == 'admin') else self.user.role
+        data['role'] = role
         data['username'] = self.user.username
         return data
 
 
 class UserSerializer(serializers.ModelSerializer):
+    role = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = ('id', 'username', 'role', 'phone', 'is_active')
         read_only_fields = ('id', 'username', 'role', 'is_active')
+
+    def get_role(self, obj):
+        # superuser всегда отдаём как admin
+        if obj.is_superuser or obj.role == 'admin':
+            return 'admin'
+        return obj.role
 
 
 class ManagerSerializer(serializers.ModelSerializer):

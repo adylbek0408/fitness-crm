@@ -18,8 +18,9 @@ export default function ProtectedRoute({ role }) {
   }, [])
 
   if (loading) return (
-    <div className="flex items-center justify-center h-screen">
-      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+    <div className="flex items-center justify-center h-screen" style={{ background: 'var(--bg)' }}>
+      <div className="w-7 h-7 border-2 rounded-full animate-spin"
+           style={{ borderColor: '#f9a8d4', borderTopColor: '#be185d' }} />
     </div>
   )
   if (!user) return <Navigate to="/login" replace />

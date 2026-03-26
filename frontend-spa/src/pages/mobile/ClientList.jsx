@@ -87,8 +87,15 @@ export default function ClientList() {
   return (
     <MobileLayout>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-gray-800">Клиенты</h2>
-        <Link to="/mobile/clients/register" className="crm-btn-primary rounded-2xl px-4 py-2.5">+ Добавить</Link>
+        <div>
+          <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>Клиенты</h2>
+          {count > 0 && <p className="text-xs mt-0.5" style={{ color: 'var(--text-xs)' }}>{count} клиентов</p>}
+        </div>
+        <Link to="/mobile/clients/register"
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shrink-0"
+          style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)', boxShadow: '0 3px 10px rgba(190,24,93,0.25)' }}>
+          + Добавить
+        </Link>
       </div>
 
       <div className="space-y-3 mb-4">
@@ -96,7 +103,8 @@ export default function ClientList() {
           className="crm-mobile-input" />
 
         <button type="button" onClick={() => setFiltersOpen(o => !o)}
-          className="w-full flex items-center justify-between py-3 px-4 rounded-2xl border border-slate-300 bg-white text-[16px] font-semibold text-slate-800 touch-manipulation min-h-[48px]">
+        className="w-full flex items-center justify-between py-3 px-4 rounded-2xl touch-manipulation min-h-[48px] transition"
+          style={{ background: '#fff', border: '1px solid var(--border)', color: 'var(--text)', fontWeight: 600, fontSize: 15 }}>
           <span className="inline-flex items-center gap-2">
             <SlidersHorizontal size={18} />
             Фильтры
@@ -111,11 +119,11 @@ export default function ClientList() {
 
         {!filtersOpen && activeFiltersCount > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
-            {status && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">Статус: {STATUS_LABEL[status]}</span>}
-            {format && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">Формат: {format === 'online' ? 'Онлайн' : 'Оффлайн'}</span>}
-            {paymentStatus && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">Оплата: {paymentStatus === 'paid' ? 'Оплачено' : 'Есть остаток'}</span>}
-            {registeredFrom && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">С: {registeredFrom}</span>}
-            {registeredTo && <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 border border-slate-200">По: {registeredTo}</span>}
+            {status && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>Статус: {STATUS_LABEL[status]}</span>}
+            {format && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>Формат: {format === 'online' ? 'Онлайн' : 'Оффлайн'}</span>}
+            {paymentStatus && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>Оплата: {paymentStatus === 'paid' ? 'Оплачено' : 'Есть остаток'}</span>}
+            {registeredFrom && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>С: {registeredFrom}</span>}
+            {registeredTo && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>По: {registeredTo}</span>}
           </div>
         )}
 
@@ -126,6 +134,7 @@ export default function ClientList() {
                 className="crm-mobile-select">
                 <option value="">Все статусы</option>
                 <option value="active">Активные</option>
+                <option value="frozen">Заморозка</option>
                 <option value="completed">Завершили</option>
                 <option value="expelled">Отчислены</option>
               </select>
@@ -177,7 +186,9 @@ export default function ClientList() {
               const pay = paymentLabel(c)
               const PayIcon = pay?.Icon
               return (
-                <Link key={c.id} to={`/mobile/clients/${c.id}`} className="block bg-white rounded-2xl p-4 shadow-sm border hover:border-blue-300 transition">
+                <Link key={c.id} to={`/mobile/clients/${c.id}`}
+                  className="block rounded-2xl p-4 active:scale-[0.99] transition-transform"
+                  style={{ background: '#fff', border: '1px solid var(--border)', boxShadow: '0 1px 4px rgba(120,40,80,0.04)' }}>
                   <div className="flex justify-between items-start">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-gray-800 break-words">{c.full_name}</p>
@@ -203,12 +214,14 @@ export default function ClientList() {
       {totalPages > 1 && (
         <div className="flex justify-between items-center mt-4 gap-2">
           <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page <= 1}
-            className="min-h-[44px] px-4 py-2 rounded-xl text-sm font-medium text-blue-600 disabled:text-gray-300 disabled:opacity-60 touch-manipulation">
+            className="min-h-[44px] px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-40 touch-manipulation transition"
+            style={{ background: page <= 1 ? '#f3f4f6' : '#fce7f3', color: page <= 1 ? '#9ca3af' : '#be185d' }}>
             ← Назад
           </button>
-          <span className="text-sm text-gray-500 shrink-0">стр. {page} из {totalPages}</span>
+          <span className="text-xs shrink-0" style={{ color: 'var(--text-soft)' }}>стр. {page} из {totalPages}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page >= totalPages}
-            className="min-h-[44px] px-4 py-2 rounded-xl text-sm font-medium text-blue-600 disabled:text-gray-300 disabled:opacity-60 touch-manipulation">
+            className="min-h-[44px] px-5 py-2 rounded-xl text-sm font-semibold disabled:opacity-40 touch-manipulation transition"
+            style={{ background: page >= totalPages ? '#f3f4f6' : '#fce7f3', color: page >= totalPages ? '#9ca3af' : '#be185d' }}>
             Вперёд →
           </button>
         </div>

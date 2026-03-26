@@ -44,6 +44,7 @@ class Client(UUIDTimestampedModel):
         ('active', 'Active'),
         ('completed', 'Completed'),
         ('expelled', 'Expelled'),
+        ('frozen', 'Frozen'),   # ← Заморозка
     ]
 
     PAYMENT_TYPE_CHOICES = [

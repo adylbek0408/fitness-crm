@@ -1,9 +1,82 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { CheckCircle, Clock, Globe, Dumbbell, RotateCcw } from 'lucide-react'
+import {
+  CheckCircle, Clock, Globe, Dumbbell, RotateCcw,
+  ChevronDown, Search, SlidersHorizontal, X, ChevronLeft, ChevronRight
+} from 'lucide-react'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate } from '../../utils/format'
+
+const STATUS_OPTIONS = [
+  { value: 'active',    label: 'Активный',  dot: 'bg-emerald-500' },
+  { value: 'frozen',    label: 'Заморозка', dot: 'bg-blue-500'    },
+  { value: 'completed', label: 'Завершил',  dot: 'bg-slate-400'   },
+  { value: 'expelled',  label: 'Отчислен',  dot: 'bg-red-500'     },
+]
+
+function StatusDropdown({ clientId, currentStatus, onChanged }) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const changeStatus = async (newStatus) => {
+    if (newStatus === currentStatus) { setOpen(false); return }
+    setLoading(true); setOpen(false)
+    try {
+      const r = await api.post(`/clients/${clientId}/change_status/`, { status: newStatus })
+      onChanged(clientId, r.data.status)
+    } catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={loading}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition
+          ${STATUS_BADGE[currentStatus] || 'bg-slate-100 text-slate-600'} hover:opacity-80 disabled:opacity-50 cursor-pointer`}
+      >
+        {loading ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          : STATUS_LABEL[currentStatus] || currentStatus}
+        <ChevronDown size={10} />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-8 left-0 bg-white border border-slate-200 rounded-2xl shadow-xl py-1.5 min-w-[150px] animate-fade-in">
+          {STATUS_OPTIONS.map(opt => (
+            <button key={opt.value} onClick={() => changeStatus(opt.value)}
+              className={`w-full text-left px-4 py-2 text-xs hover:bg-slate-50 transition flex items-center gap-2.5
+                ${opt.value === currentStatus ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
+              {opt.label}
+              {opt.value === currentStatus && <CheckCircle size={12} className="ml-auto text-indigo-500" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PayBadge({ c }) {
+  if (c.payment_type === 'full') {
+    return c.full_payment?.is_paid
+      ? <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium"><CheckCircle size={12} /> Оплачено</span>
+      : <span className="inline-flex items-center gap-1 text-red-500 text-xs font-medium"><Clock size={12} /> Не оплачено</span>
+  }
+  return c.installment_plan && Number(c.installment_plan.remaining) <= 0
+    ? <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium"><CheckCircle size={12} /> Закрыта</span>
+    : <span className="inline-flex items-center gap-1 text-amber-600 text-xs font-medium">
+        <Clock size={12} /> {fmtMoney(c.installment_plan?.remaining || 0)}
+      </span>
+}
 
 export default function Clients() {
   const { user } = useOutletContext()
@@ -15,26 +88,33 @@ export default function Clients() {
   const [status, setStatus] = useState('')
   const [format, setFormat] = useState('')
   const [group, setGroup] = useState('')
+  const [groupType, setGroupType] = useState('')
   const [isRepeat, setIsRepeat] = useState(false)
   const [paymentStatus, setPaymentStatus] = useState('')
   const [registeredFrom, setRegisteredFrom] = useState('')
   const [registeredTo, setRegisteredTo] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [loading, setLoading] = useState(false)
   const totalPages = Math.ceil(count / 25)
   const timer = useRef(null)
 
   const load = async (p = page) => {
+    setLoading(true)
     const params = new URLSearchParams({ page: p })
     if (search) params.append('search', search)
     if (status) params.append('status', status)
     if (format) params.append('training_format', format)
     if (group) params.append('group', group)
+    if (groupType) params.append('group_type', groupType)
     if (isRepeat) params.append('is_repeat', 'true')
     if (paymentStatus) params.append('payment_status', paymentStatus)
     if (registeredFrom) params.append('registered_from', registeredFrom)
     if (registeredTo) params.append('registered_to', registeredTo)
-    const r = await api.get(`/clients/?${params}`)
-    setClients(r.data.results || [])
-    setCount(r.data.count || 0)
+    try {
+      const r = await api.get(`/clients/?${params}`)
+      setClients(r.data.results || [])
+      setCount(r.data.count || 0)
+    } finally { setLoading(false) }
   }
 
   useEffect(() => {
@@ -44,159 +124,240 @@ export default function Clients() {
   useEffect(() => {
     clearTimeout(timer.current)
     timer.current = setTimeout(() => { setPage(1); load(1) }, 300)
-  }, [search, status, format, group, isRepeat, paymentStatus, registeredFrom, registeredTo])
+  }, [search, status, format, group, groupType, isRepeat, paymentStatus, registeredFrom, registeredTo])
 
   useEffect(() => { load() }, [page])
 
   const resetFilters = () => {
-    setSearch('')
-    setStatus('')
-    setFormat('')
-    setGroup('')
-    setIsRepeat(false)
-    setPaymentStatus('')
-    setRegisteredFrom('')
-    setRegisteredTo('')
-    setPage(1)
-    setTimeout(() => load(1), 0)
+    setSearch(''); setStatus(''); setFormat(''); setGroup('')
+    setGroupType(''); setIsRepeat(false); setPaymentStatus(''); setRegisteredFrom(''); setRegisteredTo('')
+    setPage(1); setTimeout(() => load(1), 0)
   }
+
+  const handleStatusChanged = (id, newStatus) => {
+    setClients(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c))
+  }
+
+  const hasFilters = search || status || format || group || groupType || isRepeat || paymentStatus || registeredFrom || registeredTo
 
   return (
     <AdminLayout user={user}>
-      <div className="flex items-center justify-between mb-6">
+      {/* Заголовок */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div>
+          <p className="text-xs text-slate-400 font-medium uppercase tracking-widest mb-1">CRM</p>
           <h2 className="crm-page-title">База клиентов</h2>
-          <p className="crm-page-subtitle mt-1">Поиск, фильтры и статусы оплат по всей клиентской базе</p>
+          <p className="crm-page-subtitle">
+            {count > 0 ? `${count} клиентов` : 'Поиск, фильтры и статусы'}
+          </p>
         </div>
       </div>
-      <div className="crm-card p-4 mb-5 flex gap-3 flex-wrap items-center">
-        <input type="text" placeholder="Поиск по имени, телефону..." value={search} onChange={e => setSearch(e.target.value)}
-          className="crm-input w-full sm:w-56" />
-        <select value={status} onChange={e => setStatus(e.target.value)}
-          className="crm-input w-full sm:w-auto">
-          <option value="">Все статусы</option>
-          <option value="active">Активные</option>
-          <option value="completed">Завершили</option>
-          <option value="expelled">Отчислены</option>
-        </select>
-        <select value={format} onChange={e => setFormat(e.target.value)}
-          className="crm-input w-full sm:w-auto">
-          <option value="">Онлайн + Оффлайн</option>
-          <option value="online">Онлайн</option>
-          <option value="offline">Оффлайн</option>
-        </select>
-        <select value={group} onChange={e => setGroup(e.target.value)}
-          className="crm-input w-full sm:w-auto">
-          <option value="">Все потоки</option>
-          {groups.map(g => <option key={g.id} value={g.id}>Поток #{g.number}</option>)}
-        </select>
-        <label className="flex items-center gap-2 text-sm text-gray-600">
-          <input type="checkbox" checked={isRepeat} onChange={e => setIsRepeat(e.target.checked)} className="rounded" />
-          Только повторные
-        </label>
-        <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)}
-          className="crm-input w-full sm:w-auto">
-          <option value="">Все по оплате</option>
-          <option value="paid">Оплатили полностью</option>
-          <option value="unpaid">Есть остаток</option>
-        </select>
-        <span className="text-gray-400 text-sm">Рег.:</span>
-        <input type="date" value={registeredFrom} onChange={e => setRegisteredFrom(e.target.value)} placeholder="с"
-          className="crm-input w-full sm:w-40" />
-        <input type="date" value={registeredTo} onChange={e => setRegisteredTo(e.target.value)} placeholder="по"
-          className="crm-input w-full sm:w-40" />
-        <button type="button" onClick={resetFilters}
-          className="crm-btn-secondary">
-          Сбросить фильтры
-        </button>
-      </div>
-      <div className="crm-card overflow-hidden">
-        <div className="md:hidden p-3 space-y-3">
-          {clients.length === 0
-            ? <div className="text-center py-10 text-gray-400">Клиенты не найдены</div>
-            : clients.map(c => {
-              const payStatus = c.payment_type === 'full'
-                ? (c.full_payment?.is_paid ? <span className="text-green-600 text-xs inline-flex items-center gap-1"><CheckCircle size={12} /> Оплачено</span> : <span className="text-red-500 text-xs inline-flex items-center gap-1"><Clock size={12} /> Не оплачено</span>)
-                : (c.installment_plan && Number(c.installment_plan.remaining) <= 0 ? <span className="text-green-600 text-xs inline-flex items-center gap-1"><CheckCircle size={12} /> Закрыта</span> : <span className="text-orange-500 text-xs inline-flex items-center gap-1"><Clock size={12} /> Остаток {fmtMoney(c.installment_plan?.remaining || 0)}</span>)
-              return (
-                <div key={c.id} className="rounded-2xl border border-slate-200 p-4 bg-white">
-                  <div className="flex justify-between items-start gap-2">
-                    <p className="font-semibold text-slate-900 break-words">{c.full_name}</p>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
-                  </div>
-                  <div className="mt-2 text-sm text-slate-600 space-y-1">
-                    <p>{c.phone}</p>
-                    <p className="inline-flex items-center gap-1">
-                      {c.training_format === 'online' ? <Globe size={14} /> : <Dumbbell size={14} />}
-                      {c.group_type}
-                    </p>
-                    <p>Поток: {c.group ? `#${c.group.number}` : '—'}</p>
-                    <p>Регистрация: {fmtDate(c.registered_at)}</p>
-                    <p>Менеджер: {c.registered_by_name || '—'}</p>
-                    {c.is_repeat && <p className="text-xs text-slate-500 inline-flex items-center gap-1"><RotateCcw size={12} /> Повторный</p>}
-                    <div>{payStatus}</div>
-                  </div>
-                  <div className="mt-3">
-                    <Link to={`/admin/clients/${c.id}`} className="crm-link-action-primary">Открыть карточку</Link>
-                  </div>
-                </div>
-              )
-            })}
+
+      {/* Фильтры */}
+      <div className="crm-card p-4 mb-5">
+        {/* Основные */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" placeholder="Поиск по имени, телефону..." value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="crm-input pl-9 w-full" />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <select value={status} onChange={e => setStatus(e.target.value)} className="crm-input w-full sm:w-40">
+            <option value="">Все статусы</option>
+            <option value="active">Активные</option>
+            <option value="frozen">Заморозка</option>
+            <option value="completed">Завершили</option>
+            <option value="expelled">Отчислены</option>
+          </select>
+          <select value={format} onChange={e => setFormat(e.target.value)} className="crm-input w-full sm:w-40">
+            <option value="">Все форматы</option>
+            <option value="online">Онлайн</option>
+            <option value="offline">Оффлайн</option>
+          </select>
+          <select value={groupType} onChange={e => setGroupType(e.target.value)} className="crm-input w-full sm:w-36">
+            <option value="">Все типы</option>
+            <option value="1.5h">1.5 ч</option>
+            <option value="2.5h">2.5 ч</option>
+          </select>
+          <button onClick={() => setShowAdvanced(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium border transition ${
+              showAdvanced ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}>
+            <SlidersHorizontal size={13} /> Ещё фильтры
+          </button>
+          {hasFilters && (
+            <button onClick={resetFilters}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-700 transition">
+              <X size={13} /> Сбросить
+            </button>
+          )}
         </div>
 
-        <div className="crm-table-wrap hidden md:block">
-        <table className="crm-table min-w-[1080px]">
-          <thead>
-            <tr>
-              <th>Клиент</th>
-              <th>Телефон</th>
-              <th>Формат</th>
-              <th>Поток</th>
-              <th>Оплата</th>
-              <th>Дата рег.</th>
-              <th>Менеджер</th>
-              <th>Статус</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {clients.length === 0
-              ? <tr><td colSpan={9} className="text-center py-10 text-gray-400">Клиенты не найдены</td></tr>
-              : clients.map(c => {
-                const payStatus = c.payment_type === 'full'
-                  ? (c.full_payment?.is_paid ? <span className="text-green-600 text-xs flex items-center gap-1"><CheckCircle size={12} /> Оплачено</span> : <span className="text-red-500 text-xs flex items-center gap-1"><Clock size={12} /> Не оплачено</span>)
-                  : (c.installment_plan && Number(c.installment_plan.remaining) <= 0 ? <span className="text-green-600 text-xs flex items-center gap-1"><CheckCircle size={12} /> Закрыта</span> : <span className="text-orange-500 text-xs flex items-center gap-1"><Clock size={12} /> {fmtMoney(c.installment_plan?.remaining || 0)} остаток</span>)
-                return (
-                  <tr key={c.id}>
-                    <td className="px-5 py-4">
-                      <p className="font-medium text-gray-800">{c.full_name}</p>
-                      {c.is_repeat && <p className="text-xs text-gray-400 flex items-center gap-1"><RotateCcw size={12} /> Повторный</p>}
-                    </td>
-                    <td className="px-5 py-4 text-gray-600">{c.phone}</td>
-                    <td className="px-5 py-4 text-gray-600">
-                      <span className="inline-flex items-center gap-1">
-                        {c.training_format === 'online' ? <Globe size={14} /> : <Dumbbell size={14} />}
-                        {c.group_type}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-gray-600">{c.group ? `Поток #${c.group.number}` : '—'}</td>
-                    <td className="px-5 py-4">{payStatus}</td>
-                    <td className="px-5 py-4 text-gray-500 text-xs">{fmtDate(c.registered_at)}</td>
-                    <td className="px-5 py-4 text-gray-500 text-xs">{c.registered_by_name || '—'}</td>
-                    <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span></td>
-                    <td className="px-5 py-4"><Link to={`/admin/clients/${c.id}`} className="crm-link-action-primary">Открыть</Link></td>
+        {/* Расширенные */}
+        {showAdvanced && (
+          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-3 items-center animate-fade-in">
+            <select value={group} onChange={e => setGroup(e.target.value)} className="crm-input w-full sm:w-44">
+              <option value="">Все потоки</option>
+              {groups.map(g => <option key={g.id} value={g.id}>Поток #{g.number}</option>)}
+            </select>
+            <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)} className="crm-input w-full sm:w-44">
+              <option value="">Все по оплате</option>
+              <option value="paid">Оплачено</option>
+              <option value="unpaid">Есть остаток</option>
+            </select>
+            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+              <input type="checkbox" checked={isRepeat} onChange={e => setIsRepeat(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30" />
+              Повторные
+            </label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-400">Рег. от</span>
+              <input type="date" value={registeredFrom} onChange={e => setRegisteredFrom(e.target.value)}
+                className="crm-input w-full sm:w-36" />
+              <span className="text-xs text-slate-400">до</span>
+              <input type="date" value={registeredTo} onChange={e => setRegisteredTo(e.target.value)}
+                className="crm-input w-full sm:w-36" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Таблица */}
+      <div className="crm-card overflow-hidden">
+        {/* Мобильный вид */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {loading && (
+            <div className="p-8 text-center">
+              <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto" />
+            </div>
+          )}
+          {!loading && clients.length === 0 && (
+            <div className="p-12 text-center text-slate-400">
+              <Search size={32} className="mx-auto mb-2 opacity-30" />
+              <p className="text-sm">Клиенты не найдены</p>
+            </div>
+          )}
+          {!loading && clients.map(c => (
+            <div key={c.id} className="p-4 hover:bg-slate-50 transition">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div>
+                  <p className="font-semibold text-slate-900">{c.full_name}</p>
+                  <p className="text-sm text-slate-500 mt-0.5">{c.phone}</p>
+                </div>
+                <StatusDropdown clientId={c.id} currentStatus={c.status} onChanged={handleStatusChanged} />
+              </div>
+              <div className="flex flex-wrap gap-2 items-center text-xs text-slate-500 mb-3">
+                <span className="flex items-center gap-1">
+                  {c.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
+                  {c.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
+                </span>
+                {c.group && <span className="text-slate-400">· Поток #{c.group.number}</span>}
+                {c.is_repeat && (
+                  <span className="flex items-center gap-0.5 text-indigo-500">
+                    <RotateCcw size={11} /> Повторный
+                  </span>
+                )}
+                <span className="ml-auto"><PayBadge c={c} /></span>
+              </div>
+              <Link to={`/admin/clients/${c.id}`}
+                className="text-xs text-indigo-600 font-medium hover:text-indigo-800 transition">
+                Открыть карточку →
+              </Link>
+            </div>
+          ))}
+        </div>
+
+        {/* Десктоп */}
+        <div className="hidden md:block">
+          {loading ? (
+            <div className="py-12 text-center">
+              <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto" />
+            </div>
+          ) : (
+            <div className="crm-table-wrap">
+              <table className="crm-table min-w-[1080px]">
+                <thead>
+                  <tr>
+                    <th>Клиент</th>
+                    <th>Телефон</th>
+                    <th>Формат</th>
+                    <th>Поток</th>
+                    <th>Оплата</th>
+                    <th>Дата рег.</th>
+                    <th>Менеджер</th>
+                    <th>Статус</th>
+                    <th></th>
                   </tr>
-                )
-              })}
-          </tbody>
-        </table>
+                </thead>
+                <tbody>
+                  {clients.length === 0 ? (
+                    <tr><td colSpan={9} className="text-center py-12 text-slate-400">
+                      <Search size={24} className="mx-auto mb-2 opacity-30" />
+                      Клиенты не найдены
+                    </td></tr>
+                  ) : clients.map(c => (
+                    <tr key={c.id}>
+                      <td>
+                        <p className="font-semibold text-slate-900">{c.full_name}</p>
+                        {c.is_repeat && (
+                          <p className="text-xs text-indigo-500 flex items-center gap-1 mt-0.5">
+                            <RotateCcw size={11} /> Повторный
+                          </p>
+                        )}
+                      </td>
+                      <td className="text-slate-600">{c.phone}</td>
+                      <td>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
+                          ${c.training_format === 'online' ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'}`}>
+                          {c.training_format === 'online' ? <Globe size={11} /> : <Dumbbell size={11} />}
+                          {c.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
+                        </span>
+                      </td>
+                      <td className="text-slate-600 text-sm">
+                        {c.group ? <span className="font-medium">#{c.group.number}</span> : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td><PayBadge c={c} /></td>
+                      <td className="text-slate-500 text-xs">{fmtDate(c.registered_at)}</td>
+                      <td className="text-slate-500 text-xs">{c.registered_by_name || '—'}</td>
+                      <td>
+                        <StatusDropdown clientId={c.id} currentStatus={c.status} onChanged={handleStatusChanged} />
+                      </td>
+                      <td>
+                        <Link to={`/admin/clients/${c.id}`}
+                          className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition">
+                          Открыть →
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Пагинация */}
       {totalPages > 1 && (
-        <div className="flex justify-between items-center mt-4">
-          <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page <= 1} className="crm-link-action-primary disabled:text-gray-300">← Назад</button>
-          <span className="text-sm text-gray-500">{count} клиентов · стр. {page}/{totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page >= totalPages} className="crm-link-action-primary disabled:text-gray-300">Вперёд →</button>
+        <div className="flex items-center justify-between mt-5">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+            className="crm-btn-secondary disabled:opacity-40">
+            <ChevronLeft size={16} /> Назад
+          </button>
+          <span className="text-sm text-slate-500">
+            Страница <span className="font-semibold text-slate-800">{page}</span> из {totalPages}
+            <span className="text-slate-400 ml-2">· {count} клиентов</span>
+          </span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+            className="crm-btn-secondary disabled:opacity-40">
+            Вперёд <ChevronRight size={16} />
+          </button>
         </div>
       )}
     </AdminLayout>

@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from .serializers import AttendanceSerializer, AttendanceMarkSerializer, BulkAttendanceMarkSerializer
 from .services import AttendanceService
+from core.exceptions import ValidationError as AppValidationError
 
 
 class AttendanceViewSet(viewsets.GenericViewSet):
@@ -35,16 +36,27 @@ class AttendanceViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         lesson_date = serializer.validated_data['lesson_date']
         results = []
+        errors = []
         for rec in serializer.validated_data['records']:
-            record = self.service.mark_attendance(
-                client_id=str(rec['client_id']),
-                lesson_date=lesson_date,
-                marked_by=request.user,
-                is_absent=rec['is_absent'],
-                note=rec.get('note', '')
-            )
-            results.append(record)
-        return Response(AttendanceSerializer(results, many=True).data)
+            try:
+                record = self.service.mark_attendance(
+                    client_id=str(rec['client_id']),
+                    lesson_date=lesson_date,
+                    marked_by=request.user,
+                    is_absent=rec['is_absent'],
+                    note=rec.get('note', '')
+                )
+                results.append(record)
+            except AppValidationError as e:
+                # Пропускаем онлайн-клиентов и других некорректных — не падаем
+                errors.append({'client_id': str(rec['client_id']), 'error': str(e)})
+            except Exception as e:
+                errors.append({'client_id': str(rec['client_id']), 'error': str(e)})
+
+        return Response({
+            'saved': AttendanceSerializer(results, many=True).data,
+            'skipped': errors,
+        })
 
     @action(detail=False, methods=['get'], url_path=r'group/(?P<group_id>[^/.]+)')
     def by_group(self, request, group_id=None):
@@ -63,3 +75,29 @@ class AttendanceViewSet(viewsets.GenericViewSet):
             )
         records = self.service.get_group_attendance_for_date(group_id, lesson_date)
         return Response(AttendanceSerializer(records, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path=r'group/(?P<group_id>[^/.]+)/all')
+    def all_by_group(self, request, group_id=None):
+        """
+        Возвращает ВСЕ записи посещаемости группы за один запрос — вместо N запросов.
+        Отвечает: { "date": [{client, is_absent, note}, ...], ... }
+        """
+        from apps.attendance.models import Attendance
+        records = (
+            Attendance.objects
+            .filter(client__group_id=group_id)
+            .order_by('lesson_date', 'client_id')
+            .values('lesson_date', 'client_id', 'is_absent', 'note')
+        )
+        # Группируем по дате
+        result = {}
+        for r in records:
+            date_str = str(r['lesson_date'])
+            if date_str not in result:
+                result[date_str] = []
+            result[date_str].append({
+                'client': str(r['client_id']),
+                'is_absent': r['is_absent'],
+                'note': r['note'] or '',
+            })
+        return Response(result)

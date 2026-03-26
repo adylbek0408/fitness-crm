@@ -1,7 +1,20 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link, useOutletContext } from 'react-router-dom'
+import { Save, ArrowLeft, Phone, User, Calendar } from 'lucide-react'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
+
+function Field({ label, required, children, hint }) {
+  return (
+    <div>
+      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+        {label} {required && <span className="text-red-400">*</span>}
+      </label>
+      {children}
+      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+    </div>
+  )
+}
 
 export default function TrainerForm() {
   const { id } = useParams()
@@ -11,6 +24,7 @@ export default function TrainerForm() {
   const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', schedule: '' })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (isEdit) {
@@ -22,7 +36,7 @@ export default function TrainerForm() {
   }, [id])
 
   const handleSubmit = async e => {
-    e.preventDefault(); setError(''); setSuccess('')
+    e.preventDefault(); setError(''); setSuccess(''); setSaving(true)
     try {
       if (isEdit) await api.put(`/trainers/${id}/`, form)
       else await api.post('/trainers/', form)
@@ -30,47 +44,88 @@ export default function TrainerForm() {
       setTimeout(() => nav('/admin/trainers'), 1200)
     } catch (e) {
       const d = e.response?.data
-      setError(typeof d === 'object' ? Object.entries(d).map(([k,v]) => `${k}: ${v}`).join(' | ') : 'Ошибка')
-    }
+      setError(typeof d === 'object' ? Object.entries(d).map(([k, v]) => `${k}: ${v}`).join(' | ') : 'Ошибка')
+    } finally { setSaving(false) }
   }
 
-  const set = (k, v) => setForm(f => ({...f, [k]: v}))
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   return (
     <AdminLayout user={user}>
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <Link to="/admin/trainers" className="text-gray-400 hover:text-gray-600 text-sm">← Назад</Link>
-        <h2 className="text-2xl font-bold text-gray-800">{isEdit ? 'Редактировать тренера' : 'Новый тренер'}</h2>
+      {/* Хедер */}
+      <div className="flex items-center gap-3 mb-8 flex-wrap">
+        <Link to="/admin/trainers"
+          className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm transition">
+          <ArrowLeft size={16} /> Назад
+        </Link>
+        <div className="w-px h-5 bg-slate-200" />
+        <div>
+          <h2 className="crm-page-title">{isEdit ? 'Редактировать тренера' : 'Новый тренер'}</h2>
+          <p className="crm-page-subtitle">
+            {isEdit ? `${form.last_name} ${form.first_name}` : 'Добавить в команду'}
+          </p>
+        </div>
       </div>
-      {error && <div className="bg-red-50 text-red-600 rounded-xl p-4 mb-4 text-sm">{error}</div>}
-      {success && <div className="bg-green-50 text-green-700 rounded-xl p-4 mb-4 text-sm">{success}</div>}
-      <div className="bg-white rounded-2xl shadow-sm border p-6 max-w-xl">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Фамилия *</label>
-              <input required value={form.last_name} onChange={e => set('last_name', e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+
+      {error && <div className="crm-toast-error mb-5">{error}</div>}
+      {success && <div className="crm-toast-success mb-5">{success}</div>}
+
+      <div className="max-w-xl">
+        <form onSubmit={handleSubmit}>
+          <div className="crm-card p-6 space-y-5 mb-5">
+            <p className="crm-section-title">Личные данные</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <Field label="Фамилия" required>
+                <div className="relative">
+                  <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input required value={form.last_name}
+                    onChange={e => set('last_name', e.target.value)}
+                    placeholder="Иванов"
+                    className="crm-input pl-9" />
+                </div>
+              </Field>
+              <Field label="Имя" required>
+                <input required value={form.first_name}
+                  onChange={e => set('first_name', e.target.value)}
+                  placeholder="Алексей"
+                  className="crm-input" />
+              </Field>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Имя *</label>
-              <input required value={form.first_name} onChange={e => set('first_name', e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            </div>
+
+            <Field label="Телефон" hint="Укажите номер в формате +996...">
+              <div className="relative">
+                <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input value={form.phone}
+                  onChange={e => set('phone', e.target.value)}
+                  placeholder="+996 700 000 000"
+                  className="crm-input pl-9" />
+              </div>
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Телефон</label>
-            <input value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+996..."
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+
+          <div className="crm-card p-6 space-y-5 mb-6">
+            <p className="crm-section-title">Рабочее расписание</p>
+            <Field label="Расписание" hint="Опишите рабочие дни и часы тренера">
+              <div className="relative">
+                <Calendar size={15} className="absolute left-3 top-3 text-slate-400" />
+                <textarea rows={4} value={form.schedule}
+                  onChange={e => set('schedule', e.target.value)}
+                  placeholder="Например: Пн-Пт с 09:00 до 18:00, Сб 10:00–14:00"
+                  className="crm-input pl-9 resize-none" />
+              </div>
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Рабочее расписание</label>
-            <textarea rows={4} value={form.schedule} onChange={e => set('schedule', e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
-          </div>
-          <div className="flex gap-3 pt-2 flex-wrap">
-            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-xl text-sm transition">Сохранить</button>
-            <Link to="/admin/trainers" className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-6 py-3 rounded-xl text-sm transition">Отмена</Link>
+
+          <div className="flex gap-3 flex-wrap">
+            <button type="submit" disabled={saving}
+              className="crm-btn-primary disabled:opacity-60">
+              {saving
+                ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Сохранение...</>
+                : <><Save size={16} /> {isEdit ? 'Обновить' : 'Создать тренера'}</>
+              }
+            </button>
+            <Link to="/admin/trainers" className="crm-btn-secondary">Отмена</Link>
           </div>
         </form>
       </div>

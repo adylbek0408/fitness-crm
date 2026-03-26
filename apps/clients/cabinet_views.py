@@ -40,6 +40,46 @@ class CabinetLoginView(APIView):
         })
 
 
+class CabinetAttendanceView(APIView):
+    """
+    GET /api/cabinet/attendance/
+    Returns attendance records for the authenticated cabinet client.
+    Query params: limit (default 50)
+    """
+    authentication_classes = [CabinetJWTAuthentication]
+
+    def get_permissions(self):
+        from .cabinet_permissions import IsCabinetClient
+        return [IsCabinetClient()]
+
+    def get(self, request):
+        from apps.attendance.models import Attendance
+        account = request.user
+        limit = int(request.query_params.get('limit', 50))
+        records = (
+            Attendance.objects
+            .filter(client_id=account.client_id)
+            .order_by('-lesson_date')[:limit]
+        )
+        data = [
+            {
+                'lesson_date': str(r.lesson_date),
+                'is_absent': r.is_absent,
+                'note': r.note or '',
+            }
+            for r in records
+        ]
+        total = Attendance.objects.filter(client_id=account.client_id).count()
+        absent = Attendance.objects.filter(client_id=account.client_id, is_absent=True).count()
+        present = Attendance.objects.filter(client_id=account.client_id, is_absent=False).count()
+        return Response({
+            'records': data,
+            'total': total,
+            'absent': absent,
+            'present': present,
+        })
+
+
 class CabinetMeView(APIView):
     authentication_classes = [CabinetJWTAuthentication]
     permission_classes = []  # only cabinet-authenticated can reach this
@@ -61,6 +101,9 @@ class CabinetMeView(APIView):
                 'number': g.number,
                 'status': g.status,
                 'group_type': g.group_type,
+                'schedule': g.schedule or '',
+                'start_date': str(g.start_date) if g.start_date else '',
+                'trainer': g.trainer.full_name if g.trainer_id else '',
             }
 
         # Завершённые потоки: пока только текущий статус клиента; истории потоков в БД нет

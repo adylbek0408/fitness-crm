@@ -34,15 +34,17 @@ export default function MobileDateField({ label, value, onChange, placeholder = 
           type="button"
           onClick={() => setOpen(true)}
           className="crm-mobile-input text-left flex items-center justify-between"
+        style={{ cursor: 'pointer' }}
         >
-          <span className={selected ? 'text-slate-800' : 'text-slate-400'}>{displayValue}</span>
-          <Calendar size={18} className="text-slate-500" />
+          <span style={{ color: selected ? 'var(--text)' : 'var(--text-xs)' }}>{displayValue}</span>
+          <Calendar size={17} style={{ color: '#be185d' }} />
         </button>
       </div>
 
       {open && (
         <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] p-4 flex items-end sm:items-center justify-center">
-          <div className="w-full sm:w-auto max-w-sm bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="w-full sm:w-auto max-w-sm rounded-3xl shadow-2xl overflow-hidden"
+             style={{ background: '#fff', border: '1px solid var(--border)' }}>
             <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
               <h3 className="text-base font-semibold text-slate-900">Выберите дату</h3>
               <button
