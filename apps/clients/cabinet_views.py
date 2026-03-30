@@ -11,7 +11,8 @@ from .models import ClientAccount, Client
 
 
 class CabinetLoginView(APIView):
-    permission_classes = [AllowAny]
+    authentication_classes = []   # ← Отключаем аутентификацию: протухший cabinet-токен
+    permission_classes = [AllowAny]  # не должен блокировать вход
 
     def post(self, request):
         username = request.data.get('username') or request.data.get('login')

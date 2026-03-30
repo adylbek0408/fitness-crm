@@ -86,19 +86,31 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
 
   useEffect(() => {
     if (!offlineClients.length || !lessonDates.length || view !== 'history') return
-    const toLoad = lessonDates.filter(d => !history[d])
-    if (!toLoad.length) return
-    toLoad.forEach(date => {
-      api.get(`/attendance/group/${groupId}/?date=${date}`)
-        .then(r => {
-          const absent=r.data.filter(rec=>rec.is_absent).length
-          const present=r.data.filter(rec=>!rec.is_absent).length
-          const noRecord=offlineClients.length-r.data.length
-          setHistory(prev=>({...prev,[date]:{absent,present:present+noRecord,total:offlineClients.length,loaded:true}}))
+    let cancelled = false
+    api.get(`/attendance/group/${groupId}/all/`)
+      .then(r => {
+        if (cancelled) return
+        const allData = r.data // { "2026-03-28": [{client, is_absent, note}], ... }
+        const newHistory = {}
+        lessonDates.forEach(date => {
+          const recs = allData[date] || []
+          const absent = recs.filter(rec => rec.is_absent).length
+          const present = offlineClients.length - absent
+          newHistory[date] = { absent, present, total: offlineClients.length, loaded: true }
         })
-        .catch(() => setHistory(prev=>({...prev,[date]:{absent:0,present:offlineClients.length,total:offlineClients.length,loaded:true}})))
-    })
-  }, [view, lessonDates.length, offlineClients.length])
+        setHistory(newHistory)
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Фоллбэк: все присутствовали (fallback)
+        const newHistory = {}
+        lessonDates.forEach(date => {
+          newHistory[date] = { absent: 0, present: offlineClients.length, total: offlineClients.length, loaded: true }
+        })
+        setHistory(newHistory)
+      })
+    return () => { cancelled = true }
+  }, [view, groupId, lessonDates, offlineClients.length])
 
   const toggle = id => setRecords(prev=>({...prev,[id]:{...prev[id],is_absent:!prev[id]?.is_absent,saved:false}}))
   const markAll = isAbsent => setRecords(prev=>{

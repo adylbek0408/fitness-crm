@@ -12,7 +12,14 @@ export default function Login({ defaultMode = 'staff' }) {
   const [loading, setLoading] = useState(false)
   const nav = useNavigate()
 
-  useEffect(() => { setMode(defaultMode) }, [defaultMode])
+  useEffect(() => {
+    setMode(defaultMode)
+    // Очищаем протухшие кабинетные токены чтобы axios не слал их с логин-запросом
+    if (defaultMode === 'student') {
+      localStorage.removeItem('cabinet_access_token')
+      localStorage.removeItem('cabinet_refresh_token')
+    }
+  }, [defaultMode])
 
   const handleSubmit = async e => {
     e.preventDefault()

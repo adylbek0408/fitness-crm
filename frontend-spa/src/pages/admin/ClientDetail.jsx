@@ -78,6 +78,7 @@ export default function ClientDetail() {
   const [repeatLoading, setRepeatLoading] = useState(false)
   const [newPassword, setNewPassword] = useState(null)
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
+  const [resetError, setResetError] = useState('')
   const [statusLoading, setStatusLoading] = useState(false)
 
   const load = async () => {
@@ -110,10 +111,14 @@ export default function ClientDetail() {
   }
 
   const resetCabinetPassword = async () => {
-    setResetPasswordLoading(true); setNewPassword(null)
+    setResetPasswordLoading(true); setNewPassword(null); setResetError('')
     try {
       const r = await api.post(`/clients/${id}/reset_cabinet_password/`)
       setNewPassword(r.data.password)
+      load() // Обновляем данные клиента чтобы password_plain обновился
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.message || 'Ошибка сброса пароля'
+      setResetError(msg)
     } finally { setResetPasswordLoading(false) }
   }
 
@@ -185,20 +190,23 @@ export default function ClientDetail() {
               </code>
               <CopyButton text={client.cabinet_username} />
             </div>
-            {newPassword ? (
+            {/* Пароль — всегда видимый */}
+            {(newPassword || client.cabinet_password) && (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-indigo-600/70">Новый пароль:</span>
-                <code className="bg-emerald-100 px-2.5 py-1 rounded-lg font-mono text-emerald-800 border border-emerald-200 text-xs font-bold">
-                  {newPassword}
+                <span className="text-indigo-600/70">{newPassword ? 'Новый пароль:' : 'Пароль:'}</span>
+                <code className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold border ${
+                  newPassword ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-white text-indigo-800 border-indigo-100'
+                }`}>
+                  {newPassword || client.cabinet_password}
                 </code>
-                <CopyButton text={newPassword} />
-                <span className="text-xs text-slate-500">Передайте клиенту — больше не покажется</span>
+                <CopyButton text={newPassword || client.cabinet_password} />
+                {newPassword && <span className="text-xs text-emerald-600 font-medium">✓ Пароль обновлён</span>}
               </div>
-            ) : (
-              <p className="text-indigo-600/70 text-xs">
-                Вход: <a href="/cabinet" target="_blank" rel="noreferrer" className="underline hover:text-indigo-800">/cabinet</a>
-              </p>
             )}
+            <p className="text-indigo-600/70 text-xs">
+              Вход: <a href="/cabinet" target="_blank" rel="noreferrer" className="underline hover:text-indigo-800">/cabinet</a>
+            </p>
+            {resetError && <p className="text-red-500 text-xs">{resetError}</p>}
             <button onClick={resetCabinetPassword} disabled={resetPasswordLoading}
               className="crm-btn-primary text-xs py-2 disabled:opacity-60">
               {resetPasswordLoading

@@ -75,14 +75,18 @@ export default function MobileClientDetail() {
     } finally { setStatusLoading(false) }
   }
 
+  const [resetError, setResetError] = useState('')
+
   const resetCabinetPassword = async () => {
     setResetPasswordLoading(true)
     setNewPassword(null)
+    setResetError('')
     try {
       const r = await api.post(`/clients/${id}/reset_cabinet_password/`)
       setNewPassword(r.data.password)
+      load() // обновить password_plain
     } catch (e) {
-      console.error(e)
+      setResetError(e.response?.data?.detail || e.message || 'Ошибка сброса')
     } finally {
       setResetPasswordLoading(false)
     }
@@ -209,19 +213,23 @@ export default function MobileClientDetail() {
                 <p className="text-sm text-green-600 mt-1">Бонусы: {fmtMoney(client.bonus_balance)}</p>
               )}
               {client.cabinet_username && (
-                <p className="text-xs text-gray-400 mt-1 break-all">Логин кабинета: <span className="font-mono">{client.cabinet_username}</span></p>
-              )}
-              {newPassword && (
-                <p className="text-sm text-green-700 mt-1 break-all">Новый пароль: <span className="font-mono bg-green-100 px-1 rounded">{newPassword}</span></p>
-              )}
-              {client.cabinet_username && (
-                <p className="text-xs text-gray-500 mt-2">Вход в кабинет: <a href="/cabinet" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">/cabinet</a></p>
-              )}
-              {client.cabinet_username && (
-                <button type="button" onClick={resetCabinetPassword} disabled={resetPasswordLoading}
-                  className="mt-2 text-xs text-blue-600 hover:underline disabled:opacity-60">
-                  {resetPasswordLoading ? 'Создаём...' : 'Сбросить пароль (получить новый)'}
-                </button>
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-gray-400 break-all">Логин: <span className="font-mono font-bold">{client.cabinet_username}</span></p>
+                  {(newPassword || client.cabinet_password) && (
+                    <p className={`text-xs break-all ${newPassword ? 'text-green-700' : 'text-gray-400'}`}>
+                      {newPassword ? 'Новый пароль: ' : 'Пароль: '}
+                      <span className={`font-mono font-bold px-1 rounded ${newPassword ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        {newPassword || client.cabinet_password}
+                      </span>
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500">Вход: <a href="/cabinet" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">/cabinet</a></p>
+                  {resetError && <p className="text-xs text-red-500">{resetError}</p>}
+                  <button type="button" onClick={resetCabinetPassword} disabled={resetPasswordLoading}
+                    className="text-xs text-blue-600 hover:underline disabled:opacity-60">
+                    {resetPasswordLoading ? 'Создаём...' : 'Сбросить пароль'}
+                  </button>
+                </div>
               )}
             </div>
             <span className={`text-xs px-3 py-1 rounded-full ${STATUS_BADGE[client.status]}`}>{STATUS_LABEL[client.status]}</span>

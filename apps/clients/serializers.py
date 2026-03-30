@@ -40,6 +40,7 @@ class ClientReadSerializer(serializers.ModelSerializer):
     installment_plan = InstallmentPlanReadSerializer(read_only=True)
     registered_by_name = serializers.CharField(source='registered_by.username', read_only=True)
     cabinet_username = serializers.SerializerMethodField()
+    cabinet_password = serializers.SerializerMethodField()
 
     class Meta:
         model = Client
@@ -48,13 +49,20 @@ class ClientReadSerializer(serializers.ModelSerializer):
             'phone', 'training_format', 'group_type', 'group', 'trainer',
             'status', 'is_repeat', 'discount', 'bonus_balance', 'payment_type',
             'registered_at', 'registered_by_name',
-            'full_payment', 'installment_plan', 'cabinet_username', 'created_at'
+            'full_payment', 'installment_plan',
+            'cabinet_username', 'cabinet_password', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
 
     def get_cabinet_username(self, obj):
         try:
             return obj.cabinet_account.username
+        except ClientAccount.DoesNotExist:
+            return None
+
+    def get_cabinet_password(self, obj):
+        try:
+            return obj.cabinet_account.password_plain or None
         except ClientAccount.DoesNotExist:
             return None
 

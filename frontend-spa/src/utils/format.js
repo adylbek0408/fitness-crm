@@ -1,8 +1,12 @@
 export const fmtMoney = v =>
   Number(v).toLocaleString('ru-RU') + ' сом'
 
-export const fmtDate = d =>
-  d ? new Date(d).toLocaleDateString('ru-RU') : '—'
+export const fmtDate = d => {
+  if (!d) return '—'
+  // Парсим как локальную дату без UTC-сдвига
+  const date = new Date(d + 'T00:00:00')
+  return date.toLocaleDateString('ru-RU')
+}
 
 export const STATUS_BADGE = {
   active:      'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -30,5 +34,7 @@ export const toAbsoluteUrl = (url) => {
   if (/^https?:\/\//i.test(url)) return url
   if (url.startsWith('//')) return `${window.location.protocol}${url}`
   const normalized = url.startsWith('/') ? url : `/${url}`
-  return `${window.location.origin}${normalized}`
+  // Для IP:port сервера — используем API base URL
+  const apiBase = import.meta.env.VITE_API_BASE || 'http://83.222.10.148:8090'
+  return `${apiBase}${normalized}`
 }
