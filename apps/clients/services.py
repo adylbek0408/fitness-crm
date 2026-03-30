@@ -10,12 +10,7 @@ from apps.payments.models import FullPayment, InstallmentPlan
 
 
 def get_repeat_client_bonus_amount():
-    from core.models import SystemSetting
-    try:
-        s = SystemSetting.objects.get(key='repeat_client_bonus')
-        return Decimal(s.value)
-    except Exception:
-        return Decimal('800')
+    return Decimal('800')
 
 
 def _generate_cabinet_username(client):
