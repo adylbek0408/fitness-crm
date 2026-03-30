@@ -36,8 +36,8 @@ class ClientReadSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     group = GroupReadSerializer(read_only=True)
     trainer = TrainerSerializer(read_only=True)
-    full_payment = FullPaymentReadSerializer(read_only=True)
-    installment_plan = InstallmentPlanReadSerializer(read_only=True)
+    full_payment = serializers.SerializerMethodField()
+    installment_plan = serializers.SerializerMethodField()
     registered_by_name = serializers.CharField(source='registered_by.username', read_only=True)
     cabinet_username = serializers.SerializerMethodField()
     cabinet_password = serializers.SerializerMethodField()
@@ -53,6 +53,18 @@ class ClientReadSerializer(serializers.ModelSerializer):
             'cabinet_username', 'cabinet_password', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+    def get_full_payment(self, obj):
+        fps = obj.full_payments.all()
+        if fps:
+            return FullPaymentReadSerializer(fps[0]).data
+        return None
+
+    def get_installment_plan(self, obj):
+        ips = obj.installment_plans.all()
+        if ips:
+            return InstallmentPlanReadSerializer(ips[0]).data
+        return None
 
     def get_cabinet_username(self, obj):
         try:

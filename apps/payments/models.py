@@ -15,10 +15,10 @@ def receipt_upload_path(instance, filename):
 class FullPayment(UUIDTimestampedModel):
     """One-time full payment for a client."""
 
-    client = models.OneToOneField(
+    client = models.ForeignKey(
         'clients.Client',
         on_delete=models.CASCADE,
-        related_name='full_payment'
+        related_name='full_payments'
     )
     receipt = models.ImageField(
         upload_to=receipt_upload_path,
@@ -45,10 +45,10 @@ class FullPayment(UUIDTimestampedModel):
 class InstallmentPlan(UUIDTimestampedModel):
     """Installment payment plan for a client."""
 
-    client = models.OneToOneField(
+    client = models.ForeignKey(
         'clients.Client',
         on_delete=models.CASCADE,
-        related_name='installment_plan'
+        related_name='installment_plans'
     )
     total_cost = models.DecimalField(max_digits=12, decimal_places=2)
     deadline = models.DateField()

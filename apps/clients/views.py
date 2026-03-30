@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db.models import Prefetch
 
 from core.permissions import IsAdmin, IsAdminOrRegistrar
 from core.exceptions import ValidationError
@@ -9,6 +10,7 @@ from .models import Client, ClientGroupHistory
 from .serializers import ClientReadSerializer, ClientCreateSerializer, ClientUpdateSerializer
 from .services import ClientService
 from .filters import ClientFilter
+from apps.payments.models import FullPayment, InstallmentPlan
 
 
 class ClientViewSet(viewsets.ModelViewSet):
@@ -21,8 +23,8 @@ class ClientViewSet(viewsets.ModelViewSet):
         return Client.objects.select_related(
             'group', 'trainer', 'registered_by', 'cabinet_account'
         ).prefetch_related(
-            'full_payment',
-            'installment_plan__payments'
+            Prefetch('full_payments', queryset=FullPayment.objects.order_by('-created_at')),
+            Prefetch('installment_plans', queryset=InstallmentPlan.objects.order_by('-created_at').prefetch_related('payments')),
         ).order_by('-registered_at')
 
     def get_permissions(self):
@@ -116,3 +118,13 @@ class ClientViewSet(viewsets.ModelViewSet):
             for r in records
         ]
         return Response(data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin], url_path='re-enroll')
+    def re_enroll(self, request, pk=None):
+        """
+        POST /api/clients/{id}/re-enroll/
+        Повторная запись клиента: создаёт новую оплату + записывает в поток.
+        Body: { group_id, payment_type, payment_data: {amount} | {total_cost, deadline} }
+        """
+        client = self.service.re_enroll_client(pk, request.data, user=request.user)
+        return Response(ClientReadSerializer(client).data)

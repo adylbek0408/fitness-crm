@@ -114,60 +114,55 @@ function GroupHistoryPanel({ clientId, clientPaymentType }) {
   )
 }
 
-// ── Блок повторного клиента + запись в поток ──────────────────────────────────
+// ── Повторная запись клиента (поток + оплата) ────────────────────────────────
 function RepeatClientPanel({ client, clientId, onSuccess }) {
-  const [repeatLoading, setRepeatLoading] = useState(false)
-  const [repeatError, setRepeatError] = useState('')
   const [groups, setGroups] = useState([])
-  const [showGroups, setShowGroups] = useState(false)
+  const [showForm, setShowForm] = useState(false)
   const [groupsLoading, setGroupsLoading] = useState(false)
-  const [enrollGroup, setEnrollGroup] = useState(null)   // выбранный поток
+  const [enrollGroup, setEnrollGroup] = useState(null)
+  const [payType, setPayType] = useState('full')
+  const [payAmount, setPayAmount] = useState('')
+  const [totalCost, setTotalCost] = useState('')
+  const [deadline, setDeadline] = useState('')
   const [enrollLoading, setEnrollLoading] = useState(false)
   const [enrollMsg, setEnrollMsg] = useState('')
   const [enrollError, setEnrollError] = useState('')
-
-  const setRepeat = async (isRepeat) => {
-    setRepeatLoading(true)
-    setRepeatError('')
-    try {
-      await api.patch(`/clients/${clientId}/`, { is_repeat: isRepeat, discount: '0' })
-      onSuccess()
-    } catch (e) {
-      const d = e.response?.data
-      const msg = typeof d === 'object' ? JSON.stringify(d) : (d?.detail || e.message || 'Ошибка')
-      setRepeatError(msg)
-      console.error('setRepeat error:', e.response?.status, d)
-    } finally { setRepeatLoading(false) }
-  }
 
   const loadGroups = async () => {
     setGroupsLoading(true)
     try {
       const r = await api.get('/groups/?status=recruitment&page_size=50')
-      setGroups(r.data.results || [])
+      const a = await api.get('/groups/?status=active&page_size=50')
+      setGroups([...(r.data.results || []), ...(a.data.results || [])])
     } catch { /* ignore */ }
     finally { setGroupsLoading(false) }
   }
 
-  const handleShowGroups = () => {
-    if (!showGroups && groups.length === 0) loadGroups()
-    setShowGroups(v => !v)
-    setEnrollGroup(null)
-    setEnrollMsg('')
-    setEnrollError('')
+  const handleShowForm = () => {
+    if (!showForm && groups.length === 0) loadGroups()
+    setShowForm(v => !v)
+    setEnrollGroup(null); setEnrollMsg(''); setEnrollError('')
   }
 
-  const enrollInGroup = async () => {
-    if (!enrollGroup) return
+  const handleEnroll = async () => {
+    if (!enrollGroup) { setEnrollError('Выберите поток'); return }
+    if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) { setEnrollError('Укажите сумму'); return }
+    if (payType === 'installment' && (!totalCost || !deadline)) { setEnrollError('Укажите стоимость и дедлайн'); return }
     setEnrollLoading(true); setEnrollMsg(''); setEnrollError('')
     try {
-      await api.post(`/groups/${enrollGroup.id}/add-client/`, { client_id: clientId })
-      setEnrollMsg(`✅ Клиент добавлен в Поток #${enrollGroup.number}`)
-      setShowGroups(false)
-      setEnrollGroup(null)
+      await api.post(`/clients/${clientId}/re-enroll/`, {
+        group_id: enrollGroup.id,
+        payment_type: payType,
+        payment_data: payType === 'full'
+          ? { amount: payAmount }
+          : { total_cost: totalCost, deadline }
+      })
+      setEnrollMsg(`✅ Клиент записан в Поток #${enrollGroup.number}`)
+      setShowForm(false); setEnrollGroup(null)
+      setPayAmount(''); setTotalCost(''); setDeadline('')
       onSuccess()
     } catch(e) {
-      setEnrollError(e.response?.data?.detail || 'Ошибка записи')
+      setEnrollError(e.response?.data?.detail || JSON.stringify(e.response?.data) || 'Ошибка')
     } finally { setEnrollLoading(false) }
   }
 
@@ -178,104 +173,129 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
     return p[0].split(',').map(d=>DAY_LABELS[d]||d).join(', ') + (p[1] ? ` · ${p[1]}` : '')
   }
 
+  const canReEnroll = !client.group && ['completed','expelled','frozen'].includes(client.status)
+  if (!canReEnroll && !client.is_repeat) return null
+
   return (
     <div className="crm-card p-5 mb-5">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
           <RotateCcw size={15} className="text-indigo-600" />
         </div>
-        <h3 className="font-bold text-slate-800">Повторный клиент</h3>
+        <h3 className="font-bold text-slate-800">Повторная запись</h3>
+        {client.is_repeat && (
+          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">Повторный</span>
+        )}
       </div>
       <p className="text-sm text-slate-500 mb-3">
-        Повторным клиентам начисляется бонус на баланс.
+        Клиент пришёл снова? Запишите в поток с новой оплатой. Бонус 800 сом начислится автоматически.
       </p>
 
-      {/* Чекбокс */}
-      <div role="button" tabIndex={0}
-        onClick={() => !repeatLoading && setRepeat(!client.is_repeat)}
-        onKeyDown={e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); !repeatLoading && setRepeat(!client.is_repeat) } }}
-        className={`flex items-center gap-3 py-3.5 px-4 rounded-2xl border-2 cursor-pointer select-none transition-all duration-150 mb-4
-          ${client.is_repeat ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30'}`}>
-        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-          client.is_repeat ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'
-        }`}>
-          {client.is_repeat && <Check size={12} className="text-white" strokeWidth={3} />}
-        </div>
-        <span className="text-sm font-semibold text-slate-800">Клиент повторный</span>
-        {repeatLoading && <span className="ml-auto w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin block" />}
-      </div>
-
-      {repeatError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 mb-4">
-          ⚠️ {repeatError}
+      {enrollMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-4">
+          {enrollMsg}
         </div>
       )}
 
-      {/* Кнопка «Записать в поток» */}
-      {client.is_repeat && (
+      {canReEnroll && (
         <div>
-          <button onClick={handleShowGroups}
+          <button onClick={handleShowForm}
             className="crm-btn-secondary w-full justify-center gap-2">
             <RotateCcw size={14} />
-            {showGroups ? 'Скрыть потоки' : 'Записать в поток (НАБОР)'}
+            {showForm ? 'Скрыть' : 'Записать повторно в поток'}
           </button>
 
-          {enrollMsg && (
-            <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
-              {enrollMsg}
-            </div>
-          )}
-
-          {showGroups && (
-            <div className="mt-3 space-y-2">
-              {groupsLoading ? (
-                <div className="flex justify-center py-4">
-                  <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : groups.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-3">Нет потоков со статусом «Набор»</p>
-              ) : (
-                <>
-                  <p className="text-xs text-slate-400 font-medium">Выберите поток:</p>
-                  {groups.map(g => (
-                    <div key={g.id}
-                      onClick={() => setEnrollGroup(enrollGroup?.id===g.id ? null : g)}
-                      className={`cursor-pointer p-3 rounded-xl border-2 transition-all ${
-                        enrollGroup?.id === g.id
-                          ? 'bg-indigo-50 border-indigo-400'
-                          : 'bg-white border-slate-200 hover:border-indigo-200'
-                      }`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-slate-800 text-sm">
-                            Поток #{g.number} · {GROUP_TYPE_LABEL[g.group_type] || g.group_type}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            {g.trainer?.full_name || '—'} · {fmtSchedule(g.schedule)}
-                          </p>
+          {showForm && (
+            <div className="mt-4 space-y-4">
+              {/* Шаг 1: Поток */}
+              <div>
+                <p className="text-xs text-slate-400 font-medium mb-2">Шаг 1: Выберите поток</p>
+                {groupsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : groups.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-3">Нет потоков в наборе/активных</p>
+                ) : (
+                  <div className="space-y-2">
+                    {groups.map(g => (
+                      <div key={g.id}
+                        onClick={() => setEnrollGroup(enrollGroup?.id===g.id ? null : g)}
+                        className={`cursor-pointer p-3 rounded-xl border-2 transition-all ${
+                          enrollGroup?.id === g.id
+                            ? 'bg-indigo-50 border-indigo-400'
+                            : 'bg-white border-slate-200 hover:border-indigo-200'
+                        }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-slate-800 text-sm">
+                              Поток #{g.number} · {GROUP_TYPE_LABEL[g.group_type] || g.group_type}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              {g.trainer?.full_name || '—'} · {fmtSchedule(g.schedule)} · {g.status === 'active' ? 'Активный' : 'Набор'}
+                            </p>
+                          </div>
+                          {enrollGroup?.id === g.id && <Check size={16} className="text-indigo-600" />}
                         </div>
-                        {enrollGroup?.id === g.id && <Check size={16} className="text-indigo-600" />}
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+              </div>
 
-                  {enrollGroup && (
-                    <div className="pt-2">
-                      {enrollError && <p className="text-red-500 text-sm mb-2">{enrollError}</p>}
-                      <button onClick={enrollInGroup} disabled={enrollLoading}
-                        className="crm-btn-primary w-full justify-center disabled:opacity-60">
-                        {enrollLoading
-                          ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                          : <Check size={14} />}
-                        Добавить в Поток #{enrollGroup.number}
-                      </button>
-                    </div>
-                  )}
-                </>
+              {/* Шаг 2: Тип оплаты */}
+              {enrollGroup && (
+                <div>
+                  <p className="text-xs text-slate-400 font-medium mb-2">Шаг 2: Тип оплаты</p>
+                  <div className="flex gap-2">
+                    {[{v:'full',l:'Полная оплата'},{v:'installment',l:'Рассрочка'}].map(({v,l})=>(
+                      <button key={v} type="button" onClick={()=>setPayType(v)}
+                        className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition-all ${
+                          payType===v ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-200'
+                        }`}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Шаг 3: Детали */}
+              {enrollGroup && payType === 'full' && (
+                <div>
+                  <p className="text-xs text-slate-400 font-medium mb-2">Шаг 3: Сумма курса</p>
+                  <input type="number" min="0" step="100" placeholder="Сумма (сом)" value={payAmount}
+                    onChange={e=>setPayAmount(e.target.value)} className="crm-input w-full" />
+                </div>
+              )}
+              {enrollGroup && payType === 'installment' && (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-400 font-medium mb-2">Шаг 3: Детали рассрочки</p>
+                  <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)" value={totalCost}
+                    onChange={e=>setTotalCost(e.target.value)} className="crm-input w-full" />
+                  <input type="date" value={deadline}
+                    onChange={e=>setDeadline(e.target.value)} className="crm-input w-full" />
+                </div>
+              )}
+
+              {/* Кнопка */}
+              {enrollGroup && (
+                <div className="pt-2">
+                  {enrollError && <p className="text-red-500 text-sm mb-2">⚠️ {enrollError}</p>}
+                  <button onClick={handleEnroll} disabled={enrollLoading}
+                    className="crm-btn-primary w-full justify-center disabled:opacity-60">
+                    {enrollLoading
+                      ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      : <Check size={14} />}
+                    Записать в Поток #{enrollGroup.number}
+                  </button>
+                </div>
               )}
             </div>
           )}
         </div>
+      )}
+
+      {!canReEnroll && client.is_repeat && (
+        <p className="text-sm text-slate-400">Клиент уже записан в поток.</p>
       )}
     </div>
   )

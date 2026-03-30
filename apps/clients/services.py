@@ -153,3 +153,56 @@ class ClientService(BaseService):
         plain = _generate_cabinet_password()
         account.set_password(plain)
         return plain
+
+    @transaction.atomic
+    def re_enroll_client(self, client_id: str, data: dict, user=None) -> Client:
+        """Повторная запись клиента: новая оплата + поток + статус active."""
+        from apps.groups.models import Group
+
+        client = self.get_client_or_raise(client_id)
+
+        group_id = data.get('group_id')
+        payment_type = data.get('payment_type')
+        payment_data = data.get('payment_data', {})
+
+        if not group_id:
+            raise ValidationError('group_id обязателен')
+        if payment_type not in ('full', 'installment'):
+            raise ValidationError('payment_type должен быть full или installment')
+
+        try:
+            group = Group.objects.get(id=group_id)
+        except Group.DoesNotExist:
+            raise ValidationError(f'Поток {group_id} не найден')
+        if group.status == 'completed':
+            raise ValidationError('Нельзя записать в завершённый поток')
+
+        # Помечаем повторным + бонус (если ещё не повторный)
+        if not client.is_repeat:
+            client.is_repeat = True
+            bonus = get_repeat_client_bonus_amount()
+            client.bonus_balance = (client.bonus_balance or Decimal('0')) + bonus
+
+        # Создаём новую оплату
+        client.payment_type = payment_type
+        if payment_type == 'full':
+            amount = Decimal(str(payment_data.get('amount', 0)))
+            FullPayment.objects.create(client=client, amount=amount)
+        elif payment_type == 'installment':
+            total_cost = payment_data.get('total_cost')
+            deadline = payment_data.get('deadline')
+            if not total_cost or not deadline:
+                raise ValidationError('Для рассрочки нужны total_cost и deadline')
+            InstallmentPlan.objects.create(
+                client=client,
+                total_cost=Decimal(str(total_cost)),
+                deadline=deadline,
+            )
+
+        # Записываем в поток + активируем
+        client.group = group
+        client.status = 'active'
+        client.save()
+
+        self.logger.info(f'Client {client_id} re-enrolled into group {group_id}')
+        return client

@@ -16,9 +16,10 @@ class PaymentService(BaseService):
     # ── Полная оплата ─────────────────────────────────────────────
 
     def mark_full_payment_paid(self, client_id: str, user=None) -> FullPayment:
-        try:
-            payment = FullPayment.objects.select_related('client').get(client_id=client_id)
-        except FullPayment.DoesNotExist:
+        payment = FullPayment.objects.select_related('client').filter(
+            client_id=client_id
+        ).order_by('-created_at').first()
+        if not payment:
             raise NotFoundError(f"FullPayment for client {client_id} not found")
         if payment.is_paid:
             raise ValidationError("Payment is already marked as paid")
@@ -35,9 +36,10 @@ class PaymentService(BaseService):
 
     def upload_full_payment_receipt(self, client_id: str, receipt_file,
                                     amount=None, user=None) -> FullPayment:
-        try:
-            payment = FullPayment.objects.select_related('client').get(client_id=client_id)
-        except FullPayment.DoesNotExist:
+        payment = FullPayment.objects.select_related('client').filter(
+            client_id=client_id
+        ).order_by('-created_at').first()
+        if not payment:
             raise NotFoundError(f"FullPayment for client {client_id} not found")
 
         was_paid = payment.is_paid
@@ -100,11 +102,10 @@ class PaymentService(BaseService):
         return payment
 
     def get_installment_plan_with_summary(self, client_id: str) -> dict:
-        try:
-            plan = InstallmentPlan.objects.prefetch_related('payments').get(
-                client_id=client_id
-            )
-        except InstallmentPlan.DoesNotExist:
+        plan = InstallmentPlan.objects.prefetch_related('payments').filter(
+            client_id=client_id
+        ).order_by('-created_at').first()
+        if not plan:
             raise NotFoundError(f"InstallmentPlan for client {client_id} not found")
 
         return {

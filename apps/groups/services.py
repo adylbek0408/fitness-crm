@@ -40,24 +40,24 @@ class GroupService(BaseService):
 
         # ── Сохраняем историю для каждого клиента потока ──────────
         clients = list(group.clients.select_related('trainer').prefetch_related(
-            'full_payment', 'installment_plan'
+            'full_payments', 'installment_plans', 'installment_plans__payments'
         ).all())
 
         for client in clients:
-            # Снимок оплаты
+            # Снимок оплаты (берём последнюю)
             p_type   = client.payment_type
             p_amount = Decimal('0')
             p_paid   = Decimal('0')
             p_closed = False
 
             if p_type == 'full':
-                fp = getattr(client, 'full_payment', None)
+                fp = client.full_payments.first()
                 if fp:
                     p_amount = fp.amount
                     p_paid   = fp.amount if fp.is_paid else Decimal('0')
                     p_closed = fp.is_paid
             elif p_type == 'installment':
-                ip = getattr(client, 'installment_plan', None)
+                ip = client.installment_plans.first()
                 if ip:
                     p_amount = ip.total_cost
                     p_paid   = ip.total_paid
