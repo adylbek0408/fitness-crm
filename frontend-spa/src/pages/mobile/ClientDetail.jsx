@@ -17,7 +17,6 @@ export default function MobileClientDetail() {
   const [loadError, setLoadError] = useState(null)
   const [planId, setPlanId] = useState(null)
   const [receipt, setReceipt] = useState(null)
-  const [fullAmount, setFullAmount] = useState('')
   const [newPassword, setNewPassword] = useState(null)
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
   const [statusLoading, setStatusLoading] = useState(false)
@@ -49,6 +48,8 @@ export default function MobileClientDetail() {
 
   const changeStatus = async (newStatus) => {
     if (newStatus === client.status) { setStatusMenuOpen(false); return }
+    const labels = { active: 'Активный', frozen: 'Заморозка', completed: 'Завершил', expelled: 'Отчислен' }
+    if (!confirm(`Изменить статус на «${labels[newStatus] || newStatus}»?`)) { setStatusMenuOpen(false); return }
     setStatusLoading(true); setStatusMenuOpen(false)
     try {
       await api.post(`/clients/${id}/change_status/`, { status: newStatus })
@@ -80,10 +81,8 @@ export default function MobileClientDetail() {
     if (!receipt) return
     const fd = new FormData()
     fd.append('receipt', receipt)
-    if (fullAmount && Number(fullAmount) > 0) fd.append('amount', fullAmount)
     await api.post(`/payments/full/${id}/receipt/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     setReceipt(null)
-    setFullAmount('')
     load()
   }
 
@@ -224,32 +223,39 @@ export default function MobileClientDetail() {
           </h3>
           {client.payment_type === 'full' && full && (
             <div className="space-y-3">
-              {full.is_paid ? (
-                <>
-                  <div className="flex justify-between text-sm"><span className="text-gray-500">Сумма</span><span className="crm-money">{fmtMoney(full.amount)}</span></div>
-                  <div className="flex justify-between text-sm items-center"><span className="text-gray-500">Статус</span><span className="text-green-600 font-medium flex items-center gap-1"><CheckCircle size={14} /> Оплачено</span></div>
-                  {full.receipt && <a href={toAbsoluteUrl(full.receipt)} target="_blank" rel="noreferrer" className="text-blue-500 text-sm block">Открыть чек →</a>}
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between text-sm items-center"><span className="text-gray-500">Статус</span><span className="text-red-500 font-medium flex items-center gap-1"><Clock size={14} /> Не оплачено</span></div>
-                  <div className="pt-3 border-t border-gray-100">
-                    <p className="text-sm text-gray-600 mb-2">Укажите сумму и загрузите чек — платёж будет отмечен как оплаченный.</p>
-                    <form onSubmit={uploadReceipt} className="space-y-3">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Сумма (сом) *</label>
-                        <input type="number" min="1" step="1" required value={fullAmount} onChange={e => setFullAmount(e.target.value)} placeholder="Введите сумму"
-                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Чек *</label>
-                        <input type="file" accept="image/*" required onChange={e => setReceipt(e.target.files[0])}
-                          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm" />
-                      </div>
-                      <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl text-sm">Загрузить чек</button>
-                    </form>
-                  </div>
-                </>
+              <div className="flex justify-between text-sm"><span className="text-gray-500">Сумма</span><span className="crm-money font-semibold">{fmtMoney(full.amount)}</span></div>
+              <div className="flex justify-between text-sm items-center">
+                <span className="text-gray-500">Статус</span>
+                <span className={`font-medium flex items-center gap-1 ${full.is_paid ? 'text-green-600' : 'text-red-500'}`}>
+                  {full.is_paid ? <><CheckCircle size={14} /> Оплачено</> : <><Clock size={14} /> Не оплачено</>}
+                </span>
+              </div>
+              {full.receipt && <a href={toAbsoluteUrl(full.receipt)} target="_blank" rel="noreferrer" className="text-blue-500 text-sm block">Открыть чек →</a>}
+              {!full.is_paid && (
+                <div className="pt-3 border-t border-gray-100 space-y-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await api.post(`/payments/full/${id}/pay/`)
+                        load()
+                      } catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+                    }}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+                    <CheckCircle size={16} /> Подтвердить оплату ({fmtMoney(full.amount)})
+                  </button>
+                  <div className="text-xs text-gray-400 text-center">или загрузите чек:</div>
+                  <form onSubmit={uploadReceipt} className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <input type="file" accept="image/*" onChange={e => setReceipt(e.target.files[0])}
+                        className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm" />
+                    </div>
+                    <button type="submit" disabled={!receipt}
+                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-medium rounded-xl text-sm shrink-0">
+                      Загрузить
+                    </button>
+                  </form>
+                </div>
               )}
             </div>
           )}

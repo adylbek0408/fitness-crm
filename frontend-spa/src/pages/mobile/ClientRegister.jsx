@@ -320,6 +320,7 @@ export default function ClientRegister() {
                 ['Телефон', form.phone],
                 ['Формат', form.training_format === 'online' ? 'Онлайн' : 'Оффлайн'],
                 ['Тип группы', form.group_type === '1.5h' ? '1.5 часа' : '2.5 часа'],
+                ['Оплата', form.payment_type === 'full' ? `Полная — ${form.pay_amount || '0'} сом` : form.payment_type === 'installment' ? `Рассрочка — ${form.total_cost || '0'} сом` : '—'],
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between">
                   <span style={{ color: 'var(--text-soft)' }}>{label}</span>
