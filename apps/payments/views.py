@@ -22,16 +22,20 @@ class FullPaymentViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=['post'], url_path='pay')
     def mark_paid(self, request, pk=None):
-        payment = self.service.mark_full_payment_paid(pk)
+        payment = self.service.mark_full_payment_paid(pk, user=request.user)
         return Response(FullPaymentReadSerializer(payment).data)
 
-    @action(detail=True, methods=['post'], url_path='receipt', parser_classes=[MultiPartParser])
+    @action(detail=True, methods=['post'], url_path='receipt',
+            parser_classes=[MultiPartParser])
     def upload_receipt(self, request, pk=None):
         serializer = FullPaymentReceiptSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         payment = self.service.upload_full_payment_receipt(
-            pk, receipt_file=data['receipt'], amount=data.get('amount')
+            pk,
+            receipt_file=data['receipt'],
+            amount=data.get('amount'),
+            user=request.user,
         )
         return Response(FullPaymentReadSerializer(payment).data)
 
@@ -69,10 +73,12 @@ class InstallmentPlanViewSet(viewsets.GenericViewSet):
             raise NotFoundError(f"InstallmentPlan {pk} not found")
         serializer = AddInstallmentPaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        payment = self.service.add_installment_payment(str(plan.id), serializer.validated_data)
+        payment = self.service.add_installment_payment(
+            str(plan.id),
+            serializer.validated_data,
+            user=request.user,
+        )
         return Response(
             InstallmentPaymentReadSerializer(payment).data,
             status=status.HTTP_201_CREATED
         )
-
-    

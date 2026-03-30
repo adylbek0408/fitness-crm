@@ -49,7 +49,7 @@ class Client(UUIDTimestampedModel):
         ('active', 'Active'),
         ('completed', 'Completed'),
         ('expelled', 'Expelled'),
-        ('frozen', 'Frozen'),   # ← Заморозка
+        ('frozen', 'Frozen'),
     ]
 
     PAYMENT_TYPE_CHOICES = [
@@ -121,3 +121,45 @@ class Client(UUIDTimestampedModel):
     @property
     def full_name(self):
         return f"{self.last_name} {self.first_name}"
+
+
+class BonusTransaction(UUIDTimestampedModel):
+    """История бонусных операций клиента."""
+
+    ACCRUAL    = 'accrual'
+    REDEMPTION = 'redemption'
+    TYPE_CHOICES = [
+        (ACCRUAL,    'Начисление'),
+        (REDEMPTION, 'Списание'),
+    ]
+
+    client = models.ForeignKey(
+        'Client',
+        on_delete=models.CASCADE,
+        related_name='bonus_transactions'
+    )
+    transaction_type = models.CharField(max_length=15, choices=TYPE_CHOICES)
+    # amount — всегда положительное число, тип определяется transaction_type
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # сумма оплаты, с которой был посчитан бонус
+    payment_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    description = models.CharField(max_length=255, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bonus_transactions'
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name        = 'Бонусная операция'
+        verbose_name_plural = 'Бонусные операции'
+        indexes = [
+            models.Index(fields=['client', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.client} | {self.transaction_type} | {self.amount}"

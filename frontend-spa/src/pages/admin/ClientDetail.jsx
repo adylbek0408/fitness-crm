@@ -5,7 +5,8 @@ import AdminLayout from '../../components/AdminLayout'
 import {
   KeyRound, Globe, Dumbbell, CreditCard, CheckCircle,
   Clock, Receipt, Snowflake, ArrowLeft, Copy, Check,
-  RotateCcw, User, Phone, Calendar, Layers, UserCircle, Gift
+  RotateCcw, User, Phone, Calendar, Layers, UserCircle, Gift,
+  TrendingUp, TrendingDown, History
 } from 'lucide-react'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL, toAbsoluteUrl } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
@@ -17,42 +18,234 @@ const STATUS_CONFIG = [
   { value: 'expelled',  label: 'Отчислен',  desc: 'Отчислен/возврат',   icon: '🚫', ring: 'ring-red-300',     bg: 'bg-red-50' },
 ]
 
-function BonusBalanceForm({ clientId, currentBalance, onSuccess }) {
-  const [value, setValue] = useState(currentBalance != null ? String(currentBalance) : '0')
-  const [loading, setLoading] = useState(false)
+// ── Панель бонусов ────────────────────────────────────────────────────────────
+function BonusPanel({ clientId, currentBalance, onSuccess }) {
+  const [fullPrice, setFullPrice]   = useState('')
+  const [preview, setPreview]       = useState(null)
+  const [history, setHistory]       = useState([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [applyLoading, setApplyLoading]   = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [error, setError] = useState('')
-  useEffect(() => setValue(currentBalance != null ? String(currentBalance) : '0'), [currentBalance])
-  const submit = async (e) => {
-    e.preventDefault(); setError(''); setLoading(true)
+  const [successMsg, setSuccessMsg] = useState('')
+
+  const loadHistory = async () => {
+    setHistoryLoading(true)
     try {
-      await api.patch(`/clients/${clientId}/`, { bonus_balance: value })
-      onSuccess()
-    } catch (e) { setError(e.response?.data?.bonus_balance?.[0] || 'Ошибка') }
-    finally { setLoading(false) }
+      const r = await api.get(`/bonuses/history/?client_id=${clientId}`)
+      setHistory(r.data)
+    } catch { /* ignore */ }
+    finally { setHistoryLoading(false) }
   }
+
+  const handlePreview = async () => {
+    setError(''); setPreview(null); setSuccessMsg('')
+    if (!fullPrice || Number(fullPrice) <= 0) {
+      setError('Введите сумму курса'); return
+    }
+    setPreviewLoading(true)
+    try {
+      const r = await api.post('/bonuses/preview/', {
+        client_id: clientId,
+        full_price: fullPrice,
+      })
+      setPreview(r.data)
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Ошибка расчёта')
+    } finally { setPreviewLoading(false) }
+  }
+
+  const handleApply = async () => {
+    setError(''); setSuccessMsg('')
+    setApplyLoading(true)
+    try {
+      const r = await api.post('/bonuses/apply/', {
+        client_id: clientId,
+        full_price: fullPrice,
+      })
+      setSuccessMsg(
+        `Списано ${fmtMoney(r.data.bonus_applied)} бонусов. ` +
+        `К оплате: ${fmtMoney(r.data.final_price)} сом`
+      )
+      setPreview(null)
+      setFullPrice('')
+      onSuccess()          // обновляем карточку клиента
+      loadHistory()
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Ошибка списания')
+    } finally { setApplyLoading(false) }
+  }
+
+  const toggleHistory = () => {
+    if (!showHistory && history.length === 0) loadHistory()
+    setShowHistory(v => !v)
+  }
+
   return (
-    <form onSubmit={submit} className="flex gap-3 items-end flex-wrap">
-      <div>
-        <label className="block text-xs text-slate-500 mb-1.5 font-medium">Сумма (сом)</label>
-        <input type="number" min="0" step="0.01" value={value} onChange={e => setValue(e.target.value)}
-          className="crm-input w-36" />
+    <div className="crm-card p-5">
+      {/* Заголовок */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+            <Gift size={15} className="text-amber-600" />
+          </div>
+          <h3 className="font-bold text-slate-800">Бонусная система</h3>
+        </div>
+        <button onClick={toggleHistory}
+          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-indigo-600 transition">
+          <History size={13} />
+          {showHistory ? 'Скрыть историю' : 'История'}
+        </button>
       </div>
-      <button type="submit" disabled={loading} className="crm-btn-primary disabled:opacity-60">
-        {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Check size={15} />}
-        Сохранить
-      </button>
-      {error && <span className="text-red-500 text-sm">{error}</span>}
-    </form>
+
+      {/* Текущий баланс */}
+      <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl mb-4">
+        <span className="text-sm text-slate-500">Бонусный баланс</span>
+        <span className="font-bold text-amber-600 text-lg crm-money">
+          {fmtMoney(currentBalance ?? 0)}
+        </span>
+      </div>
+
+      {/* Форма применения бонуса */}
+      <div className="space-y-3">
+        <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">
+          Применить бонусы к новому курсу
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <div className="flex-1 min-w-[140px]">
+            <label className="block text-xs text-slate-500 mb-1.5">Полная цена курса (сом)</label>
+            <input
+              type="number" min="0" step="100"
+              value={fullPrice}
+              onChange={e => { setFullPrice(e.target.value); setPreview(null); setSuccessMsg('') }}
+              placeholder="Например: 15000"
+              className="crm-input w-full"
+            />
+          </div>
+          <div className="flex items-end">
+            <button onClick={handlePreview} disabled={previewLoading}
+              className="crm-btn-secondary disabled:opacity-60 whitespace-nowrap">
+              {previewLoading
+                ? <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                : '🔍 Рассчитать'}
+            </button>
+          </div>
+        </div>
+
+        {/* Превью расчёта */}
+        {preview && (
+          <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-3">
+              Расчёт списания
+            </p>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Полная цена курса</span>
+              <span className="font-semibold text-slate-800 crm-money">
+                {fmtMoney(preview.full_price)}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Бонусов на балансе</span>
+              <span className="font-semibold text-amber-600 crm-money">
+                {fmtMoney(preview.bonus_available)}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Спишется бонусов</span>
+              <span className="font-semibold text-red-500 crm-money">
+                − {fmtMoney(preview.bonus_applied)}
+              </span>
+            </div>
+            <div className="h-px bg-indigo-200 my-1" />
+            <div className="flex justify-between text-sm font-bold">
+              <span className="text-slate-700">К оплате</span>
+              <span className="text-emerald-600 text-base crm-money">
+                {fmtMoney(preview.final_price)}
+              </span>
+            </div>
+            {Number(preview.bonus_applied) > 0 ? (
+              <button onClick={handleApply} disabled={applyLoading}
+                className="w-full crm-btn-primary mt-3 disabled:opacity-60">
+                {applyLoading
+                  ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  : <Check size={14} />}
+                Применить и списать {fmtMoney(preview.bonus_applied)} сом
+              </button>
+            ) : (
+              <p className="text-xs text-slate-400 text-center mt-2">
+                Бонусов нет — оплата по полной цене
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Сообщение об успехе */}
+        {successMsg && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700 font-medium">
+            ✅ {successMsg}
+          </div>
+        )}
+
+        {error && (
+          <p className="text-red-500 text-sm">{error}</p>
+        )}
+      </div>
+
+      {/* История операций */}
+      {showHistory && (
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+            История бонусных операций
+          </p>
+          {historyLoading ? (
+            <div className="flex justify-center py-4">
+              <span className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-3">Операций пока нет</p>
+          ) : (
+            <div className="space-y-2">
+              {history.map(tx => (
+                <div key={tx.id}
+                  className={`flex items-start gap-3 p-3 rounded-xl text-sm
+                    ${tx.type === 'accrual' ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                  <div className="mt-0.5 shrink-0">
+                    {tx.type === 'accrual'
+                      ? <TrendingUp size={14} className="text-emerald-500" />
+                      : <TrendingDown size={14} className="text-red-500" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-slate-400">{tx.created_at}</p>
+                    <p className="text-slate-600 text-xs truncate">{tx.description}</p>
+                  </div>
+                  <span className={`font-bold crm-money shrink-0 ${
+                    tx.type === 'accrual' ? 'text-emerald-600' : 'text-red-500'
+                  }`}>
+                    {tx.type === 'accrual' ? '+' : '−'}{fmtMoney(tx.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
+
+// ── Вспомогательные компоненты ────────────────────────────────────────────────
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 2000)
+    })
   }
   return (
-    <button onClick={copy} className="p-1 rounded-lg hover:bg-slate-100 transition text-slate-400 hover:text-indigo-500">
+    <button onClick={copy}
+      className="p-1 rounded-lg hover:bg-slate-100 transition text-slate-400 hover:text-indigo-500">
       {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
     </button>
   )
@@ -69,6 +262,8 @@ function InfoRow({ icon: Icon, label, value, color }) {
     </div>
   )
 }
+
+// ── Главная страница ──────────────────────────────────────────────────────────
 
 export default function ClientDetail() {
   const { id } = useParams()
@@ -115,7 +310,7 @@ export default function ClientDetail() {
     try {
       const r = await api.post(`/clients/${id}/reset_cabinet_password/`)
       setNewPassword(r.data.password)
-      load() // Обновляем данные клиента чтобы password_plain обновился
+      load()
     } catch (e) {
       const msg = e.response?.data?.detail || e.message || 'Ошибка сброса пароля'
       setResetError(msg)
@@ -135,16 +330,23 @@ export default function ClientDetail() {
 
   const allReceipts = []
   if (client.payment_type === 'full' && full?.receipt) {
-    allReceipts.push({ id: full.id, date: full.paid_at || client.registered_at, amount: full.amount, label: 'Полная оплата', receipt: full.receipt })
+    allReceipts.push({
+      id: full.id, date: full.paid_at || client.registered_at,
+      amount: full.amount, label: 'Полная оплата', receipt: full.receipt
+    })
   }
   if (client.payment_type === 'installment' && plan?.payments?.length) {
     plan.payments.forEach((p, i) => {
-      allReceipts.push({ id: p.id, date: p.paid_at, amount: p.amount, label: `Платёж ${i + 1}`, receipt: p.receipt || null })
+      allReceipts.push({
+        id: p.id, date: p.paid_at, amount: p.amount,
+        label: `Платёж ${i + 1}`, receipt: p.receipt || null
+      })
     })
   }
 
   const payProgress = plan
-    ? Math.min(plan.total_cost > 0 ? (Number(plan.total_paid) / Number(plan.total_cost)) * 100 : 0, 100)
+    ? Math.min(plan.total_cost > 0
+        ? (Number(plan.total_paid) / Number(plan.total_cost)) * 100 : 0, 100)
     : null
 
   return (
@@ -190,12 +392,13 @@ export default function ClientDetail() {
               </code>
               <CopyButton text={client.cabinet_username} />
             </div>
-            {/* Пароль — всегда видимый */}
             {(newPassword || client.cabinet_password) && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-indigo-600/70">{newPassword ? 'Новый пароль:' : 'Пароль:'}</span>
                 <code className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold border ${
-                  newPassword ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-white text-indigo-800 border-indigo-100'
+                  newPassword
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    : 'bg-white text-indigo-800 border-indigo-100'
                 }`}>
                   {newPassword || client.cabinet_password}
                 </code>
@@ -204,7 +407,8 @@ export default function ClientDetail() {
               </div>
             )}
             <p className="text-indigo-600/70 text-xs">
-              Вход: <a href="/cabinet" target="_blank" rel="noreferrer" className="underline hover:text-indigo-800">/cabinet</a>
+              Вход: <a href="/cabinet" target="_blank" rel="noreferrer"
+                className="underline hover:text-indigo-800">/cabinet</a>
             </p>
             {resetError && <p className="text-red-500 text-xs">{resetError}</p>}
             <button onClick={resetCabinetPassword} disabled={resetPasswordLoading}
@@ -216,7 +420,9 @@ export default function ClientDetail() {
             </button>
           </div>
         ) : (
-          <p className="text-sm text-indigo-700/70">Кабинет не создан. Создаётся при новой регистрации.</p>
+          <p className="text-sm text-indigo-700/70">
+            Кабинет не создан. Создаётся при новой регистрации.
+          </p>
         )}
       </div>
 
@@ -250,7 +456,9 @@ export default function ClientDetail() {
                 <User size={14} className="text-slate-400" />
               </div>
               <span className="text-sm text-slate-500 flex-1">Зарегистрировал</span>
-              <span className="text-sm font-semibold text-indigo-600">{client.registered_by_name || '—'}</span>
+              <span className="text-sm font-semibold text-indigo-600">
+                {client.registered_by_name || '—'}
+              </span>
             </div>
           </div>
         </div>
@@ -272,8 +480,12 @@ export default function ClientDetail() {
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
                 <span className="text-sm text-slate-500">Статус</span>
-                <span className={`flex items-center gap-1.5 text-sm font-semibold ${full.is_paid ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {full.is_paid ? <><CheckCircle size={14} /> Оплачено</> : <><Clock size={14} /> Не оплачено</>}
+                <span className={`flex items-center gap-1.5 text-sm font-semibold ${
+                  full.is_paid ? 'text-emerald-600' : 'text-red-500'
+                }`}>
+                  {full.is_paid
+                    ? <><CheckCircle size={14} /> Оплачено</>
+                    : <><Clock size={14} /> Не оплачено</>}
                 </span>
               </div>
               {full.receipt && (
@@ -301,8 +513,6 @@ export default function ClientDetail() {
                   {fmtMoney(plan.remaining)}
                 </span>
               </div>
-
-              {/* Прогресс */}
               <div>
                 <div className="flex justify-between text-xs text-slate-400 mb-1.5">
                   <span>Прогресс оплаты</span>
@@ -310,22 +520,23 @@ export default function ClientDetail() {
                 </div>
                 <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all duration-500 ${
-                    payProgress >= 100 ? 'bg-emerald-500' : payProgress >= 60 ? 'bg-amber-400' : 'bg-red-400'
+                    payProgress >= 100 ? 'bg-emerald-500'
+                    : payProgress >= 60 ? 'bg-amber-400' : 'bg-red-400'
                   }`} style={{ width: `${payProgress}%` }} />
                 </div>
               </div>
-
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
                 <span className="text-sm text-slate-500">Дедлайн</span>
                 <span className="text-sm font-semibold text-slate-700">{plan.deadline}</span>
               </div>
-
-              {/* История платежей */}
               {plan.payments?.length > 0 && (
                 <div className="pt-2 border-t border-slate-100">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">История платежей</p>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                    История платежей
+                  </p>
                   {plan.payments.map(p => (
-                    <div key={p.id} className="flex items-center justify-between py-2 text-xs border-b border-slate-50 last:border-0">
+                    <div key={p.id}
+                      className="flex items-center justify-between py-2 text-xs border-b border-slate-50 last:border-0">
                       <span className="text-slate-400">{p.paid_at}</span>
                       <span className="font-semibold text-slate-700 crm-money">{fmtMoney(p.amount)}</span>
                       {p.receipt && (
@@ -355,12 +566,15 @@ export default function ClientDetail() {
               <div key={`${r.id}-${i}`}
                 className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-slate-50 rounded-xl">
                 <span className="text-xs text-slate-400">{r.date}</span>
-                <span className="text-sm font-semibold text-slate-700 crm-money">{r.label} — {fmtMoney(r.amount)}</span>
+                <span className="text-sm font-semibold text-slate-700 crm-money">
+                  {r.label} — {fmtMoney(r.amount)}
+                </span>
                 {r.receipt
                   ? <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer"
-                      className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold transition">Открыть чек →</a>
-                  : <span className="text-xs text-slate-300">Без чека</span>
-                }
+                      className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold transition">
+                      Открыть чек →
+                    </a>
+                  : <span className="text-xs text-slate-300">Без чека</span>}
               </div>
             ))}
           </div>
@@ -376,7 +590,9 @@ export default function ClientDetail() {
             </div>
             <h3 className="font-bold text-slate-800">Добавить платёж</h3>
           </div>
-          <p className="text-sm text-slate-500 mb-4">Остаток: <strong className="text-red-500 crm-money">{fmtMoney(plan.remaining)}</strong></p>
+          <p className="text-sm text-slate-500 mb-4">
+            Остаток: <strong className="text-red-500 crm-money">{fmtMoney(plan.remaining)}</strong>
+          </p>
           <AddPaymentForm planId={planId} onSuccess={load} />
         </div>
       )}
@@ -420,10 +636,16 @@ export default function ClientDetail() {
           </div>
           <h3 className="font-bold text-slate-800">Повторный клиент</h3>
         </div>
-        <p className="text-sm text-slate-500 mb-3">Повторным клиентам начисляется бонус на баланс.</p>
+        <p className="text-sm text-slate-500 mb-3">
+          Повторным клиентам начисляется бонус на баланс.
+        </p>
         <div role="button" tabIndex={0}
           onClick={() => !repeatLoading && setRepeat(!client.is_repeat)}
-          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); !repeatLoading && setRepeat(!client.is_repeat) } }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault(); !repeatLoading && setRepeat(!client.is_repeat)
+            }
+          }}
           className={`flex items-center gap-3 py-3.5 px-4 rounded-2xl border-2 cursor-pointer select-none transition-all duration-150
             ${client.is_repeat
               ? 'bg-indigo-50 border-indigo-300'
@@ -443,19 +665,12 @@ export default function ClientDetail() {
         </div>
       </div>
 
-      {/* ── Баланс бонусов ── */}
-      <div className="crm-card p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-            <Gift size={15} className="text-amber-600" />
-          </div>
-          <h3 className="font-bold text-slate-800">Баланс бонусов</h3>
-        </div>
-        <p className="text-sm text-slate-500 mb-4">
-          Текущий баланс: <strong className="text-amber-600 crm-money">{fmtMoney(client.bonus_balance ?? 0)}</strong>
-        </p>
-        <BonusBalanceForm clientId={id} currentBalance={client.bonus_balance} onSuccess={load} />
-      </div>
+      {/* ── Бонусная система (новая панель) ── */}
+      <BonusPanel
+        clientId={id}
+        currentBalance={client.bonus_balance}
+        onSuccess={load}
+      />
     </AdminLayout>
   )
 }

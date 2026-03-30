@@ -9,21 +9,39 @@ from .models import FullPayment, InstallmentPlan, InstallmentPayment
 
 class PaymentService(BaseService):
 
-    def mark_full_payment_paid(self, client_id: str) -> FullPayment:
+    def _bonus_service(self):
+        from apps.clients.bonus_service import BonusService
+        return BonusService()
+
+    # ── Полная оплата ─────────────────────────────────────────────
+
+    def mark_full_payment_paid(self, client_id: str, user=None) -> FullPayment:
         try:
-            payment = FullPayment.objects.get(client_id=client_id)
+            payment = FullPayment.objects.select_related('client').get(client_id=client_id)
         except FullPayment.DoesNotExist:
             raise NotFoundError(f"FullPayment for client {client_id} not found")
         if payment.is_paid:
             raise ValidationError("Payment is already marked as paid")
+
         payment.mark_as_paid()
+
+        # ✅ Автоначисление 10% бонуса
+        self._bonus_service().accrue(
+            client=payment.client,
+            payment_amount=payment.amount,
+            created_by=user,
+        )
         return payment
 
-    def upload_full_payment_receipt(self, client_id: str, receipt_file, amount=None) -> FullPayment:
+    def upload_full_payment_receipt(self, client_id: str, receipt_file,
+                                    amount=None, user=None) -> FullPayment:
         try:
-            payment = FullPayment.objects.get(client_id=client_id)
+            payment = FullPayment.objects.select_related('client').get(client_id=client_id)
         except FullPayment.DoesNotExist:
             raise NotFoundError(f"FullPayment for client {client_id} not found")
+
+        was_paid = payment.is_paid
+
         payment.receipt = receipt_file
         payment.is_paid = True
         payment.paid_at = timezone.now()
@@ -32,11 +50,22 @@ class PaymentService(BaseService):
             payment.amount = amount
             update_fields.append('amount')
         payment.save(update_fields=update_fields)
+
+        # ✅ Начисляем бонус только если до этого не был оплачен
+        if not was_paid:
+            self._bonus_service().accrue(
+                client=payment.client,
+                payment_amount=payment.amount,
+                created_by=user,
+            )
         return payment
 
-    def add_installment_payment(self, plan_id: str, data: dict) -> InstallmentPayment:
+    # ── Рассрочка ─────────────────────────────────────────────────
+
+    def add_installment_payment(self, plan_id: str, data: dict,
+                                user=None) -> InstallmentPayment:
         try:
-            plan = InstallmentPlan.objects.get(id=plan_id)
+            plan = InstallmentPlan.objects.select_related('client').get(id=plan_id)
         except InstallmentPlan.DoesNotExist:
             raise NotFoundError(f"InstallmentPlan {plan_id} not found")
 
@@ -54,6 +83,14 @@ class PaymentService(BaseService):
             receipt=data.get('receipt'),
             note=data.get('note', '')
         )
+
+        # ✅ Автоначисление 10% бонуса с каждого взноса
+        self._bonus_service().accrue(
+            client=plan.client,
+            payment_amount=amount,
+            created_by=user,
+        )
+
         self.logger.info(
             f"Installment payment added: {payment.id}, plan: {plan_id}, amount: {amount}"
         )

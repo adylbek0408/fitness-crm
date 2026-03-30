@@ -20,9 +20,8 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/accounts/', include('apps.accounts.urls')),
     path('api/payments/', include('apps.payments.urls')),
+    path('api/bonuses/', include('apps.clients.bonus_urls')),
     path('api/cabinet/', include('apps.clients.cabinet_urls')),
 ]
 
-
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
