@@ -18,7 +18,6 @@ export default function MobileClientDetail() {
   const [planId, setPlanId] = useState(null)
   const [receipt, setReceipt] = useState(null)
   const [fullAmount, setFullAmount] = useState('')
-  const [repeatLoading, setRepeatLoading] = useState(false)
   const [newPassword, setNewPassword] = useState(null)
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
   const [statusLoading, setStatusLoading] = useState(false)
@@ -40,22 +39,6 @@ export default function MobileClientDetail() {
 
   useEffect(() => { load() }, [id])
   useEffect(() => setNewPassword(null), [id])
-
-  const setRepeat = async (isRepeat) => {
-    if (!client) return
-    const prev = client.is_repeat
-    setClient(c => c ? { ...c, is_repeat: isRepeat } : c)
-    setRepeatLoading(true)
-    try {
-      await api.patch(`/clients/${id}/`, { is_repeat: isRepeat, discount: '0' })
-      load()
-    } catch (e) {
-      setClient(c => c ? { ...c, is_repeat: prev } : c)
-      console.error(e)
-    } finally {
-      setRepeatLoading(false)
-    }
-  }
 
   const STATUS_OPTIONS = [
     { value: 'active',    label: 'Активный',  dot: 'bg-emerald-500' },
@@ -377,21 +360,7 @@ export default function MobileClientDetail() {
             <AddPaymentForm planId={planId} onSuccess={load} />
           </div>
         )}
-        <div className="bg-white rounded-2xl p-5 shadow-sm border">
-          <h3 className="font-medium text-gray-700 mb-3">Повторный клиент</h3>
-          <p className="text-sm text-gray-500 mb-3">Отметьте, если клиент повторный — ему начислится бонус на баланс.</p>
-          <button
-            type="button"
-            disabled={repeatLoading}
-            onClick={() => setRepeat(!client.is_repeat)}
-            className="w-full flex items-center gap-3 py-3 px-4 rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 active:bg-blue-100 cursor-pointer select-none transition text-left disabled:opacity-60"
-          >
-            <input type="checkbox" checked={!!client.is_repeat} readOnly tabIndex={-1}
-              className="rounded w-5 h-5 pointer-events-none" />
-            <span className="text-sm font-medium">Клиент повторный</span>
-            {repeatLoading && <span className="text-xs text-gray-400">Сохранение...</span>}
-          </button>
-        </div>
+
       </div>
     </MobileLayout>
   )

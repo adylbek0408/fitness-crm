@@ -117,6 +117,7 @@ function GroupHistoryPanel({ clientId, clientPaymentType }) {
 // ── Блок повторного клиента + запись в поток ──────────────────────────────────
 function RepeatClientPanel({ client, clientId, onSuccess }) {
   const [repeatLoading, setRepeatLoading] = useState(false)
+  const [repeatError, setRepeatError] = useState('')
   const [groups, setGroups] = useState([])
   const [showGroups, setShowGroups] = useState(false)
   const [groupsLoading, setGroupsLoading] = useState(false)
@@ -127,11 +128,16 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
 
   const setRepeat = async (isRepeat) => {
     setRepeatLoading(true)
+    setRepeatError('')
     try {
       await api.patch(`/clients/${clientId}/`, { is_repeat: isRepeat, discount: '0' })
       onSuccess()
-    } catch { /* ignore */ }
-    finally { setRepeatLoading(false) }
+    } catch (e) {
+      const d = e.response?.data
+      const msg = typeof d === 'object' ? JSON.stringify(d) : (d?.detail || e.message || 'Ошибка')
+      setRepeatError(msg)
+      console.error('setRepeat error:', e.response?.status, d)
+    } finally { setRepeatLoading(false) }
   }
 
   const loadGroups = async () => {
@@ -198,6 +204,12 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
         <span className="text-sm font-semibold text-slate-800">Клиент повторный</span>
         {repeatLoading && <span className="ml-auto w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin block" />}
       </div>
+
+      {repeatError && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 mb-4">
+          ⚠️ {repeatError}
+        </div>
+      )}
 
       {/* Кнопка «Записать в поток» */}
       {client.is_repeat && (
@@ -528,7 +540,6 @@ export default function ClientDetail() {
   const { user } = useOutletContext()
   const [client, setClient] = useState(null)
   const [planId, setPlanId] = useState(null)
-  const [repeatLoading, setRepeatLoading] = useState(false)
   const [newPassword, setNewPassword] = useState(null)
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
   const [resetError, setResetError] = useState('')
@@ -550,17 +561,6 @@ export default function ClientDetail() {
       await api.post(`/clients/${id}/change_status/`, { status: newStatus })
       await load()
     } finally { setStatusLoading(false) }
-  }
-
-  const setRepeat = async (isRepeat) => {
-    const prev = client.is_repeat
-    setClient(c => c ? { ...c, is_repeat: isRepeat } : c)
-    setRepeatLoading(true)
-    try {
-      await api.patch(`/clients/${id}/`, { is_repeat: isRepeat, discount: '0' })
-      load()
-    } catch { setClient(c => c ? { ...c, is_repeat: prev } : c) }
-    finally { setRepeatLoading(false) }
   }
 
   const resetCabinetPassword = async () => {
