@@ -6,10 +6,268 @@ import {
   KeyRound, Globe, Dumbbell, CreditCard, CheckCircle,
   Clock, Receipt, Snowflake, ArrowLeft, Copy, Check,
   RotateCcw, User, Phone, Calendar, Layers, UserCircle, Gift,
-  TrendingUp, TrendingDown, History
+  TrendingUp, TrendingDown, History, BookOpen, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL, toAbsoluteUrl } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
+
+const GROUP_TYPE_LABEL_SHORT = { '1.5h': '1.5 ч', '2.5h': '2.5 ч' }
+
+// ── История завершённых потоков ──────────────────────────────────────────────
+function GroupHistoryPanel({ clientId, clientPaymentType }) {
+  const [history, setHistory] = useState([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [selected, setSelected] = useState(null)
+
+  const load = async () => {
+    if (loading || history.length > 0) return
+    setLoading(true)
+    try {
+      const r = await api.get(`/clients/${clientId}/group-history/`)
+      setHistory(r.data)
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }
+
+  const toggle = () => {
+    if (!open) load()
+    setOpen(v => !v)
+  }
+
+  return (
+    <div className="crm-card p-5 mb-5">
+      <div className="flex items-center justify-between cursor-pointer" onClick={toggle}>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+            <BookOpen size={15} className="text-violet-600" />
+          </div>
+          <h3 className="font-bold text-slate-800">История потоков</h3>
+          {history.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700">
+              {history.length}
+            </span>
+          )}
+        </div>
+        {open ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+      </div>
+
+      {open && (
+        <div className="mt-4">
+          {loading ? (
+            <div className="flex justify-center py-6">
+              <span className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">Прошлых потоков нет</p>
+          ) : (
+            <div className="space-y-2">
+              {/* Список потоков — бургер */}
+              <div className="flex flex-wrap gap-2 mb-3">
+                {history.map(h => (
+                  <button key={h.id}
+                    onClick={() => setSelected(selected?.id === h.id ? null : h)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                      selected?.id === h.id
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'
+                    }`}>
+                    Поток #{h.group_number} · {GROUP_TYPE_LABEL_SHORT[h.group_type] || h.group_type}
+                  </button>
+                ))}
+              </div>
+
+              {/* Детали выбранного потока */}
+              {selected && (
+                <div className="bg-slate-50 rounded-xl p-4 space-y-2 animate-fade-in">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-semibold text-slate-800">Поток #{selected.group_number}</p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                      selected.payment_is_closed
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-red-100 text-red-600'
+                    }`}>
+                      {selected.payment_is_closed ? '✓ Оплачено' : '⚠ Долг'}
+                    </span>
+                  </div>
+                  {[
+                    ['Тренер',     selected.trainer_name || '—'],
+                    ['Тип группы', GROUP_TYPE_LABEL_SHORT[selected.group_type] || selected.group_type],
+                    ['Старт',      selected.start_date || '—'],
+                    ['Завершён',   selected.ended_at],
+                    ['Тип оплаты', selected.payment_type === 'full' ? 'Полная' : 'Рассрочка'],
+                    ['Сумма курса', fmtMoney(selected.payment_amount)],
+                    ['Оплачено',   fmtMoney(selected.payment_paid)],
+                  ].map(([label, val]) => (
+                    <div key={label} className="flex justify-between text-sm">
+                      <span className="text-slate-400">{label}</span>
+                      <span className="font-medium text-slate-700">{val}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Блок повторного клиента + запись в поток ──────────────────────────────────
+function RepeatClientPanel({ client, clientId, onSuccess }) {
+  const [repeatLoading, setRepeatLoading] = useState(false)
+  const [groups, setGroups] = useState([])
+  const [showGroups, setShowGroups] = useState(false)
+  const [groupsLoading, setGroupsLoading] = useState(false)
+  const [enrollGroup, setEnrollGroup] = useState(null)   // выбранный поток
+  const [enrollLoading, setEnrollLoading] = useState(false)
+  const [enrollMsg, setEnrollMsg] = useState('')
+  const [enrollError, setEnrollError] = useState('')
+
+  const setRepeat = async (isRepeat) => {
+    setRepeatLoading(true)
+    try {
+      await api.patch(`/clients/${clientId}/`, { is_repeat: isRepeat, discount: '0' })
+      onSuccess()
+    } catch { /* ignore */ }
+    finally { setRepeatLoading(false) }
+  }
+
+  const loadGroups = async () => {
+    setGroupsLoading(true)
+    try {
+      const r = await api.get('/groups/?status=recruitment&page_size=50')
+      setGroups(r.data.results || [])
+    } catch { /* ignore */ }
+    finally { setGroupsLoading(false) }
+  }
+
+  const handleShowGroups = () => {
+    if (!showGroups && groups.length === 0) loadGroups()
+    setShowGroups(v => !v)
+    setEnrollGroup(null)
+    setEnrollMsg('')
+    setEnrollError('')
+  }
+
+  const enrollInGroup = async () => {
+    if (!enrollGroup) return
+    setEnrollLoading(true); setEnrollMsg(''); setEnrollError('')
+    try {
+      await api.post(`/groups/${enrollGroup.id}/add-client/`, { client_id: clientId })
+      setEnrollMsg(`✅ Клиент добавлен в Поток #${enrollGroup.number}`)
+      setShowGroups(false)
+      setEnrollGroup(null)
+      onSuccess()
+    } catch(e) {
+      setEnrollError(e.response?.data?.detail || 'Ошибка записи')
+    } finally { setEnrollLoading(false) }
+  }
+
+  const DAY_LABELS = { Mon:'Пн',Tue:'Вт',Wed:'Ср',Thu:'Чт',Fri:'Пт',Sat:'Сб',Sun:'Вс' }
+  const fmtSchedule = s => {
+    if (!s) return '—'
+    const p = s.split(' ')
+    return p[0].split(',').map(d=>DAY_LABELS[d]||d).join(', ') + (p[1] ? ` · ${p[1]}` : '')
+  }
+
+  return (
+    <div className="crm-card p-5 mb-5">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+          <RotateCcw size={15} className="text-indigo-600" />
+        </div>
+        <h3 className="font-bold text-slate-800">Повторный клиент</h3>
+      </div>
+      <p className="text-sm text-slate-500 mb-3">
+        Повторным клиентам начисляется бонус на баланс.
+      </p>
+
+      {/* Чекбокс */}
+      <div role="button" tabIndex={0}
+        onClick={() => !repeatLoading && setRepeat(!client.is_repeat)}
+        onKeyDown={e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); !repeatLoading && setRepeat(!client.is_repeat) } }}
+        className={`flex items-center gap-3 py-3.5 px-4 rounded-2xl border-2 cursor-pointer select-none transition-all duration-150 mb-4
+          ${client.is_repeat ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30'}`}>
+        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+          client.is_repeat ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'
+        }`}>
+          {client.is_repeat && <Check size={12} className="text-white" strokeWidth={3} />}
+        </div>
+        <span className="text-sm font-semibold text-slate-800">Клиент повторный</span>
+        {repeatLoading && <span className="ml-auto w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin block" />}
+      </div>
+
+      {/* Кнопка «Записать в поток» */}
+      {client.is_repeat && (
+        <div>
+          <button onClick={handleShowGroups}
+            className="crm-btn-secondary w-full justify-center gap-2">
+            <RotateCcw size={14} />
+            {showGroups ? 'Скрыть потоки' : 'Записать в поток (НАБОР)'}
+          </button>
+
+          {enrollMsg && (
+            <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
+              {enrollMsg}
+            </div>
+          )}
+
+          {showGroups && (
+            <div className="mt-3 space-y-2">
+              {groupsLoading ? (
+                <div className="flex justify-center py-4">
+                  <span className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : groups.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-3">Нет потоков со статусом «Набор»</p>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-400 font-medium">Выберите поток:</p>
+                  {groups.map(g => (
+                    <div key={g.id}
+                      onClick={() => setEnrollGroup(enrollGroup?.id===g.id ? null : g)}
+                      className={`cursor-pointer p-3 rounded-xl border-2 transition-all ${
+                        enrollGroup?.id === g.id
+                          ? 'bg-indigo-50 border-indigo-400'
+                          : 'bg-white border-slate-200 hover:border-indigo-200'
+                      }`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-slate-800 text-sm">
+                            Поток #{g.number} · {GROUP_TYPE_LABEL[g.group_type] || g.group_type}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {g.trainer?.full_name || '—'} · {fmtSchedule(g.schedule)}
+                          </p>
+                        </div>
+                        {enrollGroup?.id === g.id && <Check size={16} className="text-indigo-600" />}
+                      </div>
+                    </div>
+                  ))}
+
+                  {enrollGroup && (
+                    <div className="pt-2">
+                      {enrollError && <p className="text-red-500 text-sm mb-2">{enrollError}</p>}
+                      <button onClick={enrollInGroup} disabled={enrollLoading}
+                        className="crm-btn-primary w-full justify-center disabled:opacity-60">
+                        {enrollLoading
+                          ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                          : <Check size={14} />}
+                        Добавить в Поток #{enrollGroup.number}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const STATUS_CONFIG = [
   { value: 'active',    label: 'Активный',  desc: 'Обучается',          icon: '✅', ring: 'ring-emerald-300', bg: 'bg-emerald-50' },
@@ -628,44 +886,13 @@ export default function ClientDetail() {
         )}
       </div>
 
-      {/* ── Повторный ── */}
-      <div className="crm-card p-5 mb-5">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-            <RotateCcw size={15} className="text-indigo-600" />
-          </div>
-          <h3 className="font-bold text-slate-800">Повторный клиент</h3>
-        </div>
-        <p className="text-sm text-slate-500 mb-3">
-          Повторным клиентам начисляется бонус на баланс.
-        </p>
-        <div role="button" tabIndex={0}
-          onClick={() => !repeatLoading && setRepeat(!client.is_repeat)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault(); !repeatLoading && setRepeat(!client.is_repeat)
-            }
-          }}
-          className={`flex items-center gap-3 py-3.5 px-4 rounded-2xl border-2 cursor-pointer select-none transition-all duration-150
-            ${client.is_repeat
-              ? 'bg-indigo-50 border-indigo-300'
-              : 'bg-white border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30'
-            }`}>
-          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-            client.is_repeat ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'
-          }`}>
-            {client.is_repeat && <Check size={12} className="text-white" strokeWidth={3} />}
-          </div>
-          <span className="text-sm font-semibold text-slate-800">Клиент повторный</span>
-          {repeatLoading && (
-            <span className="ml-auto">
-              <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin block" />
-            </span>
-          )}
-        </div>
-      </div>
+      {/* ── Повторный клиент + запись в поток ── */}
+      <RepeatClientPanel client={client} clientId={id} onSuccess={load} />
 
-      {/* ── Бонусная система (новая панель) ── */}
+      {/* ── История потоков ── */}
+      <GroupHistoryPanel clientId={id} clientPaymentType={client.payment_type} />
+
+      {/* ── Бонусная система ── */}
       <BonusPanel
         clientId={id}
         currentBalance={client.bonus_balance}

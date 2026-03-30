@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from core.permissions import IsAdmin, IsAdminOrRegistrar
 from core.exceptions import ValidationError
-from .models import Client
+from .models import Client, ClientGroupHistory
 from .serializers import ClientReadSerializer, ClientCreateSerializer, ClientUpdateSerializer
 from .services import ClientService
 from .filters import ClientFilter
@@ -61,9 +61,7 @@ class ClientViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        serializer = ClientUpdateSerializer(
-            instance, data=request.data, partial=partial
-        )
+        serializer = ClientUpdateSerializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data.copy()
         if 'group' in data:
@@ -88,9 +86,33 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar])
     def reset_cabinet_password(self, request, pk=None):
-        """Generate new cabinet password, set it, return once for manager to give to client."""
         try:
             plain = self.service.reset_cabinet_password(pk)
             return Response({'password': plain})
         except ValidationError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], url_path='group-history')
+    def group_history(self, request, pk=None):
+        """
+        GET /api/clients/{id}/group-history/
+        Возвращает историю завершённых потоков клиента.
+        """
+        records = ClientGroupHistory.objects.filter(client_id=pk).order_by('-ended_at')
+        data = [
+            {
+                'id':               str(r.id),
+                'group_id':         str(r.group_id) if r.group_id else None,
+                'group_number':     r.group_number,
+                'group_type':       r.group_type,
+                'trainer_name':     r.trainer_name,
+                'start_date':       str(r.start_date) if r.start_date else None,
+                'ended_at':         str(r.ended_at),
+                'payment_type':     r.payment_type,
+                'payment_amount':   str(r.payment_amount),
+                'payment_paid':     str(r.payment_paid),
+                'payment_is_closed': r.payment_is_closed,
+            }
+            for r in records
+        ]
+        return Response(data)

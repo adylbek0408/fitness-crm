@@ -25,7 +25,7 @@ class PaymentService(BaseService):
 
         payment.mark_as_paid()
 
-        # ✅ Автоначисление 10% бонуса
+        # ✅ Начисляем бонус сразу — полная оплата одним платежом
         self._bonus_service().accrue(
             client=payment.client,
             payment_amount=payment.amount,
@@ -51,7 +51,7 @@ class PaymentService(BaseService):
             update_fields.append('amount')
         payment.save(update_fields=update_fields)
 
-        # ✅ Начисляем бонус только если до этого не был оплачен
+        # ✅ Начисляем бонус только если раньше не был оплачен
         if not was_paid:
             self._bonus_service().accrue(
                 client=payment.client,
@@ -84,12 +84,15 @@ class PaymentService(BaseService):
             note=data.get('note', '')
         )
 
-        # ✅ Автоначисление 10% бонуса с каждого взноса
-        self._bonus_service().accrue(
-            client=plan.client,
-            payment_amount=amount,
-            created_by=user,
-        )
+        # ✅ Бонус при рассрочке — ТОЛЬКО когда рассрочка полностью закрыта
+        plan.refresh_from_db()
+        if plan.is_closed:
+            self._bonus_service().accrue(
+                client=plan.client,
+                payment_amount=plan.total_cost,   # бонус с полной суммы курса
+                description=f'Начисление 10% бонуса — рассрочка закрыта. Сумма курса: {plan.total_cost} сом',
+                created_by=user,
+            )
 
         self.logger.info(
             f"Installment payment added: {payment.id}, plan: {plan_id}, amount: {amount}"

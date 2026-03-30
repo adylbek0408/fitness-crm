@@ -9,16 +9,12 @@ from core.models import UUIDTimestampedModel
 class ClientAccount(models.Model):
     """Cabinet access for client: login + password, one per client."""
     client = models.OneToOneField(
-        'Client',
-        on_delete=models.CASCADE,
-        related_name='cabinet_account',
+        'Client', on_delete=models.CASCADE, related_name='cabinet_account',
     )
     username = models.CharField(max_length=150, unique=True)
-    password = models.CharField(max_length=128)  # hashed
-    password_plain = models.CharField(
-        max_length=100, blank=True, default='',
-        help_text="Plain password for admin visibility"
-    )
+    password = models.CharField(max_length=128)
+    password_plain = models.CharField(max_length=100, blank=True, default='',
+        help_text="Plain password for admin visibility")
 
     def set_password(self, raw_password):
         from django.contrib.auth.hashers import make_password
@@ -35,71 +31,39 @@ class ClientAccount(models.Model):
 
 
 class Client(UUIDTimestampedModel):
-    TRAINING_FORMAT_CHOICES = [
-        ('online', 'Online'),
-        ('offline', 'Offline'),
-    ]
-
-    GROUP_TYPE_CHOICES = [
-        ('1.5h', '1.5 hours'),
-        ('2.5h', '2.5 hours'),
-    ]
-
+    TRAINING_FORMAT_CHOICES = [('online', 'Online'), ('offline', 'Offline')]
+    GROUP_TYPE_CHOICES = [('1.5h', '1.5 hours'), ('2.5h', '2.5 hours')]
     STATUS_CHOICES = [
-        ('active', 'Active'),
-        ('completed', 'Completed'),
-        ('expelled', 'Expelled'),
-        ('frozen', 'Frozen'),
+        ('active', 'Active'), ('completed', 'Completed'),
+        ('expelled', 'Expelled'), ('frozen', 'Frozen'),
     ]
-
-    PAYMENT_TYPE_CHOICES = [
-        ('full', 'Full Payment'),
-        ('installment', 'Installment'),
-    ]
+    PAYMENT_TYPE_CHOICES = [('full', 'Full Payment'), ('installment', 'Installment')]
 
     first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-    phone = models.CharField(max_length=20, unique=True)
+    last_name  = models.CharField(max_length=100)
+    phone      = models.CharField(max_length=20, unique=True)
 
     training_format = models.CharField(max_length=10, choices=TRAINING_FORMAT_CHOICES)
-    group_type = models.CharField(max_length=10, choices=GROUP_TYPE_CHOICES)
+    group_type      = models.CharField(max_length=10, choices=GROUP_TYPE_CHOICES)
     group = models.ForeignKey(
-        'groups.Group',
-        on_delete=models.PROTECT,
-        related_name='clients',
-        null=True,
-        blank=True
+        'groups.Group', on_delete=models.PROTECT,
+        related_name='clients', null=True, blank=True
     )
     trainer = models.ForeignKey(
-        'trainers.Trainer',
-        on_delete=models.PROTECT,
-        related_name='clients',
-        null=True,
-        blank=True
+        'trainers.Trainer', on_delete=models.PROTECT,
+        related_name='clients', null=True, blank=True
     )
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
-
+    status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     is_repeat = models.BooleanField(default=False)
-    discount = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0,
-        help_text="Discount percentage (0-100)"
-    )
-
-    bonus_balance = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0,
-        help_text="Client bonus balance (visible in cabinet)"
-    )
-
-    payment_type = models.CharField(max_length=15, choices=PAYMENT_TYPE_CHOICES)
+    discount  = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    bonus_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    payment_type  = models.CharField(max_length=15, choices=PAYMENT_TYPE_CHOICES)
 
     registered_at = models.DateField(default=date.today)
     registered_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='registered_clients'
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='registered_clients'
     )
 
     class Meta:
@@ -123,6 +87,40 @@ class Client(UUIDTimestampedModel):
         return f"{self.last_name} {self.first_name}"
 
 
+class ClientGroupHistory(UUIDTimestampedModel):
+    """История потоков клиента — снимок данных при закрытии потока."""
+
+    client = models.ForeignKey(
+        'Client', on_delete=models.CASCADE, related_name='group_history'
+    )
+    group = models.ForeignKey(
+        'groups.Group', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='client_history'
+    )
+    group_number    = models.PositiveIntegerField()
+    group_type      = models.CharField(max_length=10)
+    trainer_name    = models.CharField(max_length=200, blank=True)
+    start_date      = models.DateField(null=True, blank=True)
+    ended_at        = models.DateField(auto_now_add=True)
+
+    # Снимок оплаты на момент закрытия
+    payment_type    = models.CharField(max_length=15, blank=True)
+    payment_amount  = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    payment_paid    = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    payment_is_closed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-ended_at']
+        verbose_name = 'История потока'
+        verbose_name_plural = 'История потоков'
+        indexes = [
+            models.Index(fields=['client', '-ended_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.client} | Поток #{self.group_number} | {self.ended_at}"
+
+
 class BonusTransaction(UUIDTimestampedModel):
     """История бонусных операций клиента."""
 
@@ -134,32 +132,24 @@ class BonusTransaction(UUIDTimestampedModel):
     ]
 
     client = models.ForeignKey(
-        'Client',
-        on_delete=models.CASCADE,
-        related_name='bonus_transactions'
+        'Client', on_delete=models.CASCADE, related_name='bonus_transactions'
     )
     transaction_type = models.CharField(max_length=15, choices=TYPE_CHOICES)
-    # amount — всегда положительное число, тип определяется transaction_type
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    # сумма оплаты, с которой был посчитан бонус
-    payment_amount = models.DecimalField(
+    amount           = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_amount   = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True
     )
     description = models.CharField(max_length=255, blank=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='bonus_transactions'
+    created_by  = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bonus_transactions'
     )
 
     class Meta:
         ordering = ['-created_at']
         verbose_name        = 'Бонусная операция'
         verbose_name_plural = 'Бонусные операции'
-        indexes = [
-            models.Index(fields=['client', '-created_at']),
-        ]
+        indexes = [models.Index(fields=['client', '-created_at'])]
 
     def __str__(self):
         return f"{self.client} | {self.transaction_type} | {self.amount}"

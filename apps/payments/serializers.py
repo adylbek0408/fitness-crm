@@ -1,3 +1,5 @@
+from datetime import date
+
 from rest_framework import serializers
 
 from .models import FullPayment, InstallmentPlan, InstallmentPayment
@@ -35,5 +37,10 @@ class AddInstallmentPaymentSerializer(serializers.Serializer):
 
     def validate_amount(self, value):
         if value <= 0:
-            raise serializers.ValidationError("Amount must be positive")
+            raise serializers.ValidationError("Сумма должна быть больше 0")
+        return value
+
+    def validate_paid_at(self, value):
+        if value > date.today():
+            raise serializers.ValidationError("Нельзя указывать будущую дату платежа")
         return value

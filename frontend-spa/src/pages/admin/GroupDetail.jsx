@@ -21,7 +21,6 @@ function scheduleLabel(s) {
   const days = parts[0].split(',').map(d => DAY_LABELS[d] || d).join(', ')
   return days + (parts[1] ? ` · ${parts[1]}` : '')
 }
-// Локальная дата в формате YYYY-MM-DD (UTC+6 Кыргызстан)
 function localDateISO(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
@@ -29,28 +28,37 @@ function todayISO() { return localDateISO() }
 function formatDate(s) { if (!s) return ''; const [y,m,d]=s.split('-'); return `${d}.${m}.${y}` }
 function formatDateWithDay(s) {
   if (!s) return ''
-  const d = new Date(s+'T00:00:00') // локальное время
+  const d = new Date(s+'T00:00:00')
   const [,m,dd]=s.split('-')
   return `${DAY_SHORT_RU[d.getDay()]}  ${dd}.${m}`
 }
 function getLessonDates(schedule, startDate) {
   const nums = parseScheduleDays(schedule)
   if (!nums.length || !startDate) return []
-  const today = todayISO()  // сегодня в локальном времени
+  const today = todayISO()
   const dates = []
-  const cur = new Date(startDate + 'T00:00:00')  // парсим как локальное время
+  const cur = new Date(startDate + 'T00:00:00')
   while (true) {
     const iso = localDateISO(cur)
-    if (iso > today) break   // Будущее — не показываем!
+    if (iso > today) break
     if (nums.includes(cur.getDay())) dates.push(iso)
     cur.setDate(cur.getDate() + 1)
   }
   return dates.reverse()
 }
-// По умолчанию все присутствуют (saved:true = не требует действий)
-// Только НБ нужно явно отмечать
 function buildEmptyMap(clients) {
   const m={}; clients.forEach(c=>{m[c.id]={is_absent:false,note:'',saved:true}}); return m
+}
+
+// ── Проверка: оплата клиента закрыта? ─────────────────────────────────────────
+function isPaymentClosed(client) {
+  if (client.payment_type === 'full') {
+    return client.full_payment?.is_paid === true
+  }
+  if (client.payment_type === 'installment') {
+    return client.installment_plan?.is_closed === true
+  }
+  return false
 }
 
 function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerName, schedule, startDate }) {
@@ -90,19 +98,17 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
     api.get(`/attendance/group/${groupId}/all/`)
       .then(r => {
         if (cancelled) return
-        const allData = r.data // { "2026-03-28": [{client, is_absent, note}], ... }
+        const allData = r.data
         const newHistory = {}
         lessonDates.forEach(date => {
           const recs = allData[date] || []
           const absent = recs.filter(rec => rec.is_absent).length
-          const present = offlineClients.length - absent
-          newHistory[date] = { absent, present, total: offlineClients.length, loaded: true }
+          newHistory[date] = { absent, present: offlineClients.length - absent, total: offlineClients.length, loaded: true }
         })
         setHistory(newHistory)
       })
       .catch(() => {
         if (cancelled) return
-        // Фоллбэк: все присутствовали (fallback)
         const newHistory = {}
         lessonDates.forEach(date => {
           newHistory[date] = { absent: 0, present: offlineClients.length, total: offlineClients.length, loaded: true }
@@ -165,7 +171,7 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
   const currentIdx=lessonDates.indexOf(selectedDate)
 
   if (!schedule||parseScheduleDays(schedule).length===0)
-    return <div className="crm-card p-8 text-center text-slate-400 text-sm">У потока не задано расписание. Отредактируйте поток.</div>
+    return <div className="crm-card p-8 text-center text-slate-400 text-sm">У потока не задано расписание.</div>
   if (!offlineClients.length)
     return <div className="crm-card p-8 text-center text-slate-400 text-sm">В потоке нет офлайн-клиентов</div>
 
@@ -280,20 +286,10 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
                       )
                     })}
                   </tbody>
-                  <tfoot className="bg-slate-50 border-t">
-                    <tr>
-                      <td colSpan={3} className="px-5 py-3 text-xs text-slate-400">Офлайн-клиентов: {offlineClients.length}</td>
-                      <td colSpan={2} className="px-5 py-3 text-xs text-right pr-8">
-                        <span className="text-emerald-700 font-semibold mr-4">Присутствовали: {presentCount}</span>
-                        <span className="text-red-600 font-semibold">НБ: {absentCount}</span>
-                      </td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-3">ℹ️ По умолчанию все офлайн-клиенты считаются присутствующими. Отметьте только тех, кто не пришёл (НБ), затем нажмите «Сохранить».</p>
         </>
       )}
 
@@ -301,19 +297,14 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
         <div className="crm-card overflow-hidden">
           <div className="px-5 py-4 border-b bg-slate-50">
             <h3 className="font-bold text-slate-800">История занятий</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Поток #{groupNumber} · {scheduleLabel(schedule)} · Офлайн: {offlineClients.length}</p>
+            <p className="text-xs text-slate-400 mt-0.5">Поток #{groupNumber} · {scheduleLabel(schedule)}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="crm-table min-w-[700px]">
-              <thead>
-                <tr>
-                  <th>Дата занятия</th>
-                  <th className="text-center">Присутствовали</th>
-                  <th className="text-center">НБ</th>
-                  <th className="text-center">Посещаемость</th>
-                  <th></th>
-                </tr>
-              </thead>
+              <thead><tr>
+                <th>Дата занятия</th><th className="text-center">Присутствовали</th>
+                <th className="text-center">НБ</th><th className="text-center">Посещаемость</th><th></th>
+              </tr></thead>
               <tbody>
                 {lessonDates.map(date => {
                   const h = history[date]
@@ -378,7 +369,10 @@ export default function GroupDetail() {
     params.append('page_size','200')
     const r=await api.get(`/clients/?${params}`)
     const currentIds=new Set(groupClients.map(c=>c.id))
-    setAvailableClients((r.data.results||[]).filter(c=>!currentIds.has(c.id)&&!c.group))
+    // ✅ Показываем только тех у кого оплата закрыта и нет потока
+    setAvailableClients(
+      (r.data.results||[]).filter(c => !currentIds.has(c.id) && !c.group && isPaymentClosed(c))
+    )
   }, [group,search,filterType,groupClients])
 
   useEffect(()=>{loadGroup()},[loadGroup])
@@ -394,6 +388,7 @@ export default function GroupDetail() {
       loadGroupClients(); loadAvailableClients()
     } catch(e){ showMsg('error',e.response?.data?.detail||'Ошибка') }
   }
+
   const removeClient = async clientId => {
     if (!confirm('Убрать клиента из потока?')) return
     await api.post(`/groups/${id}/remove-client/`,{client_id:clientId})
@@ -408,19 +403,19 @@ export default function GroupDetail() {
     </AdminLayout>
   )
 
+  const isCompleted = group.status === 'completed'
+
   const TABS = [
     { key:'current', label:`Клиенты потока (${groupClients.length})` },
     { key:'attendance', label:'📋 НБ / Посещаемость' },
-    { key:'add', label:'+ Добавить клиентов' },
+    // Вкладку "Добавить" скрываем для завершённых потоков
+    ...(!isCompleted ? [{ key:'add', label:'+ Добавить клиентов' }] : []),
   ]
 
   return (
     <AdminLayout user={user}>
-      {/* Заголовок */}
       <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <Link to="/admin/groups" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm transition">
-          ← Назад
-        </Link>
+        <Link to="/admin/groups" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm transition">← Назад</Link>
         <div className="w-px h-5 bg-slate-200"/>
         <div className="flex items-center gap-3 flex-wrap flex-1">
           <h2 className="crm-page-title break-words">Поток #{group.number} — {GROUP_TYPE_LABEL[group.group_type]}</h2>
@@ -428,10 +423,11 @@ export default function GroupDetail() {
             {STATUS_LABEL[group.status]}
           </span>
         </div>
-        <Link to={`/admin/groups/${id}`} className="crm-btn-secondary text-xs py-2">Редактировать</Link>
+        {!isCompleted && (
+          <Link to={`/admin/groups/${id}`} className="crm-btn-secondary text-xs py-2">Редактировать</Link>
+        )}
       </div>
 
-      {/* Инфо потока */}
       <div className="crm-card p-5 mb-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
@@ -466,7 +462,6 @@ export default function GroupDetail() {
         <div className={`mb-4 p-3 rounded-xl text-sm font-medium ${msg.type==='success'?'crm-toast-success':'crm-toast-error'}`}>{msg.text}</div>
       )}
 
-      {/* Табы */}
       <div className="flex gap-2 mb-5 flex-wrap">
         {TABS.map(({key,label})=>(
           <button key={key} onClick={()=>setTab(key)}
@@ -482,11 +477,13 @@ export default function GroupDetail() {
           <div className="overflow-x-auto">
             <table className="crm-table min-w-[860px]">
               <thead><tr>
-                <th>Клиент</th><th>Телефон</th><th>Тип</th><th>Формат</th><th>Статус</th><th>Менеджер</th><th></th>
+                <th>Клиент</th><th>Телефон</th><th>Тип</th><th>Формат</th><th>Статус</th><th>Менеджер</th>
+                {/* ✅ Колонку "Убрать" скрываем для завершённых потоков */}
+                {!isCompleted && <th></th>}
               </tr></thead>
               <tbody>
                 {groupClients.length===0
-                  ? <tr><td colSpan={7} className="text-center py-10 text-slate-400">В потоке нет клиентов</td></tr>
+                  ? <tr><td colSpan={isCompleted?6:7} className="text-center py-10 text-slate-400">В потоке нет клиентов</td></tr>
                   : groupClients.map(c=>(
                     <tr key={c.id}>
                       <td><Link to={`/admin/clients/${c.id}`} className="font-semibold text-slate-800 hover:text-indigo-600 transition">{c.full_name}</Link></td>
@@ -499,12 +496,19 @@ export default function GroupDetail() {
                       </td>
                       <td><span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span></td>
                       <td className="text-slate-400 text-xs">{c.registered_by_name||'—'}</td>
-                      <td><button onClick={()=>removeClient(c.id)} className="text-red-400 hover:text-red-600 text-xs transition">Убрать</button></td>
+                      {!isCompleted && (
+                        <td><button onClick={()=>removeClient(c.id)} className="text-red-400 hover:text-red-600 text-xs transition">Убрать</button></td>
+                      )}
                     </tr>
                   ))}
               </tbody>
             </table>
           </div>
+          {isCompleted && (
+            <div className="px-5 py-3 bg-slate-50 border-t text-xs text-slate-400">
+              🎓 Поток завершён — редактирование списка недоступно
+            </div>
+          )}
         </div>
       )}
 
@@ -515,20 +519,25 @@ export default function GroupDetail() {
           schedule={group.schedule} startDate={group.start_date}/>
       )}
 
-      {tab==='add' && (
+      {tab==='add' && !isCompleted && (
         <div>
-          <div className="crm-card p-4 mb-4 flex gap-3 flex-wrap items-center">
-            <input type="text" placeholder="Поиск..." value={search} onChange={e=>setSearch(e.target.value)}
-              className="crm-input w-full sm:w-64"/>
-            <div className="flex gap-2">
-              {[{val:'',label:'Все типы'},{val:'1.5h',label:'1.5 ч'},{val:'2.5h',label:'2.5 ч'}].map(opt=>(
-                <button key={opt.val} onClick={()=>setFilterType(opt.val)}
-                  className={`px-4 py-2 rounded-xl text-sm transition ${filterType===opt.val?'bg-indigo-600 text-white':'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                  {opt.label}
-                </button>
-              ))}
+          <div className="crm-card p-4 mb-4">
+            {/* Подсказка про фильтр оплаты */}
+            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+              ℹ️ Показаны только клиенты <strong>без потока</strong> и с <strong>закрытой оплатой</strong>
             </div>
-            <p className="text-xs text-slate-400 ml-auto">Клиенты без потока</p>
+            <div className="flex gap-3 flex-wrap items-center">
+              <input type="text" placeholder="Поиск..." value={search} onChange={e=>setSearch(e.target.value)}
+                className="crm-input w-full sm:w-64"/>
+              <div className="flex gap-2">
+                {[{val:'',label:'Все типы'},{val:'1.5h',label:'1.5 ч'},{val:'2.5h',label:'2.5 ч'}].map(opt=>(
+                  <button key={opt.val} onClick={()=>setFilterType(opt.val)}
+                    className={`px-4 py-2 rounded-xl text-sm transition ${filterType===opt.val?'bg-indigo-600 text-white':'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="crm-card overflow-hidden">
             <div className="overflow-x-auto">
@@ -538,7 +547,7 @@ export default function GroupDetail() {
                 </tr></thead>
                 <tbody>
                   {availableClients.length===0
-                    ? <tr><td colSpan={6} className="text-center py-10 text-slate-400">Нет клиентов без потока</td></tr>
+                    ? <tr><td colSpan={6} className="text-center py-10 text-slate-400">Нет клиентов с закрытой оплатой без потока</td></tr>
                     : availableClients.map(c=>(
                       <tr key={c.id}>
                         <td className="font-semibold text-slate-800">{c.full_name}</td>
