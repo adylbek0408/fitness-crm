@@ -14,7 +14,7 @@ def get_repeat_client_bonus_amount():
     try:
         s = SystemSetting.objects.get(key='repeat_client_bonus')
         return Decimal(s.value)
-    except SystemSetting.DoesNotExist:
+    except Exception:
         return Decimal('800')
 
 
