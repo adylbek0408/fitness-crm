@@ -76,7 +76,7 @@ export default function ClientRegister() {
   const [form, setForm] = useState({
     first_name: '', last_name: '', phone: '',
     training_format: '', group_type: '',
-    payment_type: '', total_cost: '', deadline: '',
+    payment_type: '', pay_amount: '', total_cost: '', deadline: '',
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -93,6 +93,9 @@ export default function ClientRegister() {
     }
     if (step === 2) {
       if (!form.payment_type) { setError('Выберите тип оплаты'); return false }
+      if (form.payment_type === 'full') {
+        if (!form.pay_amount || Number(form.pay_amount) <= 0) { setError('Введите сумму курса'); return false }
+      }
       if (form.payment_type === 'installment') {
         if (!form.total_cost) { setError('Введите общую стоимость'); return false }
         if (!form.deadline) { setError('Укажите дедлайн оплаты'); return false }
@@ -109,7 +112,7 @@ export default function ClientRegister() {
     setLoading(true); setError('')
     const pt = form.payment_type
     const paymentData = pt === 'full'
-      ? { amount: 0 }
+      ? { amount: form.pay_amount }
       : { total_cost: form.total_cost, deadline: form.deadline }
     const body = {
       first_name: form.first_name, last_name: form.last_name, phone: form.phone,
@@ -279,6 +282,18 @@ export default function ClientRegister() {
                 onClick={() => set('payment_type', 'installment')} />
             </div>
           </div>
+
+          {form.payment_type === 'full' && (
+            <div className="rounded-2xl p-4 space-y-3 animate-fade-in"
+                 style={{ background: '#fff', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-xs)' }}>
+                Сумма курса
+              </p>
+              <input type="number" placeholder="Сумма курса (сом) *" required min="1"
+                value={form.pay_amount} onChange={e => set('pay_amount', e.target.value)}
+                className="crm-mobile-input" />
+            </div>
+          )}
 
           {form.payment_type === 'installment' && (
             <div className="rounded-2xl p-4 space-y-3 animate-fade-in"

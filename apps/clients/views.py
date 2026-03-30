@@ -73,7 +73,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         client = self.service.update_client(str(instance.id), data)
         return Response(ClientReadSerializer(client).data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar])
     def change_status(self, request, pk=None):
         new_status = request.data.get('status')
         client = self.service.change_status(pk, new_status)

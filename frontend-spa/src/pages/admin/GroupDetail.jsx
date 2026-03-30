@@ -371,9 +371,9 @@ export default function GroupDetail() {
     params.append('page_size','200')
     const r=await api.get(`/clients/?${params}`)
     const currentIds=new Set(groupClients.map(c=>c.id))
-    // ✅ Показываем только тех у кого оплата закрыта и нет потока
+    // Показываем всех клиентов без потока (оплата может быть ещё не подтверждена)
     setAvailableClients(
-      (r.data.results||[]).filter(c => !currentIds.has(c.id) && !c.group && isPaymentClosed(c))
+      (r.data.results||[]).filter(c => !currentIds.has(c.id) && !c.group)
     )
   }, [group,search,filterType,groupClients])
 
@@ -543,9 +543,9 @@ export default function GroupDetail() {
       {tab==='add' && !isCompleted && (
         <div>
           <div className="crm-card p-4 mb-4">
-            {/* Подсказка про фильтр оплаты */}
-            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-              ℹ️ Показаны только клиенты <strong>без потока</strong> и с <strong>закрытой оплатой</strong>
+            {/* Подсказка */}
+            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
+              ℹ️ Показаны клиенты <strong>без потока</strong>, готовые к зачислению
             </div>
             <div className="flex gap-3 flex-wrap items-center">
               <input type="text" placeholder="Поиск..." value={search} onChange={e=>setSearch(e.target.value)}
@@ -568,7 +568,7 @@ export default function GroupDetail() {
                 </tr></thead>
                 <tbody>
                   {availableClients.length===0
-                    ? <tr><td colSpan={6} className="text-center py-10 text-slate-400">Нет клиентов с закрытой оплатой без потока</td></tr>
+                    ? <tr><td colSpan={6} className="text-center py-10 text-slate-400">Нет клиентов без потока</td></tr>
                     : availableClients.map(c=>(
                       <tr key={c.id}>
                         <td className="font-semibold text-slate-800">{c.full_name}</td>

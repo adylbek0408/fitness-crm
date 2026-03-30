@@ -160,6 +160,8 @@ class StatisticsService(BaseService):
         return full + installment
 
     def get_revenue_by_group(self, params: dict) -> list:
+        from apps.clients.models import ClientGroupHistory
+
         f = self._build_filters(params)
         groups = Group.objects.all()
         if params.get('trainer_id'):
@@ -167,10 +169,23 @@ class StatisticsService(BaseService):
 
         result = []
         for group in groups.select_related('trainer'):
-            client_ids = list(
-                Client.objects.filter(group=group).values_list('id', flat=True)
-            )
-            revenue = self._calc_revenue_for_clients(client_ids, f)
+            if group.status == 'completed':
+                # Для закрытых потоков берём данные из истории (снимок)
+                from django.db.models import Sum as _Sum
+                from django.db.models.functions import Coalesce as _Coalesce
+                hist = ClientGroupHistory.objects.filter(group=group)
+                revenue = hist.aggregate(
+                    total=_Coalesce(_Sum('payment_paid'), Decimal('0.00'))
+                )['total']
+                client_count = hist.count()
+            else:
+                # Для активных/набор — текущие клиенты
+                client_ids = list(
+                    Client.objects.filter(group=group).values_list('id', flat=True)
+                )
+                revenue = self._calc_revenue_for_clients(client_ids, f)
+                client_count = len(client_ids)
+
             result.append({
                 'group_id': group.id,
                 'group_number': group.number,
@@ -178,7 +193,7 @@ class StatisticsService(BaseService):
                 'trainer': group.trainer.full_name if group.trainer else None,
                 'status': group.status,
                 'revenue': revenue,
-                'client_count': len(client_ids),
+                'client_count': client_count,
             })
 
         result.sort(key=lambda x: x['revenue'], reverse=True)

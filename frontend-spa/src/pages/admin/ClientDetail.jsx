@@ -188,8 +188,15 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
         )}
       </div>
       <p className="text-sm text-slate-500 mb-3">
-        Клиент пришёл снова? Запишите в поток с новой оплатой. Бонус 800 сом начислится автоматически.
+        Клиент пришёл снова? Запишите в поток с новой оплатой.
+        Бонусы (10% от оплаты) начисляются автоматически.
       </p>
+      {Number(client.bonus_balance) > 0 && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700 mb-3 flex items-center gap-2">
+          <Gift size={14} />
+          На балансе <strong>{fmtMoney(client.bonus_balance)}</strong> бонусов — спишутся автоматически при записи
+        </div>
+      )}
 
       {enrollMsg && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-4">
@@ -275,6 +282,25 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
                     onChange={e=>setDeadline(e.target.value)} className="crm-input w-full" />
                 </div>
               )}
+
+              {/* Превью бонуса */}
+              {enrollGroup && Number(client.bonus_balance) > 0 && (
+                (payType === 'full' && payAmount && Number(payAmount) > 0) ||
+                (payType === 'installment' && totalCost && Number(totalCost) > 0)
+              ) && (() => {
+                const price = Number(payType === 'full' ? payAmount : totalCost)
+                const bonus = Math.min(Number(client.bonus_balance), price)
+                const final_price = price - bonus
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1.5 text-sm">
+                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Расчёт бонуса</p>
+                    <div className="flex justify-between"><span className="text-slate-500">Полная цена</span><span className="font-semibold crm-money">{fmtMoney(price)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Бонус спишется</span><span className="font-semibold text-red-500 crm-money">− {fmtMoney(bonus)}</span></div>
+                    <div className="h-px bg-amber-200" />
+                    <div className="flex justify-between font-bold"><span className="text-slate-700">К оплате</span><span className="text-emerald-600 crm-money">{fmtMoney(final_price)}</span></div>
+                  </div>
+                )
+              })()}
 
               {/* Кнопка */}
               {enrollGroup && (
@@ -771,6 +797,20 @@ export default function ClientDetail() {
                   className="flex items-center gap-2 text-indigo-600 text-sm hover:text-indigo-800 transition">
                   <Receipt size={14} /> Открыть чек →
                 </a>
+              )}
+              {!full.is_paid && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await api.post(`/payments/full/${id}/pay/`)
+                      load()
+                    } catch (e) {
+                      alert(e.response?.data?.detail || 'Ошибка подтверждения')
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 transition flex items-center justify-center gap-2">
+                  <CheckCircle size={14} /> Подтвердить оплату
+                </button>
               )}
             </div>
           )}

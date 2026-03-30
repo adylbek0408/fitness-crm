@@ -107,10 +107,12 @@ class CabinetMeView(APIView):
                 'trainer': g.trainer.full_name if g.trainer_id else '',
             }
 
-        # Завершённые потоки: пока только текущий статус клиента; истории потоков в БД нет
-        completed_flows = []
-        if client.status == 'completed' and client.group_id:
-            completed_flows = [{'number': client.group.number, 'group_type': client.group.group_type}]
+        # Завершённые потоки из ClientGroupHistory
+        from .models import ClientGroupHistory
+        completed_flows = [
+            {'number': h.group_number, 'group_type': h.group_type}
+            for h in ClientGroupHistory.objects.filter(client=client).order_by('-ended_at')
+        ]
 
         return Response({
             'first_name': client.first_name,
