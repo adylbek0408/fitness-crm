@@ -79,9 +79,12 @@ class GroupService(BaseService):
         # ── Переводим активных клиентов в completed ────────────────
         group.clients.filter(status='active').update(status='completed')
 
+        # ── Очищаем привязку к группе у ВСЕХ клиентов (история уже сохранена) ──
+        group.clients.update(group=None)
+
         group.status = 'completed'
         group.save(update_fields=['status'])
-        self.logger.info(f"Group {group_id} closed, {len(clients)} clients archived")
+        self.logger.info(f"Group {group_id} closed, {len(clients)} clients archived, group cleared")
         return group
 
     def activate_group(self, group_id: str) -> Group:

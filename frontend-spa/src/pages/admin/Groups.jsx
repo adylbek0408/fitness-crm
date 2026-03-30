@@ -88,13 +88,7 @@ function GroupCard({ g, onClose }) {
             style={{ background: '#f5f5f5', color: 'var(--text-soft)' }}>
             Изменить
           </Link>
-          {g.status !== 'completed' && (
-            <button onClick={() => onClose(g.id)}
-              className="px-3 py-2.5 rounded-xl text-xs font-medium transition"
-              style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3' }}>
-              ✕
-            </button>
-          )}
+
         </div>
       </div>
     </div>

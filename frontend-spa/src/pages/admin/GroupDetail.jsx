@@ -356,6 +356,8 @@ export default function GroupDetail() {
   const [search, setSearch] = useState('')
   const [msg, setMsg] = useState(null)
 
+  const [closeLoading, setCloseLoading] = useState(false)
+
   const loadGroup = useCallback(async () => { const r=await api.get(`/groups/${id}/`); setGroup(r.data) }, [id])
   const loadGroupClients = useCallback(async () => {
     const r=await api.get(`/groups/${id}/clients/`)
@@ -423,9 +425,28 @@ export default function GroupDetail() {
             {STATUS_LABEL[group.status]}
           </span>
         </div>
-        {!isCompleted && (
-          <Link to={`/admin/groups/${id}`} className="crm-btn-secondary text-xs py-2">Редактировать</Link>
-        )}
+        <div className="flex gap-2">
+          {!isCompleted && (
+            <Link to={`/admin/groups/${id}`} className="crm-btn-secondary text-xs py-2">Редактировать</Link>
+          )}
+          {!isCompleted && (
+            <button
+              onClick={async () => {
+                if (!confirm('Закрыть поток? Все активные клиенты станут «Завершили» и будут откреплены от потока.')) return
+                setCloseLoading(true)
+                try {
+                  await api.post(`/groups/${id}/close/`)
+                  showMsg('success', 'Поток закрыт')
+                  loadGroup(); loadGroupClients()
+                } catch(e) { showMsg('error', e.response?.data?.detail || 'Ошибка') }
+                finally { setCloseLoading(false) }
+              }}
+              disabled={closeLoading}
+              className="px-4 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition disabled:opacity-50">
+              {closeLoading ? 'Закрытие...' : '🔒 Закрыть поток'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="crm-card p-5 mb-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
