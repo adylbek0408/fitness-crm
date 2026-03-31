@@ -52,7 +52,7 @@ export default function ConfirmFullPaymentForm({ clientId, amount, onSuccess }) 
           <input
             type="number"
             min="0"
-            step="1"
+            step="0.01"
             value={receiptAmount}
             onChange={e => setReceiptAmount(e.target.value)}
             placeholder="Сумма (сом)"

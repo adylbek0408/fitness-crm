@@ -6,7 +6,8 @@ import {
   KeyRound, Globe, Dumbbell, CreditCard, CheckCircle,
   Clock, Receipt, Snowflake, ArrowLeft, Copy, Check,
   RotateCcw, User, Phone, Calendar, Layers, UserCircle, Gift,
-  TrendingUp, TrendingDown, History, ChevronDown, ChevronUp, ChevronRight
+  TrendingUp, TrendingDown, History, ChevronDown, ChevronUp, ChevronRight,
+  Undo2
 } from 'lucide-react'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL, toAbsoluteUrl } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
@@ -162,7 +163,7 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
   const fmtSchedule = s => { if (!s) return '—'; const p = s.split(' '); return p[0].split(',').map(d => DAY_LABELS[d] || d).join(', ') + (p[1] ? ' · ' + p[1] : '') }
 
   const canReEnroll = !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
-  if (!canReEnroll && !client.is_repeat) return null
+  if (!canReEnroll) return null
 
   return (
     <div className="crm-card p-5 mb-5">
@@ -296,7 +297,6 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
         </div>
       )}
 
-      {!canReEnroll && client.is_repeat && <p className="text-sm text-slate-400">Клиент уже записан в поток.</p>}
     </div>
   )
 }
@@ -633,6 +633,37 @@ export default function ClientDetail() {
               </button>
             )
           })}
+        </div>
+      </div>
+
+      {/* Возврат средств */}
+      <div className="crm-card p-5 mb-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800 mb-0.5">Возврат средств</h3>
+            <p className="text-xs text-slate-400">Отменить запись и вернуть деньги клиенту</p>
+          </div>
+          <button
+            onClick={async () => {
+              const msg = client.group
+                ? `Возврат средств клиенту ${client.full_name}?\n\nНеоплаченные платежи будут удалены, клиент будет отчислен.`
+                : `Возврат средств клиенту ${client.full_name}?\n\nЕсли у клиента нет истории потоков — он будет полностью удалён.`
+              if (!confirm(msg)) return
+              try {
+                const r = await api.post(`/clients/${id}/refund/`)
+                alert(r.data.detail)
+                if (r.data.action === 'deleted') {
+                  window.location.href = '/admin/clients'
+                } else {
+                  load()
+                }
+              } catch (e) {
+                alert(e.response?.data?.detail || 'Ошибка возврата')
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition">
+            <Undo2 size={14} /> Возврат
+          </button>
         </div>
       </div>
 

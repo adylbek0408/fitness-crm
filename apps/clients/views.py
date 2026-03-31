@@ -128,3 +128,13 @@ class ClientViewSet(viewsets.ModelViewSet):
         """
         client = self.service.re_enroll_client(pk, request.data, user=request.user)
         return Response(ClientReadSerializer(client).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin], url_path='refund')
+    def refund(self, request, pk=None):
+        """
+        POST /api/clients/{id}/refund/
+        Возврат средств. Если есть история — отчисляет.
+        Если новичок — удаляет полностью.
+        """
+        result = self.service.refund_client(pk, user=request.user)
+        return Response(result)

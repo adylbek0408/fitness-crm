@@ -70,7 +70,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
   }
 
   const canReEnroll = !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
-  if (!canReEnroll && !client.is_repeat) return null
+  if (!canReEnroll) return null
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
@@ -82,7 +82,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
               <RotateCcw size={18} style={{ color: '#7c3aed' }} />
             </div>
             <div>
-              <p className="font-semibold text-gray-800 text-sm">Повторный клиент</p>
+              <p className="font-semibold text-gray-800 text-sm">Повторная запись</p>
               <p className="text-xs text-gray-400">Записать в новый поток</p>
             </div>
           </div>

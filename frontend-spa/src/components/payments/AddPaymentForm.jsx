@@ -9,7 +9,6 @@ function todayStr() {
 export default function AddPaymentForm({ planId, onSuccess }) {
   const [amount, setAmount] = useState('')
   const [paidAt, setPaidAt] = useState(todayStr())
-  const [note, setNote] = useState('')
   const [receipt, setReceipt] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -29,7 +28,6 @@ export default function AddPaymentForm({ planId, onSuccess }) {
       const formData = new FormData()
       formData.append('amount', amount)
       formData.append('paid_at', paidAt)
-      if (note) formData.append('note', note)
       if (receipt) formData.append('receipt', receipt)
 
       await api.post(
@@ -40,7 +38,6 @@ export default function AddPaymentForm({ planId, onSuccess }) {
 
       setAmount('')
       setPaidAt(todayStr())
-      setNote('')
       setReceipt(null)
       if (onSuccess) setTimeout(() => onSuccess(), 100)
     } catch (e) {
@@ -53,9 +50,9 @@ export default function AddPaymentForm({ planId, onSuccess }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 items-end">
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
       {error && (
-        <div className="xl:col-span-4 bg-red-50 text-red-600 text-sm rounded-xl p-3">
+        <div className="sm:col-span-3 bg-red-50 text-red-600 text-sm rounded-xl p-3">
           {error}
         </div>
       )}
@@ -78,13 +75,6 @@ export default function AddPaymentForm({ planId, onSuccess }) {
         />
       </div>
       <div className="min-w-0">
-        <label className="block text-xs text-gray-500 mb-1">Комментарий</label>
-        <input
-          value={note} onChange={e => setNote(e.target.value)}
-          className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full"
-        />
-      </div>
-      <div className="min-w-0">
         <label className="block text-xs text-gray-500 mb-1">Чек (необязательно)</label>
         <input
           type="file" accept="image/*,.pdf"
@@ -95,7 +85,7 @@ export default function AddPaymentForm({ planId, onSuccess }) {
       </div>
       <button
         type="submit" disabled={loading}
-        className="sm:col-span-2 xl:col-span-4 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition"
+        className="sm:col-span-3 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition"
       >
         {loading ? 'Сохранение...' : 'Добавить'}
       </button>

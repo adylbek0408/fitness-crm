@@ -231,3 +231,45 @@ class ClientService(BaseService):
             f'Payment created with discounted amount.'
         )
         return client
+
+    @transaction.atomic
+    def refund_client(self, client_id: str, user=None) -> dict:
+        """
+        Возврат средств и удаление клиента.
+
+        Если есть история потоков (ClientGroupHistory):
+          → Убираем из текущего потока, удаляем текущие платежи,
+            ставим статус 'expelled'. История прошлых потоков сохраняется.
+
+        Если истории нет (новичок):
+          → Полностью удаляем клиента и все его данные.
+        """
+        from .models import ClientGroupHistory
+
+        client = self.get_client_or_raise(client_id)
+        has_history = ClientGroupHistory.objects.filter(client=client).exists()
+
+        if has_history:
+            # У клиента есть прошлые потоки — не удаляем, а отчисляем
+            # Удаляем неоплаченные full payments
+            FullPayment.objects.filter(client=client, is_paid=False).delete()
+            # Удаляем незакрытые рассрочки (закрытые оставляем для истории)
+            for plan in InstallmentPlan.objects.filter(client=client):
+                if not plan.is_closed:
+                    plan.payments.all().delete()
+                    plan.delete()
+
+            client.group = None
+            client.status = 'expelled'
+            client.bonus_balance = Decimal('0')
+            client.save(update_fields=['group', 'status', 'bonus_balance'])
+
+            self.logger.info(f'Client {client_id} refunded (отчислен, история сохранена)')
+            return {'action': 'expelled', 'detail': 'Клиент отчислен, средства возвращены. История потоков сохранена.'}
+        else:
+            # Новичок — удаляем полностью
+            name = client.full_name
+            client.delete()  # CASCADE удалит платежи, кабинет, бонусы
+
+            self.logger.info(f'Client {client_id} ({name}) fully deleted (новичок, нет истории)')
+            return {'action': 'deleted', 'detail': f'Клиент {name} полностью удалён.'}
