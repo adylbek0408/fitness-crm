@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, LogOut, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, LogOut, Activity } from 'lucide-react'
 import PullToRefresh from './PullToRefresh'
 import { useRefreshFn } from '../contexts/RefreshContext'
 
@@ -28,7 +28,7 @@ export default function MobileLayout({ children }) {
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center"
                style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-            <Sparkles size={13} className="text-white" strokeWidth={2} />
+            <Activity size={13} className="text-white" strokeWidth={2} />
           </div>
           <span className="font-semibold text-sm" style={{ color: 'var(--text)', letterSpacing: '-0.015em' }}>
             Асылзада CRM

@@ -268,8 +268,8 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
                 const bonus = Math.min(Number(client.bonus_balance), price)
                 return (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1.5 text-sm">
-                    <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
-                      🎁 Бонус списывается при записи
+                    <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
+                      <Gift size={12} /> Бонус списывается при записи
                     </p>
                     <div className="flex justify-between"><span className="text-slate-500">Цена курса</span><span className="font-semibold crm-money">{fmtMoney(price)}</span></div>
                     <div className="flex justify-between"><span className="text-slate-500">Бонус</span><span className="font-semibold text-red-500 crm-money">- {fmtMoney(bonus)}</span></div>
@@ -284,7 +284,7 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
 
               {enrollGroup && (
                 <div className="pt-2">
-                  {enrollError && <p className="text-red-500 text-sm mb-2">⚠️ {enrollError}</p>}
+                  {enrollError && <p className="text-red-500 text-sm mb-2">{enrollError}</p>}
                   <button onClick={handleEnroll} disabled={enrollLoading} className="crm-btn-primary w-full justify-center disabled:opacity-60">
                     {enrollLoading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Check size={14} />}
                     Записать в Поток #{enrollGroup.number}
@@ -302,11 +302,12 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
 }
 
 // ── Статусы ───────────────────────────────────────────────────────────────────
+const STATUS_ICONS = { active: CheckCircle, frozen: Snowflake, completed: UserCircle, expelled: Clock }
 const STATUS_CONFIG = [
-  { value: 'active',    label: 'Активный',  desc: 'Обучается',          icon: '✅', ring: 'ring-emerald-300', bg: 'bg-emerald-50' },
-  { value: 'frozen',    label: 'Заморозка', desc: 'Временно заморожен', icon: '❄️', ring: 'ring-blue-300',    bg: 'bg-blue-50' },
-  { value: 'completed', label: 'Завершил',  desc: 'Курс завершён',      icon: '🎓', ring: 'ring-slate-300',   bg: 'bg-slate-50' },
-  { value: 'expelled',  label: 'Отчислен',  desc: 'Отчислен/возврат',   icon: '🚫', ring: 'ring-red-300',     bg: 'bg-red-50' },
+  { value: 'active',    label: 'Активный',  desc: 'Обучается',          ring: 'ring-emerald-300', bg: 'bg-emerald-50', iconColor: 'text-emerald-500' },
+  { value: 'frozen',    label: 'Заморозка', desc: 'Временно заморожен', ring: 'ring-blue-300',    bg: 'bg-blue-50',    iconColor: 'text-blue-500' },
+  { value: 'completed', label: 'Завершил',  desc: 'Курс завершён',      ring: 'ring-slate-300',   bg: 'bg-slate-50',   iconColor: 'text-slate-400' },
+  { value: 'expelled',  label: 'Отчислен',  desc: 'Отчислен/возврат',   ring: 'ring-red-300',     bg: 'bg-red-50',     iconColor: 'text-red-500' },
 ]
 
 // ── Бонусная панель ───────────────────────────────────────────────────────────
@@ -625,7 +626,7 @@ export default function ClientDetail() {
             return (
               <button key={s.value} type="button" onClick={() => !isActive && changeStatus(s.value)} disabled={isActive || statusLoading}
                 className={`flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border-2 text-sm font-medium transition-all duration-150 ${isActive ? `${s.bg} ${s.ring.replace('ring', 'border')} border-2 shadow-sm` : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'} ${statusLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <span className="text-2xl">{s.icon}</span>
+                {(() => { const SIcon = STATUS_ICONS[s.value]; return SIcon ? <SIcon size={22} className={s.iconColor} /> : null })()}
                 <span className="font-semibold">{s.label}</span>
                 <span className="text-xs opacity-60 font-normal text-center">{s.desc}</span>
                 {isActive && <span className="text-xs font-bold text-current opacity-80">Текущий</span>}

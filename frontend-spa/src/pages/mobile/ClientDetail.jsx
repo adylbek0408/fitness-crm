@@ -6,7 +6,7 @@ import { useRefresh } from '../../contexts/RefreshContext'
 import {
   Globe, Dumbbell, CreditCard, CheckCircle, Clock, Receipt,
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp, ChevronRight,
-  RotateCcw, Gift, Check
+  RotateCcw, Gift, Check, Layers, X
 } from 'lucide-react'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL, toAbsoluteUrl } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
@@ -94,7 +94,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
             <h3 className="font-semibold text-gray-800">
               {step === 1 ? 'Выберите поток' : `Оплата — Поток #${enrollGroup?.number}`}
             </h3>
-            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
           </div>
 
           {step === 1 && (
@@ -187,7 +187,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                   </div>
                 )
               })()}
-              {error && <p className="text-red-500 text-sm">⚠️ {error}</p>}
+              {error && <p className="text-red-500 text-sm">{error}</p>}
               <button type="button" onClick={handleEnroll} disabled={loading}
                 className="w-full py-4 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
                 style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
@@ -201,7 +201,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
       {successMsg && (
         <div className="px-4 pb-4">
           <div className="p-3 rounded-xl text-sm" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-            <span style={{ color: '#15803d' }}>✅ {successMsg}</span>
+            <span className="flex items-center gap-1.5" style={{ color: '#15803d' }}><Check size={14} /> {successMsg}</span>
           </div>
         </div>
       )}
@@ -230,7 +230,7 @@ function MobileStreamsHistory({ client, clientId }) {
       <button type="button" onClick={toggle} className="w-full flex items-center justify-between p-4 touch-manipulation">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#f3f4f6' }}>
-            <span className="text-base">📚</span>
+            <Layers size={18} className="text-gray-500" />
           </div>
           <div className="text-left">
             <p className="font-semibold text-gray-800 text-sm">Потоки</p>
@@ -267,7 +267,7 @@ function MobileStreamsHistory({ client, clientId }) {
                       <span className="ml-2 text-xs text-gray-400">{h.ended_at}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs font-semibold ${h.payment_is_closed ? 'text-green-600' : 'text-red-500'}`}>{h.payment_is_closed ? '✓' : '⚠'}</span>
+                      <span className={`text-xs font-semibold ${h.payment_is_closed ? 'text-green-600' : 'text-red-500'}`}>{h.payment_is_closed ? <CheckCircle size={12} /> : <Clock size={12} />}</span>
                       {selected?.id === h.id ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                     </div>
                   </button>
@@ -437,7 +437,7 @@ export default function MobileClientDetail() {
                 {client.training_format === 'online' ? 'Онлайн' : 'Оффлайн'} · {client.group_type}
               </p>
               {client.bonus_balance != null && Number(client.bonus_balance) > 0 && (
-                <p className="text-sm text-green-600 mt-1">🎁 Бонусы: {fmtMoney(client.bonus_balance)}</p>
+                <p className="text-sm text-green-600 mt-1 flex items-center gap-1"><Gift size={13} /> Бонусы: {fmtMoney(client.bonus_balance)}</p>
               )}
               {client.cabinet_username && (
                 <div className="mt-2 space-y-1">

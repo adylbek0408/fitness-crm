@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, Link, useOutletContext } from 'react-router-dom'
-import { AlertTriangle, FileDown, CheckCircle2, XCircle, ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
+import { AlertTriangle, FileDown, CheckCircle2, XCircle, ChevronLeft, ChevronRight, Calendar, Pencil, BarChart3, Lock, CalendarDays, GraduationCap, Info } from 'lucide-react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import api from '../../api/axios'
@@ -178,10 +178,11 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
   return (
     <div>
       <div className="flex gap-2 mb-4">
-        {[{k:'journal',l:'✏️ Отметить занятие'},{k:'history',l:'📊 История занятий'}].map(({k,l})=>(
+        {[{k:'journal',l:'Отметить занятие',icon:Pencil},{k:'history',l:'История занятий',icon:BarChart3}].map(({k,l,icon:TabIcon})=>(
+
           <button key={k} onClick={()=>setView(k)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${view===k?'bg-indigo-600 text-white shadow-md':'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-            {l}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5 ${view===k?'bg-indigo-600 text-white shadow-md':'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+            <TabIcon size={14} />{l}
           </button>
         ))}
       </div>
@@ -409,7 +410,7 @@ export default function GroupDetail() {
 
   const TABS = [
     { key:'current', label:`Клиенты потока (${groupClients.length})` },
-    { key:'attendance', label:'📋 НБ / Посещаемость' },
+    { key:'attendance', label:'НБ / Посещаемость' },
     // Вкладку "Добавить" скрываем для завершённых потоков
     ...(!isCompleted ? [{ key:'add', label:'+ Добавить клиентов' }] : []),
   ]
@@ -443,7 +444,7 @@ export default function GroupDetail() {
               }}
               disabled={closeLoading}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition disabled:opacity-50">
-              {closeLoading ? 'Закрытие...' : '🔒 Закрыть поток'}
+              {closeLoading ? 'Закрытие...' : <><Lock size={13} className="inline -mt-0.5" /> Закрыть поток</>}
             </button>
           )}
         </div>
@@ -470,7 +471,7 @@ export default function GroupDetail() {
         </div>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-            <span className="text-amber-500 text-xs">📅</span>
+            <CalendarDays size={15} className="text-amber-500" />
           </div>
           <div>
             <p className="text-xs text-slate-400 mb-0.5">Дата старта</p>
@@ -527,7 +528,7 @@ export default function GroupDetail() {
           </div>
           {isCompleted && (
             <div className="px-5 py-3 bg-slate-50 border-t text-xs text-slate-400">
-              🎓 Поток завершён — редактирование списка недоступно
+              Поток завершён — редактирование списка недоступно
             </div>
           )}
         </div>
@@ -545,7 +546,7 @@ export default function GroupDetail() {
           <div className="crm-card p-4 mb-4">
             {/* Подсказка */}
             <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
-              ℹ️ Показаны клиенты <strong>без потока</strong>, готовые к зачислению
+              Показаны клиенты <strong>без потока</strong>, готовые к зачислению
             </div>
             <div className="flex gap-3 flex-wrap items-center">
               <input type="text" placeholder="Поиск..." value={search} onChange={e=>setSearch(e.target.value)}

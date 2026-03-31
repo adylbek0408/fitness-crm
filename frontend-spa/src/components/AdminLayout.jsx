@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Layers2, UserCircle, Users,
-  BarChart2, UserCog, LogOut, Sparkles,
+  BarChart2, UserCog, LogOut, Activity,
 } from 'lucide-react'
 
 const links = [
@@ -39,7 +39,7 @@ export default function AdminLayout({ children, user }) {
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
                  style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-              <Sparkles size={13} className="text-white" strokeWidth={2} />
+              <Activity size={13} className="text-white" strokeWidth={2} />
             </div>
             <div>
               <p className="text-white text-sm font-semibold leading-tight tracking-tight">Асылзада</p>
@@ -104,7 +104,7 @@ export default function AdminLayout({ children, user }) {
         <div className="px-4 py-3 flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
                style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-            <Sparkles size={13} className="text-white" strokeWidth={2} />
+            <Activity size={13} className="text-white" strokeWidth={2} />
           </div>
           <span className="text-white font-semibold text-sm flex-1 truncate">Асылзада CRM</span>
           <button onClick={logout}

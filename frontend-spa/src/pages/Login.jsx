@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Eye, EyeOff } from 'lucide-react'
+import { Activity, Eye, EyeOff } from 'lucide-react'
 import api from '../api/axios'
 
 export default function Login({ defaultMode = 'staff' }) {
@@ -63,7 +63,7 @@ export default function Login({ defaultMode = 'staff' }) {
           {/* Иконка */}
           <div className="w-20 h-20 rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-2xl"
                style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-            <Sparkles size={36} className="text-white" strokeWidth={1.5} />
+            <Activity size={36} className="text-white" strokeWidth={1.5} />
           </div>
 
           <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">Асылзада</h1>
@@ -90,7 +90,7 @@ export default function Login({ defaultMode = 'staff' }) {
           <div className="flex items-center gap-3 mb-8 lg:hidden">
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
                  style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-              <Sparkles size={18} className="text-white" strokeWidth={2} />
+              <Activity size={18} className="text-white" strokeWidth={2} />
             </div>
             <div>
               <p className="font-bold text-base" style={{ color: 'var(--text)' }}>Асылзада CRM</p>
