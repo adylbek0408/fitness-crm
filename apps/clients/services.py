@@ -159,6 +159,12 @@ class ClientService(BaseService):
 
         client = self.get_client_or_raise(client_id)
 
+        if client.group:
+            raise ValidationError(
+                f'Клиент уже в Потоке #{client.group.number}. '
+                'Сначала сделайте возврат или закройте поток.'
+            )
+
         group_id     = data.get('group_id')
         payment_type = data.get('payment_type')
         payment_data = data.get('payment_data', {})

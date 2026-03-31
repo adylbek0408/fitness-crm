@@ -111,6 +111,17 @@ class PaymentService(BaseService):
         if amount <= 0:
             raise ValidationError("Payment amount must be positive")
 
+        paid_at = data['paid_at']
+        if hasattr(paid_at, 'isoformat'):
+            # it's a date object
+            if paid_at > date.today():
+                raise ValidationError('Нельзя указывать будущую дату платежа')
+        else:
+            from datetime import date as _date
+            parsed = _date.fromisoformat(str(paid_at))
+            if parsed > _date.today():
+                raise ValidationError('Нельзя указывать будущую дату платежа')
+
         payment = InstallmentPayment.objects.create(
             plan=plan,
             amount=amount,
