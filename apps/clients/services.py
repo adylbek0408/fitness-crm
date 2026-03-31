@@ -252,20 +252,28 @@ class ClientService(BaseService):
 
         if has_history:
             # У клиента есть прошлые потоки — не удаляем, а отчисляем
-            # Удаляем последнюю full payment (независимо от статуса оплаты)
-            latest_fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
-            if latest_fp:
-                latest_fp.delete()
+            # Удаляем оплату текущего enrollment (по payment_type)
+            if client.payment_type == 'full':
+                latest_fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
+                if latest_fp:
+                    latest_fp.delete()
+            elif client.payment_type == 'installment':
+                latest_ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
+                if latest_ip and not latest_ip.is_closed:
+                    latest_ip.payments.all().delete()
+                    latest_ip.delete()
 
-            # Удаляем последнюю рассрочку (если не закрыта)
-            latest_ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
-            if latest_ip and not latest_ip.is_closed:
-                latest_ip.payments.all().delete()
-                latest_ip.delete()
+            # Восстанавливаем payment_type по оставшимся платежам
+            remaining_fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
+            remaining_ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
+            if remaining_ip and (not remaining_fp or remaining_ip.created_at > remaining_fp.created_at):
+                client.payment_type = 'installment'
+            elif remaining_fp:
+                client.payment_type = 'full'
 
             client.group = None
             client.status = 'expelled'
-            client.save(update_fields=['group', 'status'])
+            client.save(update_fields=['group', 'status', 'payment_type'])
 
             self.logger.info(f'Client {client_id} refunded (отчислен, история сохранена)')
             return {
