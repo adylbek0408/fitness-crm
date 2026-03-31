@@ -415,11 +415,26 @@ export default function ClientDetail() {
   useEffect(() => { load() }, [id])
   useEffect(() => setNewPassword(null), [id])
 
-  const changeStatus = async (newStatus) => {
+  const doChangeStatus = async (newStatus) => {
     if (statusLoading) return
     setStatusLoading(true)
     try { await api.post(`/clients/${id}/change_status/`, { status: newStatus }); await load() }
     finally { setStatusLoading(false) }
+  }
+
+  const changeStatus = (newStatus) => {
+    // Если клиент в потоке и ставим "завершил" или "отчислён" — предупреждаем
+    if (client.group && ['completed', 'expelled'].includes(newStatus)) {
+      setConfirmModal({
+        title: 'Клиент в потоке!',
+        message: `${client.full_name} сейчас в Потоке #${client.group.number}.\n\nЕсли поставить статус «${STATUS_LABEL[newStatus]}» — клиент останется привязан к потоку, но его статус изменится.\n\nЛучше закрыть поток целиком через страницу потока, тогда все клиенты обработаются автоматически.`,
+        variant: 'warning',
+        confirmText: 'Всё равно изменить',
+        onConfirm: async () => { setConfirmModal(null); await doChangeStatus(newStatus) },
+      })
+      return
+    }
+    doChangeStatus(newStatus)
   }
 
   const resetCabinetPassword = async () => {

@@ -235,14 +235,15 @@ class ClientService(BaseService):
     @transaction.atomic
     def refund_client(self, client_id: str, user=None) -> dict:
         """
-        Возврат средств и удаление клиента.
+        Возврат средств.
 
         Если есть история потоков (ClientGroupHistory):
-          → Убираем из текущего потока, удаляем текущие платежи,
-            ставим статус 'expelled'. История прошлых потоков сохраняется.
+          → Удаляем последнюю оплату (за текущий поток),
+            убираем из потока, ставим 'expelled'.
+            История прошлых потоков и их оплаты сохраняются.
 
         Если истории нет (новичок):
-          → Полностью удаляем клиента и все его данные.
+          → Полностью удаляем клиента.
         """
         from .models import ClientGroupHistory
 
@@ -251,21 +252,26 @@ class ClientService(BaseService):
 
         if has_history:
             # У клиента есть прошлые потоки — не удаляем, а отчисляем
-            # Удаляем неоплаченные full payments
-            FullPayment.objects.filter(client=client, is_paid=False).delete()
-            # Удаляем незакрытые рассрочки (закрытые оставляем для истории)
-            for plan in InstallmentPlan.objects.filter(client=client):
-                if not plan.is_closed:
-                    plan.payments.all().delete()
-                    plan.delete()
+            # Удаляем последнюю full payment (независимо от статуса оплаты)
+            latest_fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
+            if latest_fp:
+                latest_fp.delete()
+
+            # Удаляем последнюю рассрочку (если не закрыта)
+            latest_ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
+            if latest_ip and not latest_ip.is_closed:
+                latest_ip.payments.all().delete()
+                latest_ip.delete()
 
             client.group = None
             client.status = 'expelled'
-            client.bonus_balance = Decimal('0')
-            client.save(update_fields=['group', 'status', 'bonus_balance'])
+            client.save(update_fields=['group', 'status'])
 
             self.logger.info(f'Client {client_id} refunded (отчислен, история сохранена)')
-            return {'action': 'expelled', 'detail': 'Клиент отчислен, средства возвращены. История потоков сохранена.'}
+            return {
+                'action': 'expelled',
+                'detail': 'Клиент отчислён, последняя оплата удалена. История прошлых потоков сохранена.',
+            }
         else:
             # Новичок — удаляем полностью
             name = client.full_name
