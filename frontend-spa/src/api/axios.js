@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE = 'http://83.222.10.148:8090/api'
+const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api'
 
 const api = axios.create({
   baseURL: BASE,
@@ -37,17 +37,14 @@ api.interceptors.response.use(
                          originalRequest?.url?.includes?.('cabinet/login')
 
       if (isLoginUrl) {
-        // Логин-запросы — не перехватываем, пусть ошибка идёт в catch формы
         return Promise.reject(err)
       }
 
       if (isCabinet) {
-        // Cabinet 401 — разлогиниваем из кабинета
         localStorage.removeItem('cabinet_access_token')
         localStorage.removeItem('cabinet_refresh_token')
         window.location.href = '/cabinet'
       } else {
-        // Staff 401 — пробуем refresh
         const refreshToken = localStorage.getItem('refresh_token')
         if (refreshToken) {
           originalRequest._retry = true

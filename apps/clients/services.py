@@ -56,8 +56,6 @@ class ClientService(BaseService):
         account = ClientAccount.objects.create(client=client, username=username)
         account.set_password(plain_password)
 
-        # Бонус 10% начислится автоматически при оплате (BonusService.accrue)
-
         if payment_type == 'full':
             self._create_full_payment(client, payment_data)
         elif payment_type == 'installment':
@@ -90,7 +88,6 @@ class ClientService(BaseService):
         if 'payment_type' in data and data['payment_type'] != client.payment_type:
             raise ValidationError("Cannot change payment_type after registration")
 
-        was_repeat = client.is_repeat
         is_repeat = data.get('is_repeat', client.is_repeat)
         discount = Decimal(str(data.get('discount', client.discount)))
         if not is_repeat and discount > 0:
@@ -100,12 +97,9 @@ class ClientService(BaseService):
             setattr(client, field, value)
         client.save()
 
-        # Бонус 10% начислится автоматически при оплате
-
         return client
 
     def change_status(self, client_id: str, new_status: str) -> Client:
-        # frozen — заморозка клиента
         valid_statuses = ['active', 'completed', 'expelled', 'frozen']
         if new_status not in valid_statuses:
             raise ValidationError(f"Invalid status: {new_status}")
@@ -147,12 +141,25 @@ class ClientService(BaseService):
 
     @transaction.atomic
     def re_enroll_client(self, client_id: str, data: dict, user=None) -> Client:
-        """Повторная запись клиента: новая оплата + поток + статус active."""
+        """
+        Повторная запись клиента в новый поток.
+
+        Логика бонусов:
+          - Бонус СПИСЫВАЕТСЯ при записи (если есть на балансе).
+          - FullPayment создаётся на сумму ПОСЛЕ вычета бонуса.
+          - Новый 10% бонус начисляется при подтверждении оплаты.
+
+        Пример: курс 11 700, бонус 1 400
+          → списывается 1 400 при записи
+          → FullPayment = 10 300 (клиент платит именно столько)
+          → при оплате начисляется 10% от 10 300 = 1 030
+        """
         from apps.groups.models import Group
+        from apps.clients.bonus_service import BonusService
 
         client = self.get_client_or_raise(client_id)
 
-        group_id = data.get('group_id')
+        group_id     = data.get('group_id')
         payment_type = data.get('payment_type')
         payment_data = data.get('payment_data', {})
 
@@ -168,42 +175,59 @@ class ClientService(BaseService):
         if group.status == 'completed':
             raise ValidationError('Нельзя записать в завершённый поток')
 
-        # Помечаем повторным (бонус НЕ начисляем — он начислится при оплате через accrue)
+        # Помечаем повторным
         if not client.is_repeat:
             client.is_repeat = True
 
-        # Списываем накопленные бонусы с баланса клиента
-        from apps.clients.bonus_service import BonusService
-        bonus_svc = BonusService()
-
-        # Создаём новую оплату (сумма = полная цена - бонусы)
         client.payment_type = payment_type
-        bonus_result = {'bonus_applied': Decimal('0'), 'final_price': Decimal('0')}
+        bonus_svc = BonusService()
 
         if payment_type == 'full':
             full_price = Decimal(str(payment_data.get('amount', 0)))
-            bonus_result = bonus_svc.apply(str(client.pk), full_price, created_by=user)
-            FullPayment.objects.create(client=client, amount=bonus_result['final_price'])
+            if full_price <= 0:
+                raise ValidationError('Сумма оплаты должна быть положительной')
+
+            # Списываем бонус сразу при записи — оплата создаётся на итоговую сумму
+            client.refresh_from_db(fields=['bonus_balance'])
+            if client.bonus_balance > Decimal('0'):
+                result      = bonus_svc.apply(str(client.pk), full_price, created_by=user)
+                final_price = result['final_price']
+            else:
+                final_price = full_price
+
+            FullPayment.objects.create(client=client, amount=final_price)
+
         elif payment_type == 'installment':
-            total_cost_raw = Decimal(str(payment_data.get('total_cost', 0)))
-            deadline = payment_data.get('deadline')
-            if not total_cost_raw or not deadline:
+            total_cost = Decimal(str(payment_data.get('total_cost', 0)))
+            deadline   = payment_data.get('deadline')
+            if not total_cost or not deadline:
                 raise ValidationError('Для рассрочки нужны total_cost и deadline')
-            bonus_result = bonus_svc.apply(str(client.pk), total_cost_raw, created_by=user)
+            if total_cost <= 0:
+                raise ValidationError('Сумма рассрочки должна быть положительной')
+
+            # Для рассрочки бонус тоже применяется к общей стоимости сразу
+            client.refresh_from_db(fields=['bonus_balance'])
+            if client.bonus_balance > Decimal('0'):
+                result     = bonus_svc.apply(str(client.pk), total_cost, created_by=user)
+                final_cost = result['final_price']
+            else:
+                final_cost = total_cost
+
             InstallmentPlan.objects.create(
                 client=client,
-                total_cost=bonus_result['final_price'],
+                total_cost=final_cost,
                 deadline=deadline,
             )
 
         # Записываем в поток + активируем
-        client.group = group
+        client.group  = group
         client.status = 'active'
         client.save(update_fields=['is_repeat', 'payment_type', 'group', 'status'])
         client.refresh_from_db()
 
         self.logger.info(
-            f'Client {client_id} re-enrolled into group {group_id}, '
-            f'bonus applied: {bonus_result["bonus_applied"]}'
+            f'Client {client_id} re-enrolled into group {group_id}. '
+            f'Bonus applied at enrollment. '
+            f'Payment created with discounted amount.'
         )
         return client

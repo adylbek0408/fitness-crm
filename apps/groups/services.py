@@ -23,6 +23,23 @@ class GroupService(BaseService):
 
     def update_group(self, group_id: str, data: dict) -> Group:
         group = self.get_group_or_raise(group_id)
+
+        # ── Если статус меняется на completed → запускаем полное закрытие ──
+        if data.get('status') == 'completed':
+            if group.status == 'completed':
+                raise ValidationError("Group is already completed")
+
+            # Сохраняем остальные поля (без статуса) перед закрытием
+            other_data = {k: v for k, v in data.items() if k != 'status'}
+            if 'number' in other_data and other_data['number'] != group.number:
+                if Group.objects.filter(number=other_data['number']).exists():
+                    raise ValidationError(f"Group number {other_data['number']} already taken")
+            for field, value in other_data.items():
+                setattr(group, field, value)
+            if other_data:
+                group.save()
+            return self.close_group(group_id)
+
         if 'number' in data and data['number'] != group.number:
             if Group.objects.filter(number=data['number']).exists():
                 raise ValidationError(f"Group number {data['number']} already taken")
@@ -38,13 +55,11 @@ class GroupService(BaseService):
         if group.status == 'completed':
             raise ValidationError("Group is already completed")
 
-        # ── Сохраняем историю для каждого клиента потока ──────────
         clients = list(group.clients.select_related('trainer').prefetch_related(
             'full_payments', 'installment_plans', 'installment_plans__payments'
         ).all())
 
         for client in clients:
-            # Снимок оплаты (берём последнюю)
             p_type   = client.payment_type
             p_amount = Decimal('0')
             p_paid   = Decimal('0')
@@ -76,15 +91,14 @@ class GroupService(BaseService):
                 payment_is_closed=p_closed,
             )
 
-        # ── Переводим активных клиентов в completed ────────────────
+        # Активных клиентов → completed
         group.clients.filter(status='active').update(status='completed')
-
-        # ── Очищаем привязку к группе у ВСЕХ клиентов (история уже сохранена) ──
+        # Открепляем всех клиентов от потока
         group.clients.update(group=None)
 
         group.status = 'completed'
         group.save(update_fields=['status'])
-        self.logger.info(f"Group {group_id} closed, {len(clients)} clients archived, group cleared")
+        self.logger.info(f"Group {group_id} closed, {len(clients)} clients archived")
         return group
 
     def activate_group(self, group_id: str) -> Group:
