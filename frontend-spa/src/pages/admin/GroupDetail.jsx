@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, Link, useOutletContext } from 'react-router-dom'
 import { AlertTriangle, FileDown, CheckCircle2, XCircle, ChevronLeft, ChevronRight, Calendar, Pencil, BarChart3, Lock, CalendarDays, GraduationCap, Info } from 'lucide-react'
+import ConfirmModal from '../../components/ConfirmModal'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import api from '../../api/axios'
@@ -358,6 +359,7 @@ export default function GroupDetail() {
   const [msg, setMsg] = useState(null)
 
   const [closeLoading, setCloseLoading] = useState(false)
+  const [confirmModal, setConfirmModal] = useState(null)
 
   const loadGroup = useCallback(async () => { const r=await api.get(`/groups/${id}/`); setGroup(r.data) }, [id])
   const loadGroupClients = useCallback(async () => {
@@ -392,10 +394,18 @@ export default function GroupDetail() {
     } catch(e){ showMsg('error',e.response?.data?.detail||'Ошибка') }
   }
 
-  const removeClient = async clientId => {
-    if (!confirm('Убрать клиента из потока?')) return
-    await api.post(`/groups/${id}/remove-client/`,{client_id:clientId})
-    loadGroupClients()
+  const removeClient = (clientId, clientName) => {
+    setConfirmModal({
+      title: 'Убрать клиента',
+      message: `Убрать ${clientName || 'клиента'} из потока?`,
+      variant: 'warning',
+      confirmText: 'Убрать',
+      onConfirm: async () => {
+        await api.post(`/groups/${id}/remove-client/`, { client_id: clientId })
+        setConfirmModal(null)
+        loadGroupClients()
+      },
+    })
   }
 
   if (!group) return (
@@ -432,16 +442,21 @@ export default function GroupDetail() {
           )}
           {!isCompleted && (
             <button
-              onClick={async () => {
-                if (!confirm('Закрыть поток? Все активные клиенты станут «Завершили» и будут откреплены от потока.')) return
-                setCloseLoading(true)
-                try {
-                  await api.post(`/groups/${id}/close/`)
-                  showMsg('success', 'Поток закрыт')
-                  loadGroup(); loadGroupClients()
-                } catch(e) { showMsg('error', e.response?.data?.detail || 'Ошибка') }
-                finally { setCloseLoading(false) }
-              }}
+              onClick={() => setConfirmModal({
+                title: 'Закрыть поток',
+                message: `Закрыть Поток #${group.number}?\n\nВсе активные клиенты получат статус «Завершил» и будут откреплены.`,
+                variant: 'danger',
+                confirmText: 'Закрыть поток',
+                onConfirm: async () => {
+                  setCloseLoading(true); setConfirmModal(null)
+                  try {
+                    await api.post(`/groups/${id}/close/`)
+                    showMsg('success', 'Поток закрыт')
+                    loadGroup(); loadGroupClients()
+                  } catch(e) { showMsg('error', e.response?.data?.detail || 'Ошибка') }
+                  finally { setCloseLoading(false) }
+                },
+              })}
               disabled={closeLoading}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition disabled:opacity-50">
               {closeLoading ? 'Закрытие...' : <><Lock size={13} className="inline -mt-0.5" /> Закрыть поток</>}
@@ -519,7 +534,7 @@ export default function GroupDetail() {
                       <td><span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span></td>
                       <td className="text-slate-400 text-xs">{c.registered_by_name||'—'}</td>
                       {!isCompleted && (
-                        <td><button onClick={()=>removeClient(c.id)} className="text-red-400 hover:text-red-600 text-xs transition">Убрать</button></td>
+                        <td><button onClick={()=>removeClient(c.id, c.full_name)} className="text-red-400 hover:text-red-600 text-xs transition">Убрать</button></td>
                       )}
                     </tr>
                   ))}
@@ -599,6 +614,17 @@ export default function GroupDetail() {
             </div>
           </div>
         </div>
+      )}
+      {confirmModal && (
+        <ConfirmModal
+          open={true}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          variant={confirmModal.variant}
+          confirmText={confirmModal.confirmText}
+          onConfirm={confirmModal.onConfirm}
+          onClose={() => setConfirmModal(null)}
+        />
       )}
     </AdminLayout>
   )

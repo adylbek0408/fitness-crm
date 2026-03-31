@@ -12,6 +12,8 @@ import {
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL, toAbsoluteUrl } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPaymentForm'
+import ConfirmModal from '../../components/ConfirmModal'
+import AlertModal from '../../components/AlertModal'
 
 const GROUP_TYPE_SHORT = { '1.5h': '1.5 ч', '2.5h': '2.5 ч' }
 
@@ -401,6 +403,8 @@ export default function ClientDetail() {
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
   const [resetError, setResetError] = useState('')
   const [statusLoading, setStatusLoading] = useState(false)
+  const [confirmModal, setConfirmModal] = useState(null) // { title, message, variant, onConfirm }
+  const [alertModal, setAlertModal] = useState(null)     // { title, message, variant }
 
   const load = async () => {
     const r = await api.get(`/clients/${id}/`)
@@ -636,39 +640,69 @@ export default function ClientDetail() {
         </div>
       </div>
 
-      {/* Возврат средств */}
-      <div className="crm-card p-5 mb-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-slate-800 mb-0.5">Возврат средств</h3>
-            <p className="text-xs text-slate-400">Отменить запись и вернуть деньги клиенту</p>
+      {/* Возврат средств — показываем только если есть что возвращать */}
+      {(client.group || (full && !full.is_paid) || (plan && !plan.is_closed)) && (
+        <div className="crm-card p-5 mb-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-slate-800 mb-0.5">Возврат средств</h3>
+              <p className="text-xs text-slate-400">Отменить запись и вернуть деньги клиенту</p>
+            </div>
+            <button
+              onClick={() => setConfirmModal({
+                title: 'Возврат средств',
+                message: client.group
+                  ? `Возврат средств клиенту ${client.full_name}?\n\nНеоплаченные платежи будут удалены, клиент будет отчислён из потока.`
+                  : `Возврат средств клиенту ${client.full_name}?\n\nЕсли нет истории потоков — клиент будет полностью удалён.`,
+                variant: 'danger',
+                confirmText: 'Сделать возврат',
+                onConfirm: async () => {
+                  try {
+                    const r = await api.post(`/clients/${id}/refund/`)
+                    setConfirmModal(null)
+                    if (r.data.action === 'deleted') {
+                      setAlertModal({ title: 'Клиент удалён', message: r.data.detail, variant: 'success', onCloseAction: () => { window.location.href = '/admin/clients' } })
+                    } else {
+                      setAlertModal({ title: 'Возврат выполнен', message: r.data.detail, variant: 'success' })
+                      load()
+                    }
+                  } catch (e) {
+                    setConfirmModal(null)
+                    setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || 'Ошибка возврата', variant: 'error' })
+                  }
+                },
+              })}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition">
+              <Undo2 size={14} /> Возврат
+            </button>
           </div>
-          <button
-            onClick={async () => {
-              const msg = client.group
-                ? `Возврат средств клиенту ${client.full_name}?\n\nНеоплаченные платежи будут удалены, клиент будет отчислен.`
-                : `Возврат средств клиенту ${client.full_name}?\n\nЕсли у клиента нет истории потоков — он будет полностью удалён.`
-              if (!confirm(msg)) return
-              try {
-                const r = await api.post(`/clients/${id}/refund/`)
-                alert(r.data.detail)
-                if (r.data.action === 'deleted') {
-                  window.location.href = '/admin/clients'
-                } else {
-                  load()
-                }
-              } catch (e) {
-                alert(e.response?.data?.detail || 'Ошибка возврата')
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition">
-            <Undo2 size={14} /> Возврат
-          </button>
         </div>
-      </div>
+      )}
 
       <RepeatClientPanel client={client} clientId={id} onSuccess={load} />
       <BonusPanel clientId={id} currentBalance={client.bonus_balance} />
+
+      {/* Модальные окна */}
+      {confirmModal && (
+        <ConfirmModal
+          open={true}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          variant={confirmModal.variant}
+          confirmText={confirmModal.confirmText}
+          onConfirm={confirmModal.onConfirm}
+          onClose={() => setConfirmModal(null)}
+        />
+      )}
+      {alertModal && (
+        <AlertModal
+          open={true}
+          title={alertModal.title}
+          message={alertModal.message}
+          variant={alertModal.variant}
+          onClose={() => { const action = alertModal.onCloseAction; setAlertModal(null); action?.() }}
+        />
+      )}
     </AdminLayout>
   )
 }

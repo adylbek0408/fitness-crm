@@ -11,6 +11,7 @@ import {
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL, toAbsoluteUrl } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPaymentForm'
+import ConfirmModal from '../../components/ConfirmModal'
 
 const GROUP_TYPE_SHORT = { '1.5h': '1.5 ч', '2.5h': '2.5 ч' }
 const DAY_LABELS = { Mon:'Пн', Tue:'Вт', Wed:'Ср', Thu:'Чт', Fri:'Пт', Sat:'Сб', Sun:'Вс' }
@@ -310,6 +311,7 @@ export default function MobileClientDetail() {
   const [statusLoading, setStatusLoading] = useState(false)
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [resetError, setResetError] = useState('')
+  const [statusConfirm, setStatusConfirm] = useState(null) // { newStatus, label }
 
   const load = async () => {
     setLoadError(null)
@@ -337,13 +339,8 @@ export default function MobileClientDetail() {
   const changeStatus = async (newStatus) => {
     if (newStatus === client.status) { setStatusMenuOpen(false); return }
     const labels = { active: 'Активный', frozen: 'Заморозка', completed: 'Завершил', expelled: 'Отчислен' }
-    if (!confirm(`Изменить статус на «${labels[newStatus] || newStatus}»?`)) { setStatusMenuOpen(false); return }
-    setStatusLoading(true); setStatusMenuOpen(false)
-    try {
-      await api.post(`/clients/${id}/change_status/`, { status: newStatus })
-      setClient(c => ({ ...c, status: newStatus }))
-    } catch (e) { alert(e.response?.data?.detail || 'Ошибка смены статуса') }
-    finally { setStatusLoading(false) }
+    setStatusMenuOpen(false)
+    setStatusConfirm({ newStatus, label: labels[newStatus] || newStatus })
   }
 
   const resetCabinetPassword = async () => {
@@ -562,6 +559,26 @@ export default function MobileClientDetail() {
 
         {/* Повторный клиент */}
         <MobileRepeatPanel client={client} clientId={id} onSuccess={load} />
+
+        {/* Модальное окно смены статуса */}
+        {statusConfirm && (
+          <ConfirmModal
+            open={true}
+            title="Смена статуса"
+            message={`Изменить статус клиента на «${statusConfirm.label}»?`}
+            variant="warning"
+            confirmText="Изменить"
+            onConfirm={async () => {
+              setStatusLoading(true); setStatusConfirm(null)
+              try {
+                await api.post(`/clients/${id}/change_status/`, { status: statusConfirm.newStatus })
+                setClient(c => ({ ...c, status: statusConfirm.newStatus }))
+              } catch { }
+              finally { setStatusLoading(false) }
+            }}
+            onClose={() => setStatusConfirm(null)}
+          />
+        )}
       </div>
     </MobileLayout>
   )
