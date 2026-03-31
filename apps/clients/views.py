@@ -119,7 +119,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         ]
         return Response(data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin], url_path='re-enroll')
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='re-enroll')
     def re_enroll(self, request, pk=None):
         """
         POST /api/clients/{id}/re-enroll/

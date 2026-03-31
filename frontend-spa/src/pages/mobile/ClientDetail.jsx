@@ -312,6 +312,8 @@ export default function MobileClientDetail() {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [resetError, setResetError] = useState('')
   const [statusConfirm, setStatusConfirm] = useState(null) // { newStatus, label }
+  const [refundConfirm, setRefundConfirm] = useState(false)
+  const [refundMsg, setRefundMsg] = useState(null) // { type, text }
 
   const load = async () => {
     setLoadError(null)
@@ -560,6 +562,22 @@ export default function MobileClientDetail() {
         {/* Повторный клиент */}
         <MobileRepeatPanel client={client} clientId={id} onSuccess={load} />
 
+        {/* Возврат средств */}
+        {(client.group || client.status === 'active') && (
+          <div className="bg-white rounded-2xl shadow-sm border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-gray-800 text-sm">Возврат средств</p>
+                <p className="text-xs text-gray-400">Отменить запись и вернуть деньги</p>
+              </div>
+              <button type="button" onClick={() => setRefundConfirm(true)}
+                className="px-3 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 touch-manipulation">
+                Возврат
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Модальное окно смены статуса */}
         {statusConfirm && (
           <ConfirmModal
@@ -578,6 +596,36 @@ export default function MobileClientDetail() {
             }}
             onClose={() => setStatusConfirm(null)}
           />
+        )}
+        {refundConfirm && (
+          <ConfirmModal
+            open={true}
+            title="Возврат средств"
+            message={`Возврат средств клиенту ${client.full_name}?\n\nПоследняя оплата будет удалена, клиент отчислён из потока.`}
+            variant="danger"
+            confirmText="Сделать возврат"
+            onConfirm={async () => {
+              try {
+                const r = await api.post(`/clients/${id}/refund/`)
+                setRefundConfirm(false)
+                if (r.data.action === 'deleted') {
+                  navigate('/mobile/clients')
+                } else {
+                  setRefundMsg({ type: 'success', text: r.data.detail })
+                  load()
+                }
+              } catch (e) {
+                setRefundConfirm(false)
+                setRefundMsg({ type: 'error', text: e.response?.data?.detail || 'Ошибка' })
+              }
+            }}
+            onClose={() => setRefundConfirm(false)}
+          />
+        )}
+        {refundMsg && (
+          <div className={`p-3 rounded-xl text-sm ${refundMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-600'} border`}>
+            {refundMsg.text}
+          </div>
         )}
       </div>
     </MobileLayout>
