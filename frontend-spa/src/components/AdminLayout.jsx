@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Layers2, UserCircle, Users,
-  BarChart2, UserCog, LogOut, Activity,
+  BarChart2, UserCog, LogOut,
 } from 'lucide-react'
 
 const links = [
@@ -37,14 +37,13 @@ export default function AdminLayout({ children, user }) {
         {/* Лого */}
         <div className="px-4 pt-5 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                 style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-              <Activity size={13} className="text-white" strokeWidth={2} />
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                 style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/>
+              </svg>
             </div>
-            <div>
-              <p className="text-white text-sm font-semibold leading-tight tracking-tight">Асылзада</p>
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>CRM система</p>
-            </div>
+            <p className="text-white text-sm font-bold tracking-tight">Асылзада</p>
           </div>
         </div>
 
@@ -102,11 +101,11 @@ export default function AdminLayout({ children, user }) {
       <header className="lg:hidden sticky top-0 z-40"
         style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="px-4 py-3 flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-               style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-            <Activity size={13} className="text-white" strokeWidth={2} />
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/></svg>
           </div>
-          <span className="text-white font-semibold text-sm flex-1 truncate">Асылзада CRM</span>
+          <span className="text-white font-bold text-sm flex-1 truncate">Асылзада</span>
           <button onClick={logout}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition"
             style={{ color: '#fda4af', border: '1px solid rgba(253,164,175,0.2)' }}>
