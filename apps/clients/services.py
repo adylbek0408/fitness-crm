@@ -44,6 +44,16 @@ class ClientService(BaseService):
         if not data.get('is_repeat', False) and Decimal(str(data.get('discount', 0))) > 0:
             raise ValidationError("Discount can only be applied to repeat clients")
 
+        # Проверка: нельзя записывать в завершённый поток
+        if data.get('group_id'):
+            from apps.groups.models import Group
+            try:
+                grp = Group.objects.get(id=data['group_id'])
+                if grp.status == 'completed':
+                    raise ValidationError('Нельзя записать клиента в завершённый поток')
+            except Group.DoesNotExist:
+                raise ValidationError(f'Поток {data["group_id"]} не найден')
+
         client = Client.objects.create(**data, registered_by=registered_by)
 
         plain_password = _generate_cabinet_password()

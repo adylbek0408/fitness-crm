@@ -62,27 +62,17 @@ class PaymentService(BaseService):
 
     def _apply_bonus_and_accrue_full(self, payment: FullPayment, user=None):
         """
-        1. Списываем существующий бонус с баланса (если есть)
-        2. Начисляем 10% от итоговой суммы (после вычета бонуса)
+        Начисляем 10% бонус от суммы оплаты.
+
+        ВАЖНО: Бонус НЕ списывается здесь.
+        Списание происходит при записи (re_enroll_client),
+        а payment.amount уже содержит сумму после вычета бонуса.
         """
-        client = payment.client
-        client.refresh_from_db(fields=['bonus_balance'])
-        bonus_svc    = self._bonus_service()
-        final_amount = payment.amount
-
-        if client.bonus_balance > Decimal('0'):
-            result       = bonus_svc.apply(str(client.pk), payment.amount, created_by=user)
-            final_amount = result['final_price']
-            self.logger.info(
-                f"[Payment] Bonus applied for client={client.pk}: "
-                f"bonus={result['bonus_applied']}, final={final_amount}"
-            )
-
-        if final_amount > Decimal('0'):
-            bonus_svc.accrue(
+        if payment.amount > Decimal('0'):
+            self._bonus_service().accrue(
                 client=payment.client,
-                payment_amount=final_amount,
-                description=f'10% бонус с оплаты {final_amount} сом',
+                payment_amount=payment.amount,
+                description=f'10% бонус с оплаты {payment.amount} сом',
                 created_by=user,
             )
 

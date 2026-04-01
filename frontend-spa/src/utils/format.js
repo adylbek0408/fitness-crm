@@ -34,7 +34,5 @@ export const toAbsoluteUrl = (url) => {
   if (/^https?:\/\//i.test(url)) return url
   if (url.startsWith('//')) return `${window.location.protocol}${url}`
   const normalized = url.startsWith('/') ? url : `/${url}`
-  // Для IP:port сервера — используем API base URL
-  const apiBase = import.meta.env.VITE_API_BASE || 'http://83.222.10.148:8090'
-  return `${apiBase}${normalized}`
+  return `${window.location.origin}${normalized}`
 }
