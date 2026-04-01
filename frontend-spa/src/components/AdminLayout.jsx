@@ -43,7 +43,9 @@ export default function AdminLayout({ children, user }) {
                 <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/>
               </svg>
             </div>
-            <p className="text-white text-sm font-bold tracking-tight">Асылзада</p>
+            <div>
+              <p className="text-white text-sm font-bold leading-tight tracking-tight">CRM система</p>
+            </div>
           </div>
         </div>
 
@@ -105,7 +107,7 @@ export default function AdminLayout({ children, user }) {
                style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/></svg>
           </div>
-          <span className="text-white font-bold text-sm flex-1 truncate">Асылзада</span>
+          <span className="text-white font-bold text-sm flex-1 truncate">CRM система</span>
           <button onClick={logout}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition"
             style={{ color: '#fda4af', border: '1px solid rgba(253,164,175,0.2)' }}>
