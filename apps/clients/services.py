@@ -103,6 +103,16 @@ class ClientService(BaseService):
         if not is_repeat and discount > 0:
             raise ValidationError("Discount can only be applied to repeat clients")
 
+        # Нельзя привязать к завершённому потоку
+        if 'group_id' in data and data['group_id']:
+            from apps.groups.models import Group
+            try:
+                grp = Group.objects.get(id=data['group_id'])
+                if grp.status == 'completed':
+                    raise ValidationError('Нельзя привязать клиента к завершённому потоку')
+            except Group.DoesNotExist:
+                raise ValidationError(f'Поток не найден')
+
         for field, value in data.items():
             setattr(client, field, value)
         client.save()
@@ -122,12 +132,16 @@ class ClientService(BaseService):
     def assign_to_group(self, client_id: str, group_id: str) -> Client:
         from apps.groups.models import Group
         client = self.get_client_or_raise(client_id)
+        if client.group_id and str(client.group_id) != str(group_id):
+            raise ValidationError(
+                f'Клиент уже в Потоке #{client.group.number}'
+            )
         try:
             group = Group.objects.get(id=group_id)
         except Group.DoesNotExist:
             raise NotFoundError(f"Group {group_id} not found")
         if group.status == 'completed':
-            raise ValidationError("Cannot add client to a completed group")
+            raise ValidationError('Нельзя добавить в завершённый поток')
         client.group = group
         client.save(update_fields=['group'])
         return client
@@ -135,6 +149,8 @@ class ClientService(BaseService):
     @transaction.atomic
     def remove_from_group(self, client_id: str, group_id: str) -> Client:
         client = self.get_client_or_raise(client_id)
+        if client.group_id and str(client.group_id) != str(group_id):
+            raise ValidationError('Клиент не в этом потоке')
         client.group = None
         client.save(update_fields=['group'])
         return client

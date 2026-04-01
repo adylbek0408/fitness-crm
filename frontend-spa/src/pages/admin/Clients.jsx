@@ -18,6 +18,7 @@ const STATUS_OPTIONS = [
 function StatusDropdown({ clientId, currentStatus, onChanged }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const ref = useRef(null)
 
   useEffect(() => {
@@ -25,14 +26,15 @@ function StatusDropdown({ clientId, currentStatus, onChanged }) {
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
   }, [])
+  useEffect(() => { if (error) { const t = setTimeout(() => setError(''), 3000); return () => clearTimeout(t) } }, [error])
 
   const changeStatus = async (newStatus) => {
     if (newStatus === currentStatus) { setOpen(false); return }
-    setLoading(true); setOpen(false)
+    setLoading(true); setOpen(false); setError('')
     try {
       const r = await api.post(`/clients/${clientId}/change_status/`, { status: newStatus })
       onChanged(clientId, r.data.status)
-    } catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+    } catch (e) { setError(e.response?.data?.detail || 'Ошибка') }
     finally { setLoading(false) }
   }
 
