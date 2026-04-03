@@ -3,12 +3,29 @@ export const fmtMoney = v =>
 
 export const fmtDate = d => {
   if (!d) return '—'
-  // Парсим как локальную дату без UTC-сдвига
   const date = new Date(d + 'T00:00:00')
   return date.toLocaleDateString('ru-RU')
 }
 
+export const fmtDateTime = dt => {
+  if (!dt) return '—'
+  try {
+    const date = new Date(dt)
+    if (isNaN(date.getTime())) return String(dt)
+    return date.toLocaleString('ru-RU', {
+      day:    '2-digit',
+      month:  '2-digit',
+      year:   'numeric',
+      hour:   '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return String(dt)
+  }
+}
+
 export const STATUS_BADGE = {
+  new:         'bg-violet-50 text-violet-700 border border-violet-200',
   active:      'bg-emerald-50 text-emerald-700 border border-emerald-200',
   completed:   'bg-slate-100 text-slate-600 border border-slate-200',
   expelled:    'bg-red-50 text-red-600 border border-red-200',
@@ -17,6 +34,7 @@ export const STATUS_BADGE = {
 }
 
 export const STATUS_LABEL = {
+  new:         'Новый',
   active:      'Активный',
   completed:   'Завершил',
   expelled:    'Отчислен',
@@ -29,10 +47,24 @@ export const GROUP_TYPE_LABEL = {
   '2.5h': '2.5 часа',
 }
 
+// ── URL бэкенда Django (из .env) ──────────────────────────────────────────────
+// Нужен для прямого открытия медиафайлов (чеки, изображения).
+// Без него /media/... попадает в React Router → редирект на /login.
+const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ''
+
 export const toAbsoluteUrl = (url) => {
   if (!url) return ''
+  // Уже абсолютный URL — возвращаем как есть
   if (/^https?:\/\//i.test(url)) return url
   if (url.startsWith('//')) return `${window.location.protocol}${url}`
+
   const normalized = url.startsWith('/') ? url : `/${url}`
+
+  // ✅ Медиафайлы открываем НАПРЯМУЮ через Django, а не через React SPA.
+  // Иначе React Router перехватывает /media/... и редиректит на /login.
+  if (normalized.startsWith('/media/') && BACKEND_ORIGIN) {
+    return `${BACKEND_ORIGIN}${normalized}`
+  }
+
   return `${window.location.origin}${normalized}`
 }

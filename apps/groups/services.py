@@ -6,6 +6,16 @@ from core.exceptions import NotFoundError, ValidationError
 from .models import Group
 
 
+def _get_receipt_url(receipt_field):
+    """Safely get the URL of a receipt ImageField."""
+    try:
+        if receipt_field and receipt_field.name:
+            return receipt_field.url
+    except Exception:
+        pass
+    return None
+
+
 class GroupService(BaseService):
 
     def get_group_or_raise(self, group_id: str) -> Group:
@@ -64,6 +74,7 @@ class GroupService(BaseService):
             p_amount = Decimal('0')
             p_paid   = Decimal('0')
             p_closed = False
+            receipts = []
 
             if p_type == 'full':
                 fp = client.full_payments.first()
@@ -71,12 +82,29 @@ class GroupService(BaseService):
                     p_amount = fp.amount
                     p_paid   = fp.amount if fp.is_paid else Decimal('0')
                     p_closed = fp.is_paid
+                    receipt_url = _get_receipt_url(fp.receipt)
+                    receipts.append({
+                        'label':    'Полная оплата',
+                        'amount':   str(fp.amount),
+                        'paid_at':  str(fp.paid_at) if fp.paid_at else None,
+                        'is_paid':  fp.is_paid,
+                        'url':      receipt_url,
+                    })
+
             elif p_type == 'installment':
                 ip = client.installment_plans.first()
                 if ip:
                     p_amount = ip.total_cost
                     p_paid   = ip.total_paid
                     p_closed = ip.is_closed
+                    for i, payment in enumerate(ip.payments.all()):
+                        receipt_url = _get_receipt_url(payment.receipt)
+                        receipts.append({
+                            'label':   f'Платёж {i + 1}',
+                            'amount':  str(payment.amount),
+                            'paid_at': str(payment.paid_at),
+                            'url':     receipt_url,
+                        })
 
             ClientGroupHistory.objects.create(
                 client=client,
@@ -89,6 +117,7 @@ class GroupService(BaseService):
                 payment_amount=p_amount,
                 payment_paid=p_paid,
                 payment_is_closed=p_closed,
+                receipts=receipts,
             )
 
         # Активных клиентов → completed

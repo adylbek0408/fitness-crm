@@ -36,7 +36,7 @@ class AttendanceViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         lesson_date = serializer.validated_data['lesson_date']
         results = []
-        errors = []
+        errors  = []
         for rec in serializer.validated_data['records']:
             try:
                 record = self.service.mark_attendance(
@@ -48,13 +48,12 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 )
                 results.append(record)
             except AppValidationError as e:
-                # Пропускаем онлайн-клиентов и других некорректных — не падаем
                 errors.append({'client_id': str(rec['client_id']), 'error': str(e)})
             except Exception as e:
                 errors.append({'client_id': str(rec['client_id']), 'error': str(e)})
 
         return Response({
-            'saved': AttendanceSerializer(results, many=True).data,
+            'saved':   AttendanceSerializer(results, many=True).data,
             'skipped': errors,
         })
 
@@ -79,25 +78,51 @@ class AttendanceViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=['get'], url_path=r'group/(?P<group_id>[^/.]+)/all')
     def all_by_group(self, request, group_id=None):
         """
-        Возвращает ВСЕ записи посещаемости группы за один запрос — вместо N запросов.
-        Отвечает: { "date": [{client, is_absent, note}, ...], ... }
+        Возвращает ВСЕ записи посещаемости группы за один запрос.
+        Для завершённых потоков берём клиентов из ClientGroupHistory
+        (т.к. у них group=None после закрытия).
+
+        Ответ: { "YYYY-MM-DD": [{client: uuid, is_absent: bool, note: str}, ...], ... }
         """
         from apps.attendance.models import Attendance
-        records = (
-            Attendance.objects
-            .filter(client__group_id=group_id)
-            .order_by('lesson_date', 'client_id')
-            .values('lesson_date', 'client_id', 'is_absent', 'note')
-        )
-        # Группируем по дате
+        from apps.groups.models import Group
+
+        try:
+            group = Group.objects.get(id=group_id)
+        except Group.DoesNotExist:
+            return Response({})
+
+        if group.status == 'completed':
+            # ── Завершённый поток: клиенты из истории ──────────────────────
+            from apps.clients.models import ClientGroupHistory
+            client_ids = list(
+                ClientGroupHistory.objects
+                .filter(group=group)
+                .values_list('client_id', flat=True)
+            )
+            records = (
+                Attendance.objects
+                .filter(client_id__in=client_ids)
+                .order_by('lesson_date', 'client_id')
+                .values('lesson_date', 'client_id', 'is_absent', 'note')
+            )
+        else:
+            # ── Активный / набор: клиенты через FK ─────────────────────────
+            records = (
+                Attendance.objects
+                .filter(client__group_id=group_id)
+                .order_by('lesson_date', 'client_id')
+                .values('lesson_date', 'client_id', 'is_absent', 'note')
+            )
+
         result = {}
         for r in records:
             date_str = str(r['lesson_date'])
             if date_str not in result:
                 result[date_str] = []
             result[date_str].append({
-                'client': str(r['client_id']),
+                'client':    str(r['client_id']),
                 'is_absent': r['is_absent'],
-                'note': r['note'] or '',
+                'note':      r['note'] or '',
             })
         return Response(result)

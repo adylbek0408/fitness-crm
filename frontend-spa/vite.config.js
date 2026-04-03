@@ -27,7 +27,13 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-      }
+      },
+      // ✅ Прокси для медиафайлов (чеки, фото)
+      // Без этого ссылки /media/... уходили на :5173 и редиректили на /login
+      '/media': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   }
 })

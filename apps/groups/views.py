@@ -1,3 +1,5 @@
+from datetime import date
+
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -11,11 +13,11 @@ from .filters import GroupFilter
 
 
 class GroupViewSet(viewsets.ModelViewSet):
-    queryset = Group.objects.select_related('trainer').all()
-    service = GroupService()
-    filterset_class = GroupFilter
-    search_fields = ['number', 'trainer__last_name']
-    ordering_fields = ['number', 'start_date', 'status']
+    queryset      = Group.objects.select_related('trainer').all()
+    service       = GroupService()
+    filterset_class  = GroupFilter
+    search_fields    = ['number', 'trainer__last_name']
+    ordering_fields  = ['number', 'start_date', 'status']
     lookup_value_regex = r'[0-9a-f-]{36}'
 
     def get_permissions(self):
@@ -54,11 +56,25 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def clients(self, request, pk=None):
+        """
+        Возвращает клиентов группы.
+        Для завершённых потоков берём из ClientGroupHistory.
+        """
         group = self.service.get_group_or_raise(pk)
-        clients = group.clients.select_related('trainer').all()
         from apps.clients.serializers import ClientReadSerializer
-        serializer = ClientReadSerializer(clients, many=True)
-        return Response(serializer.data)
+
+        if group.status == 'completed':
+            from apps.clients.models import ClientGroupHistory, Client
+            client_ids = list(
+                ClientGroupHistory.objects
+                .filter(group=group)
+                .values_list('client_id', flat=True)
+            )
+            clients = Client.objects.filter(id__in=client_ids).select_related('trainer')
+        else:
+            clients = group.clients.select_related('trainer').all()
+
+        return Response(ClientReadSerializer(clients, many=True).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin], url_path='add-client')
     def add_client(self, request, pk=None):
@@ -66,8 +82,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         if not client_id:
             return Response({'detail': 'client_id is required'}, status=400)
         from apps.clients.services import ClientService
-        service = ClientService()
-        client = service.assign_to_group(str(client_id), str(pk))
+        client = ClientService().assign_to_group(str(client_id), str(pk))
         from apps.clients.serializers import ClientReadSerializer
         return Response(ClientReadSerializer(client).data)
 
@@ -77,9 +92,56 @@ class GroupViewSet(viewsets.ModelViewSet):
         if not client_id:
             return Response({'detail': 'client_id is required'}, status=400)
         from apps.clients.services import ClientService
-        service = ClientService()
-        client = service.remove_from_group(str(client_id), str(pk))
+        client = ClientService().remove_from_group(str(client_id), str(pk))
         from apps.clients.serializers import ClientReadSerializer
         return Response(ClientReadSerializer(client).data)
 
-        
+    @action(detail=False, methods=['post'], permission_classes=[IsAdmin], url_path='auto-update-status')
+    def auto_update_status(self, request):
+        """
+        POST /api/groups/auto-update-status/
+        Автоматически обновляет статусы потоков по датам:
+          - recruitment → active  (если start_date <= сегодня)
+          - active → completed    (если end_date < сегодня)
+        При завершении статус клиентов → 'completed'.
+        """
+        today = date.today()
+        activated  = []
+        completed  = []
+
+        # recruitment → active
+        to_activate = Group.objects.filter(
+            status='recruitment',
+            start_date__lte=today,
+        )
+        for group in to_activate:
+            try:
+                group.status = 'active'
+                group.save(update_fields=['status'])
+                activated.append(group.number)
+            except Exception:
+                pass
+
+        # active → completed (закрываем через сервис, чтобы сохранить историю)
+        to_complete = Group.objects.filter(
+            status='active',
+            end_date__isnull=False,
+            end_date__lt=today,
+        )
+        for group in to_complete:
+            try:
+                self.service.close_group(str(group.id))
+                completed.append(group.number)
+            except Exception:
+                pass
+
+        return Response({
+            'activated':  activated,
+            'completed':  completed,
+            'today':      str(today),
+            'message':    (
+                f'Активировано: {len(activated)}, завершено: {len(completed)}'
+                if activated or completed
+                else 'Изменений нет'
+            ),
+        })

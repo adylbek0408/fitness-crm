@@ -371,12 +371,25 @@ export default function GroupDetail() {
     const params=new URLSearchParams()
     if (filterType) params.append('group_type',filterType)
     if (search) params.append('search',search)
+    // ✅ Только активные клиенты (status=active).
+    // Клиенты со статусом frozen/expelled/completed (в т.ч. после возврата)
+    // НЕ должны попадать сюда — они переоформляются через «Повторный клиент»
+    // в своей карточке.
+    params.append('status','active')
     params.append('page_size','200')
     const r=await api.get(`/clients/?${params}`)
     const currentIds=new Set(groupClients.map(c=>c.id))
-    // Показываем всех клиентов без потока (оплата может быть ещё не подтверждена)
     setAvailableClients(
-      (r.data.results||[]).filter(c => !currentIds.has(c.id) && !c.group)
+      (r.data.results||[]).filter(c => {
+        // 1. Не в текущем потоке и без группы
+        if (currentIds.has(c.id) || c.group) return false
+        // 2. ✅ Оплата должна быть ПОЛНОСТЬЮ ЗАКРЫТА
+        // Полная: is_paid == true
+        // Рассрочка: is_closed == true (весь долг закрыт)
+        if (c.payment_type === 'full')        return c.full_payment?.is_paid === true
+        if (c.payment_type === 'installment') return c.installment_plan?.is_closed === true
+        return false
+      })
     )
   }, [group,search,filterType,groupClients])
 
@@ -561,7 +574,7 @@ export default function GroupDetail() {
           <div className="crm-card p-4 mb-4">
             {/* Подсказка */}
             <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
-              Показаны клиенты <strong>без потока</strong>, готовые к зачислению
+            Показаны клиенты <strong>без потока</strong> с <strong>закрытой оплатой</strong>, готовые к зачислению
             </div>
             <div className="flex gap-3 flex-wrap items-center">
               <input type="text" placeholder="Поиск..." value={search} onChange={e=>setSearch(e.target.value)}

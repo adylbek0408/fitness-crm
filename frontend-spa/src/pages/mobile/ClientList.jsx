@@ -133,6 +133,7 @@ export default function ClientList() {
               <select value={status} onChange={e => setStatus(e.target.value)}
                 className="crm-mobile-select">
                 <option value="">Все статусы</option>
+                <option value="new">Новые</option>
                 <option value="active">Активные</option>
                 <option value="frozen">Заморозка</option>
                 <option value="completed">Завершили</option>
@@ -205,7 +206,7 @@ export default function ClientList() {
                         </p>
                       )}
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full shrink-0 ml-2 ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span>
+                    <span className={`text-xs px-2 py-1 rounded-full shrink-0 ml-2 ${STATUS_BADGE[c.status] || 'bg-gray-100 text-gray-600'}`}>{STATUS_LABEL[c.status] || c.status}</span>
                   </div>
                 </Link>
               )

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link, useOutletContext } from 'react-router-dom'
-import { Save, ArrowLeft, Phone, User, Calendar } from 'lucide-react'
+import { Save, ArrowLeft, Phone, User } from 'lucide-react'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 
@@ -21,7 +21,7 @@ export default function TrainerForm() {
   const isEdit = id && id !== 'add'
   const nav = useNavigate()
   const { user } = useOutletContext()
-  const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', schedule: '' })
+  const [form, setForm] = useState({ first_name: '', last_name: '', phone: '' })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [saving, setSaving] = useState(false)
@@ -30,7 +30,7 @@ export default function TrainerForm() {
     if (isEdit) {
       api.get(`/trainers/${id}/`).then(r => {
         const t = r.data
-        setForm({ first_name: t.first_name, last_name: t.last_name, phone: t.phone || '', schedule: t.schedule || '' })
+        setForm({ first_name: t.first_name, last_name: t.last_name, phone: t.phone || '' })
       })
     }
   }, [id])
@@ -72,7 +72,7 @@ export default function TrainerForm() {
 
       <div className="max-w-xl">
         <form onSubmit={handleSubmit}>
-          <div className="crm-card p-6 space-y-5 mb-5">
+          <div className="crm-card p-6 space-y-5 mb-6">
             <p className="crm-section-title">Личные данные</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -100,19 +100,6 @@ export default function TrainerForm() {
                   onChange={e => set('phone', e.target.value)}
                   placeholder="+996 700 000 000"
                   className="crm-input pl-9" />
-              </div>
-            </Field>
-          </div>
-
-          <div className="crm-card p-6 space-y-5 mb-6">
-            <p className="crm-section-title">Рабочее расписание</p>
-            <Field label="Расписание" hint="Опишите рабочие дни и часы тренера">
-              <div className="relative">
-                <Calendar size={15} className="absolute left-3 top-3 text-slate-400" />
-                <textarea rows={4} value={form.schedule}
-                  onChange={e => set('schedule', e.target.value)}
-                  placeholder="Например: Пн-Пт с 09:00 до 18:00, Сб 10:00–14:00"
-                  className="crm-input pl-9 resize-none" />
               </div>
             </Field>
           </div>

@@ -318,10 +318,18 @@ class TestReEnrollBonusAppliedAtEnrollment:
         plan = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
         assert plan.total_cost == Decimal('13000.00')   # 15000 - 2000
 
-    def test_re_enroll_sets_is_repeat(self):
-        """re_enroll ставит is_repeat=True."""
+    def test_re_enroll_sets_is_repeat_when_has_group_history(self):
+        """re_enroll ставит is_repeat=True только если есть история завершённого потока."""
+        from apps.clients.models import ClientGroupHistory
+
         group = make_group(number=17)
         client = make_client(phone='308')
+        ClientGroupHistory.objects.create(
+            client       = client,
+            group        = group,
+            group_number = group.number,
+            group_type   = group.group_type,
+        )
         ClientService().re_enroll_client(str(client.id), {
             'group_id':     str(group.id),
             'payment_type': 'full',
@@ -329,6 +337,18 @@ class TestReEnrollBonusAppliedAtEnrollment:
         })
         client.refresh_from_db()
         assert client.is_repeat is True
+
+    def test_re_enroll_keeps_is_repeat_false_without_history(self):
+        """Без истории потоков (например после возврата до первой записи) — не помечаем как повторного."""
+        group = make_group(number=172)
+        client = make_client(phone='3081', status='frozen')
+        ClientService().re_enroll_client(str(client.id), {
+            'group_id':     str(group.id),
+            'payment_type': 'full',
+            'payment_data': {'amount': Decimal('15000')},
+        })
+        client.refresh_from_db()
+        assert client.is_repeat is False
 
     def test_re_enroll_sets_status_active(self):
         """re_enroll переводит клиента в active и привязывает к потоку."""
