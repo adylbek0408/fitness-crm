@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { UserPlus, Users, TrendingUp, UserCheck, Sparkles } from 'lucide-react'
+import { UserPlus, Users, TrendingUp, UserCheck, Layers2 } from 'lucide-react'
 import MobileLayout from '../../components/MobileLayout'
 import { useRefresh } from '../../contexts/RefreshContext'
 import api from '../../api/axios'
@@ -77,7 +77,7 @@ export default function MobileDashboard() {
             {[
               { icon: TrendingUp, label: 'Общий доход', value: fmtMoney(stats.total_revenue), color: '#be185d', bg: '#fce7f3' },
               { icon: UserCheck, label: 'Активных', value: stats.active_clients, color: '#7c3aed', bg: '#ede9fe' },
-              { icon: Sparkles, label: 'Потоков', value: stats.active_groups_count, color: '#d97706', bg: '#fef3c7' },
+              { icon: Layers2, label: 'Потоков', value: stats.active_groups_count, color: '#d97706', bg: '#fef3c7' },
               { icon: Users, label: 'Пропусков', value: stats.total_absences, color: '#6b7280', bg: '#f3f4f6' },
             ].map(({ icon: Icon, label, value, color, bg }) => (
               <div key={label} className="p-4 flex items-center gap-3">

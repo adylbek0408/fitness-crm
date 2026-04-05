@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
+
+const LogoIcon = ({ size = 36 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.92"/>
+  </svg>
+)
 import api from '../api/axios'
 
 export default function Login({ defaultMode = 'staff' }) {
@@ -62,11 +68,11 @@ export default function Login({ defaultMode = 'staff' }) {
         <div className="relative z-10 text-center max-w-sm">
           {/* Иконка */}
           <div className="w-20 h-20 rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-2xl"
-               style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-            <Sparkles size={36} className="text-white" strokeWidth={1.5} />
+               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
+            <LogoIcon size={36} />
           </div>
 
-          <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">Асылзада</h1>
+          <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">CRM система</h1>
           <p className="text-lg font-medium mb-2" style={{ color: '#f9a8d4' }}>Fitness Center</p>
           <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>
             Система управления фитнес-центром — учёт клиентов, потоков, посещаемости и финансов
@@ -89,11 +95,11 @@ export default function Login({ defaultMode = 'staff' }) {
           {/* Мобильное лого */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-              <Sparkles size={18} className="text-white" strokeWidth={2} />
+                 style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
+              <LogoIcon size={18} />
             </div>
             <div>
-              <p className="font-bold text-base" style={{ color: 'var(--text)' }}>Асылзада CRM</p>
+              <p className="font-bold text-base" style={{ color: 'var(--text)' }}>CRM система</p>
               <p className="text-xs" style={{ color: 'var(--text-xs)' }}>Fitness Center</p>
             </div>
           </div>
@@ -179,7 +185,7 @@ export default function Login({ defaultMode = 'staff' }) {
           </p>
 
           <p className="text-center text-xs mt-6" style={{ color: '#d4b8c8' }}>
-            © 2026 Асылзада Fitness Center
+            © 2026 CRM система
           </p>
         </div>
       </div>

@@ -14,16 +14,21 @@ const DAYS = [
   { key: 'Sun', label: 'Вс' },
 ]
 
+// Формат расписания: "Mon,Wed,Fri 22:59 00:30"
+// parts[0] = дни, parts[1] = время начала, parts[2] = время окончания
 function parseSchedule(schedule) {
-  if (!schedule) return { days: [], time: '' }
+  if (!schedule) return { days: [], time: '', end_time: '' }
   const parts = schedule.split(' ')
   const days = (parts[0] || '').split(',').filter(d => DAYS.some(x => x.key === d))
-  return { days, time: parts[1] || '' }
+  return { days, time: parts[1] || '', end_time: parts[2] || '' }
 }
 
-function buildSchedule(days, time) {
+function buildSchedule(days, time, end_time) {
   if (!days.length) return ''
-  return days.join(',') + (time ? ` ${time}` : '')
+  let s = days.join(',')
+  if (time) s += ` ${time}`
+  if (time && end_time) s += ` ${end_time}`
+  return s
 }
 
 function Field({ label, required, hint, children }) {
@@ -46,7 +51,7 @@ export default function GroupForm() {
   const [trainers, setTrainers] = useState([])
   const [form, setForm] = useState({
     number: '', group_type: '', trainer: '',
-    schedule_days: [], schedule_time: '',
+    schedule_days: [], schedule_time: '', schedule_end_time: '',
     start_date: '', end_date: '', status: 'recruitment'
   })
   const [error, setError] = useState('')
@@ -58,11 +63,11 @@ export default function GroupForm() {
     if (isEdit) {
       api.get(`/groups/${id}/`).then(r => {
         const g = r.data
-        const { days, time } = parseSchedule(g.schedule)
+        const { days, time, end_time } = parseSchedule(g.schedule)
         setForm({
           number: g.number, group_type: g.group_type,
           trainer: g.trainer?.id || '',
-          schedule_days: days, schedule_time: time,
+          schedule_days: days, schedule_time: time, schedule_end_time: end_time,
           start_date: g.start_date || '', end_date: g.end_date || '',
           status: g.status,
         })
@@ -83,7 +88,7 @@ export default function GroupForm() {
 
   const handleSubmit = async e => {
     e.preventDefault(); setError(''); setSuccess(''); setSaving(true)
-    const schedule = buildSchedule(form.schedule_days, form.schedule_time)
+    const schedule = buildSchedule(form.schedule_days, form.schedule_time, form.schedule_end_time)
     const body = {
       number: parseInt(form.number),
       group_type: form.group_type,
@@ -104,9 +109,15 @@ export default function GroupForm() {
     } finally { setSaving(false) }
   }
 
-  const schedulePreview = form.schedule_days.length
+  // Превью расписания
+  const dayLabels = form.schedule_days.length
     ? DAYS.filter(d => form.schedule_days.includes(d.key)).map(d => d.label).join(', ')
+    : null
+
+  const schedulePreview = dayLabels
+    ? dayLabels
       + (form.schedule_time ? ` · ${form.schedule_time}` : '')
+      + (form.schedule_time && form.schedule_end_time ? ` — ${form.schedule_end_time}` : '')
     : null
 
   return (
@@ -129,6 +140,7 @@ export default function GroupForm() {
 
       <div className="max-w-2xl">
         <form onSubmit={handleSubmit}>
+          {/* Основная информация */}
           <div className="crm-card p-6 space-y-6 mb-5">
             <p className="crm-section-title">Основная информация</p>
 
@@ -162,9 +174,9 @@ export default function GroupForm() {
             <Field label="Статус">
               <div className="flex flex-wrap gap-2">
                 {[
-                  { value: 'recruitment', label: 'Набор', color: 'border-amber-300 bg-amber-50 text-amber-700' },
-                  { value: 'active', label: 'Активный', color: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
-                  { value: 'completed', label: 'Завершён', color: 'border-slate-300 bg-slate-50 text-slate-600' },
+                  { value: 'recruitment', label: 'Набор',    color: 'border-amber-300 bg-amber-50 text-amber-700' },
+                  { value: 'active',      label: 'Активный', color: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
+                  { value: 'completed',   label: 'Завершён', color: 'border-slate-300 bg-slate-50 text-slate-600' },
                 ].map(opt => (
                   <button key={opt.value} type="button"
                     onClick={() => set('status', opt.value)}
@@ -197,22 +209,33 @@ export default function GroupForm() {
               </div>
             </Field>
 
-            <Field label="Время начала">
-              <div className="flex items-center gap-3 flex-wrap">
+            {/* Время начала и окончания */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <Field label="Время начала">
                 <div className="relative">
                   <Clock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input type="time" value={form.schedule_time}
                     onChange={e => set('schedule_time', e.target.value)}
-                    className="crm-input pl-9 w-40" />
+                    className="crm-input pl-9" />
                 </div>
-                {schedulePreview && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl">
-                    <Calendar size={14} className="text-indigo-500 shrink-0" />
-                    <span className="text-sm text-indigo-700 font-medium">{schedulePreview}</span>
-                  </div>
-                )}
+              </Field>
+              <Field label="Время окончания">
+                <div className="relative">
+                  <Clock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input type="time" value={form.schedule_end_time}
+                    onChange={e => set('schedule_end_time', e.target.value)}
+                    className="crm-input pl-9" />
+                </div>
+              </Field>
+            </div>
+
+            {/* Превью расписания */}
+            {schedulePreview && (
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-indigo-50 border border-indigo-200 rounded-xl">
+                <Calendar size={14} className="text-indigo-500 shrink-0" />
+                <span className="text-sm text-indigo-700 font-medium">{schedulePreview}</span>
               </div>
-            </Field>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <Field label="Дата старта">

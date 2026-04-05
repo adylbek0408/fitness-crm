@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { User, Phone, BookOpen, CreditCard, ChevronRight, Check } from 'lucide-react'
+import { User, Phone, BookOpen, CreditCard, ChevronRight, Check, Users, ChevronDown } from 'lucide-react'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
 import MobileDateField from '../../components/MobileDateField'
 import { useRefresh } from '../../contexts/RefreshContext'
+import { GROUP_TYPE_LABEL } from '../../utils/format'
 
-const STEPS = ['Личные данные', 'Обучение', 'Оплата']
+const STEPS = ['Данные', 'Обучение', 'Оплата']
 
 function StepBar({ current }) {
   return (
@@ -73,12 +74,43 @@ export default function ClientRegister() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [createdCredentials, setCreatedCredentials] = useState(null)
+  const [groups, setGroups] = useState([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
   const [form, setForm] = useState({
     first_name: '', last_name: '', phone: '',
-    training_format: '', group_type: '',
+    training_format: '', group_type: '', group_id: '',
     payment_type: '', pay_amount: '', total_cost: '', deadline: '',
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  // Потоки: только шаг «Оплата» + полная оплата; фильтр по типу группы и формату (офлайн/онлайн; mixed подходит обоим)
+  useEffect(() => {
+    if (step !== 2 || form.payment_type !== 'full' || !form.training_format || !form.group_type) {
+      return
+    }
+    setGroupsLoading(true)
+    const params = { group_type: form.group_type, page_size: 100 }
+    Promise.all([
+      api.get('/groups/', { params: { ...params, status: 'recruitment' } }),
+      api.get('/groups/', { params: { ...params, status: 'active' } }),
+    ])
+      .then(([r, a]) => {
+        const merged = [...(r.data.results || []), ...(a.data.results || [])]
+        const tf = form.training_format
+        const seen = new Set()
+        const filtered = merged.filter(g => {
+          if (g.group_type !== form.group_type) return false
+          const matchTf = g.training_format === tf || g.training_format === 'mixed'
+          if (!matchTf) return false
+          if (seen.has(g.id)) return false
+          seen.add(g.id)
+          return true
+        })
+        setGroups(filtered)
+      })
+      .catch(() => setGroups([]))
+      .finally(() => setGroupsLoading(false))
+  }, [step, form.payment_type, form.training_format, form.group_type])
 
   const validateStep = () => {
     setError('')
@@ -105,7 +137,11 @@ export default function ClientRegister() {
   }
 
   const handleNext = () => { if (validateStep()) setStep(s => s + 1) }
-  const handleBack = () => { setError(''); setStep(s => s - 1) }
+  const handleBack = () => {
+    setError('')
+    if (step === 2) setForm(p => ({ ...p, group_id: '' }))
+    setStep(s => s - 1)
+  }
 
   const handleSubmit = async () => {
     if (!validateStep()) return
@@ -120,6 +156,8 @@ export default function ClientRegister() {
       is_repeat: false, discount: '0',
       payment_type: pt, payment_data: paymentData,
     }
+    // Поток только при полной оплате (на рассрочке — запись в поток после закрытия долга, из карточки клиента)
+    if (form.payment_type === 'full' && form.group_id) body.group = form.group_id
     try {
       const r = await api.post('/clients/', body)
       const cabinet = r.data.cabinet_username
@@ -276,10 +314,10 @@ export default function ClientRegister() {
             <div className="space-y-2">
               <OptionButton label="Полная оплата" sub="Единовременный платёж"
                 selected={form.payment_type === 'full'}
-                onClick={() => set('payment_type', 'full')} />
+                onClick={() => setForm(p => ({ ...p, payment_type: 'full' }))} />
               <OptionButton label="Рассрочка" sub="Оплата по частям"
                 selected={form.payment_type === 'installment'}
-                onClick={() => set('payment_type', 'installment')} />
+                onClick={() => setForm(p => ({ ...p, payment_type: 'installment', group_id: '' }))} />
             </div>
           </div>
 
@@ -309,6 +347,67 @@ export default function ClientRegister() {
             </div>
           )}
 
+          {/* Поток — только при полной оплаты, после ввода суммы; совпадает с форматом и типом группы */}
+          {form.payment_type === 'full' && (
+            <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center"
+                     style={{ background: '#fce7f3' }}>
+                  <Users size={13} style={{ color: '#be185d' }} />
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-xs)' }}>
+                  Поток (необязательно)
+                </span>
+              </div>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-xs)' }}>
+                Показаны потоки под ваш формат и тип группы. Запись в поток — после полной оплаты.
+              </p>
+              {groupsLoading ? (
+                <div className="flex justify-center py-4">
+                  <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#be185d' }} />
+                </div>
+              ) : groups.length === 0 ? (
+                <p className="text-sm text-center py-3" style={{ color: 'var(--text-xs)' }}>
+                  Нет подходящих потоков (набор или активный)
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <button type="button"
+                    onClick={() => set('group_id', '')}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all"
+                    style={!form.group_id
+                      ? { background: '#fce7f3', border: '2px solid #be185d' }
+                      : { background: '#fafafa', border: '2px solid #e5e7eb' }}>
+                    <span className="text-sm font-medium" style={{ color: !form.group_id ? '#be185d' : 'var(--text-soft)' }}>Без потока</span>
+                    {!form.group_id && <Check size={14} style={{ color: '#be185d' }} />}
+                  </button>
+                  {groups.map(g => (
+                    <button key={g.id} type="button"
+                      onClick={() => set('group_id', g.id)}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all"
+                      style={form.group_id === g.id
+                        ? { background: '#fce7f3', border: '2px solid #be185d' }
+                        : { background: '#fafafa', border: '2px solid #e5e7eb' }}>
+                      <div className="text-left">
+                        <p className="text-sm font-semibold" style={{ color: form.group_id === g.id ? '#be185d' : 'var(--text)' }}>
+                          Поток #{g.number}
+                          <span className="ml-1.5 text-xs font-normal" style={{ color: 'var(--text-xs)' }}>
+                            {GROUP_TYPE_LABEL[g.group_type] || g.group_type}
+                            {g.training_format === 'mixed' ? ' · смеш.' : g.training_format === 'online' ? ' · онлайн' : ' · офлайн'}
+                          </span>
+                        </p>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-xs)' }}>
+                          {g.trainer?.full_name || '—'} · {g.status === 'active' ? 'Активный' : 'Набор'}
+                        </p>
+                      </div>
+                      {form.group_id === g.id && <Check size={14} style={{ color: '#be185d' }} />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Итоговая сводка */}
           <div className="rounded-2xl p-4" style={{ background: '#fdf8fb', border: '1px solid #ece4e8' }}>
             <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-xs)' }}>
@@ -320,6 +419,7 @@ export default function ClientRegister() {
                 ['Телефон', form.phone],
                 ['Формат', form.training_format === 'online' ? 'Онлайн' : 'Оффлайн'],
                 ['Тип группы', form.group_type === '1.5h' ? '1.5 часа' : '2.5 часа'],
+                ['Поток', form.payment_type !== 'full' ? 'После полной оплаты — в карточке' : (form.group_id ? `Поток #${groups.find(g=>g.id===form.group_id)?.number || '?'}` : 'Не выбран')],
                 ['Оплата', form.payment_type === 'full' ? `Полная — ${form.pay_amount || '0'} сом` : form.payment_type === 'installment' ? `Рассрочка — ${form.total_cost || '0'} сом` : '—'],
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between">

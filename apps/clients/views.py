@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from django.db.models import Prefetch
 
 from core.permissions import IsAdmin, IsAdminOrRegistrar
-from core.exceptions import ValidationError
+from core.exceptions import ValidationError, NotFoundError
 from .models import Client, ClientGroupHistory
 from .serializers import ClientReadSerializer, ClientCreateSerializer, ClientUpdateSerializer
 from .services import ClientService
@@ -103,23 +103,42 @@ class ClientViewSet(viewsets.ModelViewSet):
         records = ClientGroupHistory.objects.filter(client_id=pk).order_by('-ended_at')
         data = [
             {
-                'id':               str(r.id),
-                'group_id':         str(r.group_id) if r.group_id else None,
-                'group_number':     r.group_number,
-                'group_type':       r.group_type,
-                'trainer_name':     r.trainer_name,
-                'start_date':       str(r.start_date) if r.start_date else None,
-                'ended_at':         str(r.ended_at),
-                'payment_type':     r.payment_type,
-                'payment_amount':   str(r.payment_amount),
-                'payment_paid':     str(r.payment_paid),
+                'id':                str(r.id),
+                'group_id':          str(r.group_id) if r.group_id else None,
+                'group_number':      r.group_number,
+                'group_type':        r.group_type,
+                'trainer_name':      r.trainer_name,
+                'start_date':        str(r.start_date) if r.start_date else None,
+                'ended_at':          str(r.ended_at),
+                'payment_type':      r.payment_type,
+                'payment_amount':    str(r.payment_amount),
+                'payment_paid':      str(r.payment_paid),
                 'payment_is_closed': r.payment_is_closed,
+                'receipts':          r.receipts if r.receipts else [],
             }
             for r in records
         ]
         return Response(data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin], url_path='re-enroll')
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='add-to-group')
+    def add_to_group(self, request, pk=None):
+        """
+        POST /api/clients/{id}/add-to-group/
+        Клиент со статусом «Новый», оплата закрыта — запись в поток без новой оплаты.
+        Body: { "group_id": "<uuid>" }
+        """
+        gid = request.data.get('group_id')
+        if not gid:
+            return Response({'detail': 'group_id обязателен'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            client = self.service.add_new_client_to_group(pk, str(gid))
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(ClientReadSerializer(client).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='re-enroll')
     def re_enroll(self, request, pk=None):
         """
         POST /api/clients/{id}/re-enroll/
@@ -128,3 +147,12 @@ class ClientViewSet(viewsets.ModelViewSet):
         """
         client = self.service.re_enroll_client(pk, request.data, user=request.user)
         return Response(ClientReadSerializer(client).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='refund')
+    def refund(self, request, pk=None):
+        """
+        POST /api/clients/{id}/refund/
+        Возврат средств: снимает последнюю оплату, статус «Заморозка», клиент в базе.
+        """
+        result = self.service.refund_client(pk, user=request.user)
+        return Response(result)

@@ -1,6 +1,7 @@
 import uuid
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -107,3 +108,37 @@ class InstallmentPayment(UUIDTimestampedModel):
 
     def __str__(self):
         return f"Payment {self.amount} on {self.paid_at} for plan {self.plan_id}"
+
+
+class RefundLog(UUIDTimestampedModel):
+    """
+    Лог возвратов денег клиентам.
+    Создаётся при каждом успешном возврате, чтобы
+    сохранить историю даже после удаления платежа.
+    """
+    client_name  = models.CharField(max_length=200)
+    client_id    = models.CharField(max_length=36, blank=True, db_index=True)
+    amount       = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_type = models.CharField(
+        max_length=15,
+        choices=[('full', 'Полная оплата'), ('installment', 'Рассрочка')],
+        blank=True,
+    )
+    note = models.CharField(max_length=500, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,          # ← правильно
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='refund_logs',
+    )
+
+    class Meta:
+        verbose_name        = 'Возврат средств'
+        verbose_name_plural = 'Возвраты средств'
+        ordering            = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Refund {self.amount} → {self.client_name} at {self.created_at}"

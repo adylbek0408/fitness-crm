@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, UserPlus, LogOut, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Users, UserPlus, LogOut } from 'lucide-react'
 import PullToRefresh from './PullToRefresh'
 import { useRefreshFn } from '../contexts/RefreshContext'
 
@@ -26,12 +26,12 @@ export default function MobileLayout({ children }) {
           paddingBottom: '0.75rem',
         }}>
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-            <Sparkles size={13} className="text-white" strokeWidth={2} />
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/></svg>
           </div>
-          <span className="font-semibold text-sm" style={{ color: 'var(--text)', letterSpacing: '-0.015em' }}>
-            Асылзада CRM
+          <span className="font-bold text-sm" style={{ color: 'var(--text)', letterSpacing: '-0.015em' }}>
+            CRM система
           </span>
         </div>
         <button type="button" onClick={logout}

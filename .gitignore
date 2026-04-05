@@ -29,6 +29,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Разрешаем .env фронтенда (продакшн URL)
+!frontend-spa/.env
+
 # Django
 *.log
 local_settings.py

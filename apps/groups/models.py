@@ -14,22 +14,33 @@ class Group(UUIDTimestampedModel):
         ('completed', 'Completed'),
     ]
 
-    number = models.PositiveIntegerField(unique=True, help_text="Stream/group number")
-    group_type = models.CharField(max_length=10, choices=GROUP_TYPE_CHOICES)
+    TRAINING_FORMAT_CHOICES = [
+        ('offline', 'Offline'),
+        ('online', 'Online'),
+        ('mixed', 'Mixed'),
+    ]
+
+    number          = models.PositiveIntegerField(unique=True, help_text="Stream/group number")
+    group_type      = models.CharField(max_length=10, choices=GROUP_TYPE_CHOICES)
+    training_format = models.CharField(
+        max_length=10, choices=TRAINING_FORMAT_CHOICES,
+        default='offline',
+        help_text="Формат обучения потока"
+    )
     start_date = models.DateField()
-    end_date = models.DateField(null=True, blank=True)
-    trainer = models.ForeignKey(
+    end_date   = models.DateField(null=True, blank=True)
+    trainer    = models.ForeignKey(
         'trainers.Trainer',
         on_delete=models.PROTECT,
         related_name='groups'
     )
     schedule = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recruitment')
+    status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recruitment')
 
     class Meta:
-        verbose_name = 'Group'
+        verbose_name        = 'Group'
         verbose_name_plural = 'Groups'
-        ordering = ['-number']
+        ordering            = ['-number']
         indexes = [
             models.Index(fields=['status']),
             models.Index(fields=['trainer']),

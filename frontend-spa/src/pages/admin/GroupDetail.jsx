@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, Link, useOutletContext } from 'react-router-dom'
-import { AlertTriangle, FileDown, CheckCircle2, XCircle, ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
+import { AlertTriangle, FileDown, CheckCircle2, XCircle, ChevronLeft, ChevronRight, Calendar, Pencil, BarChart3, Lock, CalendarDays, GraduationCap, Info } from 'lucide-react'
+import ConfirmModal from '../../components/ConfirmModal'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import api from '../../api/axios'
@@ -178,10 +179,11 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
   return (
     <div>
       <div className="flex gap-2 mb-4">
-        {[{k:'journal',l:'✏️ Отметить занятие'},{k:'history',l:'📊 История занятий'}].map(({k,l})=>(
+        {[{k:'journal',l:'Отметить занятие',icon:Pencil},{k:'history',l:'История занятий',icon:BarChart3}].map(({k,l,icon:TabIcon})=>(
+
           <button key={k} onClick={()=>setView(k)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${view===k?'bg-indigo-600 text-white shadow-md':'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-            {l}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5 ${view===k?'bg-indigo-600 text-white shadow-md':'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+            <TabIcon size={14} />{l}
           </button>
         ))}
       </div>
@@ -357,6 +359,7 @@ export default function GroupDetail() {
   const [msg, setMsg] = useState(null)
 
   const [closeLoading, setCloseLoading] = useState(false)
+  const [confirmModal, setConfirmModal] = useState(null)
 
   const loadGroup = useCallback(async () => { const r=await api.get(`/groups/${id}/`); setGroup(r.data) }, [id])
   const loadGroupClients = useCallback(async () => {
@@ -368,12 +371,25 @@ export default function GroupDetail() {
     const params=new URLSearchParams()
     if (filterType) params.append('group_type',filterType)
     if (search) params.append('search',search)
+    // ✅ Только активные клиенты (status=active).
+    // Клиенты со статусом frozen/expelled/completed (в т.ч. после возврата)
+    // НЕ должны попадать сюда — они переоформляются через «Повторный клиент»
+    // в своей карточке.
+    params.append('status','active')
     params.append('page_size','200')
     const r=await api.get(`/clients/?${params}`)
     const currentIds=new Set(groupClients.map(c=>c.id))
-    // Показываем всех клиентов без потока (оплата может быть ещё не подтверждена)
     setAvailableClients(
-      (r.data.results||[]).filter(c => !currentIds.has(c.id) && !c.group)
+      (r.data.results||[]).filter(c => {
+        // 1. Не в текущем потоке и без группы
+        if (currentIds.has(c.id) || c.group) return false
+        // 2. ✅ Оплата должна быть ПОЛНОСТЬЮ ЗАКРЫТА
+        // Полная: is_paid == true
+        // Рассрочка: is_closed == true (весь долг закрыт)
+        if (c.payment_type === 'full')        return c.full_payment?.is_paid === true
+        if (c.payment_type === 'installment') return c.installment_plan?.is_closed === true
+        return false
+      })
     )
   }, [group,search,filterType,groupClients])
 
@@ -391,10 +407,18 @@ export default function GroupDetail() {
     } catch(e){ showMsg('error',e.response?.data?.detail||'Ошибка') }
   }
 
-  const removeClient = async clientId => {
-    if (!confirm('Убрать клиента из потока?')) return
-    await api.post(`/groups/${id}/remove-client/`,{client_id:clientId})
-    loadGroupClients()
+  const removeClient = (clientId, clientName) => {
+    setConfirmModal({
+      title: 'Убрать клиента',
+      message: `Убрать ${clientName || 'клиента'} из потока?`,
+      variant: 'warning',
+      confirmText: 'Убрать',
+      onConfirm: async () => {
+        await api.post(`/groups/${id}/remove-client/`, { client_id: clientId })
+        setConfirmModal(null)
+        loadGroupClients()
+      },
+    })
   }
 
   if (!group) return (
@@ -409,7 +433,7 @@ export default function GroupDetail() {
 
   const TABS = [
     { key:'current', label:`Клиенты потока (${groupClients.length})` },
-    { key:'attendance', label:'📋 НБ / Посещаемость' },
+    { key:'attendance', label:'НБ / Посещаемость' },
     // Вкладку "Добавить" скрываем для завершённых потоков
     ...(!isCompleted ? [{ key:'add', label:'+ Добавить клиентов' }] : []),
   ]
@@ -431,19 +455,24 @@ export default function GroupDetail() {
           )}
           {!isCompleted && (
             <button
-              onClick={async () => {
-                if (!confirm('Закрыть поток? Все активные клиенты станут «Завершили» и будут откреплены от потока.')) return
-                setCloseLoading(true)
-                try {
-                  await api.post(`/groups/${id}/close/`)
-                  showMsg('success', 'Поток закрыт')
-                  loadGroup(); loadGroupClients()
-                } catch(e) { showMsg('error', e.response?.data?.detail || 'Ошибка') }
-                finally { setCloseLoading(false) }
-              }}
+              onClick={() => setConfirmModal({
+                title: 'Закрыть поток',
+                message: `Закрыть Поток #${group.number}?\n\nВсе активные клиенты получат статус «Завершил» и будут откреплены.`,
+                variant: 'danger',
+                confirmText: 'Закрыть поток',
+                onConfirm: async () => {
+                  setCloseLoading(true); setConfirmModal(null)
+                  try {
+                    await api.post(`/groups/${id}/close/`)
+                    showMsg('success', 'Поток закрыт')
+                    loadGroup(); loadGroupClients()
+                  } catch(e) { showMsg('error', e.response?.data?.detail || 'Ошибка') }
+                  finally { setCloseLoading(false) }
+                },
+              })}
               disabled={closeLoading}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition disabled:opacity-50">
-              {closeLoading ? 'Закрытие...' : '🔒 Закрыть поток'}
+              {closeLoading ? 'Закрытие...' : <><Lock size={13} className="inline -mt-0.5" /> Закрыть поток</>}
             </button>
           )}
         </div>
@@ -470,7 +499,7 @@ export default function GroupDetail() {
         </div>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-            <span className="text-amber-500 text-xs">📅</span>
+            <CalendarDays size={15} className="text-amber-500" />
           </div>
           <div>
             <p className="text-xs text-slate-400 mb-0.5">Дата старта</p>
@@ -518,7 +547,7 @@ export default function GroupDetail() {
                       <td><span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[c.status]}`}>{STATUS_LABEL[c.status]}</span></td>
                       <td className="text-slate-400 text-xs">{c.registered_by_name||'—'}</td>
                       {!isCompleted && (
-                        <td><button onClick={()=>removeClient(c.id)} className="text-red-400 hover:text-red-600 text-xs transition">Убрать</button></td>
+                        <td><button onClick={()=>removeClient(c.id, c.full_name)} className="text-red-400 hover:text-red-600 text-xs transition">Убрать</button></td>
                       )}
                     </tr>
                   ))}
@@ -527,7 +556,7 @@ export default function GroupDetail() {
           </div>
           {isCompleted && (
             <div className="px-5 py-3 bg-slate-50 border-t text-xs text-slate-400">
-              🎓 Поток завершён — редактирование списка недоступно
+              Поток завершён — редактирование списка недоступно
             </div>
           )}
         </div>
@@ -545,7 +574,7 @@ export default function GroupDetail() {
           <div className="crm-card p-4 mb-4">
             {/* Подсказка */}
             <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
-              ℹ️ Показаны клиенты <strong>без потока</strong>, готовые к зачислению
+            Показаны клиенты <strong>без потока</strong> с <strong>закрытой оплатой</strong>, готовые к зачислению
             </div>
             <div className="flex gap-3 flex-wrap items-center">
               <input type="text" placeholder="Поиск..." value={search} onChange={e=>setSearch(e.target.value)}
@@ -598,6 +627,17 @@ export default function GroupDetail() {
             </div>
           </div>
         </div>
+      )}
+      {confirmModal && (
+        <ConfirmModal
+          open={true}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          variant={confirmModal.variant}
+          confirmText={confirmModal.confirmText}
+          onConfirm={confirmModal.onConfirm}
+          onClose={() => setConfirmModal(null)}
+        />
       )}
     </AdminLayout>
   )

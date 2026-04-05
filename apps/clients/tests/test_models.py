@@ -21,7 +21,7 @@ class TestClientModel:
         assert client.first_name == 'John'
         assert client.last_name == 'Doe'
         assert client.phone == '+79991234567'
-        assert client.status == 'active'
+        assert client.status == 'new'
         assert client.training_format == 'offline'
         assert client.payment_type == 'full'
 

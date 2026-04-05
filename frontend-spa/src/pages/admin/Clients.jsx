@@ -18,6 +18,7 @@ const STATUS_OPTIONS = [
 function StatusDropdown({ clientId, currentStatus, onChanged }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const ref = useRef(null)
 
   useEffect(() => {
@@ -25,14 +26,23 @@ function StatusDropdown({ clientId, currentStatus, onChanged }) {
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
   }, [])
+  useEffect(() => { if (error) { const t = setTimeout(() => setError(''), 3000); return () => clearTimeout(t) } }, [error])
+
+  if (currentStatus === 'new') {
+    return (
+      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE.new}`}>
+        {STATUS_LABEL.new}
+      </span>
+    )
+  }
 
   const changeStatus = async (newStatus) => {
     if (newStatus === currentStatus) { setOpen(false); return }
-    setLoading(true); setOpen(false)
+    setLoading(true); setOpen(false); setError('')
     try {
       const r = await api.post(`/clients/${clientId}/change_status/`, { status: newStatus })
       onChanged(clientId, r.data.status)
-    } catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
+    } catch (e) { setError(e.response?.data?.detail || 'Ошибка') }
     finally { setLoading(false) }
   }
 
@@ -170,6 +180,7 @@ export default function Clients() {
           </div>
           <select value={status} onChange={e => setStatus(e.target.value)} className="crm-input w-full sm:w-40">
             <option value="">Все статусы</option>
+            <option value="new">Новые</option>
             <option value="active">Активные</option>
             <option value="frozen">Заморозка</option>
             <option value="completed">Завершили</option>

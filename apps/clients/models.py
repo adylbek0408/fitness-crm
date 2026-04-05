@@ -34,6 +34,7 @@ class Client(UUIDTimestampedModel):
     TRAINING_FORMAT_CHOICES = [('online', 'Online'), ('offline', 'Offline')]
     GROUP_TYPE_CHOICES = [('1.5h', '1.5 hours'), ('2.5h', '2.5 hours')]
     STATUS_CHOICES = [
+        ('new', 'New'),
         ('active', 'Active'), ('completed', 'Completed'),
         ('expelled', 'Expelled'), ('frozen', 'Frozen'),
     ]
@@ -54,7 +55,7 @@ class Client(UUIDTimestampedModel):
         related_name='clients', null=True, blank=True
     )
 
-    status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
     is_repeat = models.BooleanField(default=False)
     discount  = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     bonus_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -108,6 +109,13 @@ class ClientGroupHistory(UUIDTimestampedModel):
     payment_amount  = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     payment_paid    = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     payment_is_closed = models.BooleanField(default=False)
+
+    # Снимок чеков на момент закрытия
+    receipts = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of receipt objects for this group enrollment'
+    )
 
     class Meta:
         ordering = ['-ended_at']

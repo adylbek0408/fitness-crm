@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Layers2, UserCircle, Users,
-  BarChart2, UserCog, LogOut, Sparkles,
+  BarChart2, UserCog, LogOut, Trash2,
 } from 'lucide-react'
 
 const links = [
@@ -11,6 +11,7 @@ const links = [
   { to: '/admin/clients',    icon: Users,            label: 'Клиенты'    },
   { to: '/admin/statistics', icon: BarChart2,        label: 'Статистика' },
   { to: '/admin/managers',   icon: UserCog,          label: 'Менеджеры'  },
+  { to: '/admin/trash',      icon: Trash2,           label: 'Корзина',   danger: true },
 ]
 
 function Avatar({ name }) {
@@ -37,13 +38,14 @@ export default function AdminLayout({ children, user }) {
         {/* Лого */}
         <div className="px-4 pt-5 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                 style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-              <Sparkles size={13} className="text-white" strokeWidth={2} />
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                 style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/>
+              </svg>
             </div>
             <div>
-              <p className="text-white text-sm font-semibold leading-tight tracking-tight">Асылзада</p>
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>CRM система</p>
+              <p className="text-white text-sm font-bold leading-tight tracking-tight">CRM система</p>
             </div>
           </div>
         </div>
@@ -59,16 +61,25 @@ export default function AdminLayout({ children, user }) {
                     isActive ? 'text-white font-medium' : 'font-normal'
                   }`
                 }
-                style={({ isActive }) => isActive
-                  ? { background: 'rgba(190,24,93,0.25)', color: '#fff' }
-                  : { color: 'rgba(255,255,255,0.45)' }
-                }>
+                style={({ isActive }) => {
+                  if (isActive) {
+                    return { background: l.danger ? 'rgba(239,68,68,0.2)' : 'rgba(190,24,93,0.25)', color: '#fff' }
+                  }
+                  return { color: l.danger ? 'rgba(255,150,150,0.5)' : 'rgba(255,255,255,0.45)' }
+                }}>
                 {({ isActive }) => (
                   <>
                     <Icon size={15} strokeWidth={isActive ? 2.2 : 1.8}
-                          style={{ color: isActive ? '#f9a8d4' : 'rgba(255,255,255,0.4)' }} />
+                          style={{
+                            color: isActive
+                              ? (l.danger ? '#fca5a5' : '#f9a8d4')
+                              : (l.danger ? 'rgba(255,150,150,0.4)' : 'rgba(255,255,255,0.4)')
+                          }} />
                     <span>{l.label}</span>
-                    {isActive && <span className="ml-auto w-1 h-4 rounded-full" style={{ background: '#f9a8d4' }} />}
+                    {isActive && (
+                      <span className="ml-auto w-1 h-4 rounded-full"
+                        style={{ background: l.danger ? '#fca5a5' : '#f9a8d4' }} />
+                    )}
                   </>
                 )}
               </NavLink>
@@ -79,7 +90,6 @@ export default function AdminLayout({ children, user }) {
         {/* Пользователь */}
         <div className="px-2 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg group cursor-default"
-               style={{ transition: 'background 0.1s' }}
                onMouseEnter={e => e.currentTarget.style.background = 'var(--sidebar-h)'}
                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <Avatar name={user?.username} />
@@ -102,11 +112,13 @@ export default function AdminLayout({ children, user }) {
       <header className="lg:hidden sticky top-0 z-40"
         style={{ background: 'var(--sidebar-bg)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="px-4 py-3 flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-               style={{ background: 'linear-gradient(135deg, #be185d, #7c3aed)' }}>
-            <Sparkles size={13} className="text-white" strokeWidth={2} />
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/>
+            </svg>
           </div>
-          <span className="text-white font-semibold text-sm flex-1 truncate">Асылзада CRM</span>
+          <span className="text-white font-bold text-sm flex-1 truncate">CRM система</span>
           <button onClick={logout}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition"
             style={{ color: '#fda4af', border: '1px solid rgba(253,164,175,0.2)' }}>
@@ -124,10 +136,12 @@ export default function AdminLayout({ children, user }) {
                       isActive ? 'text-white' : ''
                     }`
                   }
-                  style={({ isActive }) => isActive
-                    ? { background: 'rgba(190,24,93,0.30)' }
-                    : { color: 'rgba(255,255,255,0.45)' }
-                  }>
+                  style={({ isActive }) => {
+                    if (isActive) {
+                      return { background: l.danger ? 'rgba(239,68,68,0.25)' : 'rgba(190,24,93,0.30)' }
+                    }
+                    return { color: l.danger ? 'rgba(255,150,150,0.6)' : 'rgba(255,255,255,0.45)' }
+                  }}>
                   <Icon size={13} strokeWidth={2} />
                   {l.label}
                 </NavLink>

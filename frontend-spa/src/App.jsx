@@ -11,6 +11,7 @@ import Clients from './pages/admin/Clients'
 import ClientDetail from './pages/admin/ClientDetail'
 import Statistics from './pages/admin/Statistics'
 import Managers from './pages/admin/Managers'
+import Trash from './pages/admin/Trash'
 import MobileDashboard from './pages/mobile/MobileDashboard'
 import ClientRegister from './pages/mobile/ClientRegister'
 import ClientList from './pages/mobile/ClientList'
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="clients/:id" element={<ClientDetail />} />
           <Route path="statistics" element={<Statistics />} />
           <Route path="managers" element={<Managers />} />
+          <Route path="trash" element={<Trash />} />
         </Route>
         <Route path="/mobile" element={<RefreshProvider><ProtectedRoute role="any" /></RefreshProvider>}>
           <Route index element={<MobileDashboard />} />

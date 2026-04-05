@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, CheckCircle2, XCircle, Sparkles, LogOut } from 'lucide-react'
+import { Check, CheckCircle2, XCircle, LogOut, Gift, User } from 'lucide-react'
 import api from '../../api/axios'
 import { fmtMoney, fmtDate, STATUS_LABEL, GROUP_TYPE_LABEL } from '../../utils/format'
 
@@ -111,7 +111,7 @@ export default function CabinetProfile() {
       <div className="text-center">
         <div className="w-10 h-10 rounded-2xl mx-auto mb-4 flex items-center justify-center"
              style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
-          <Sparkles size={18} className="text-white" />
+             <User size={18} className="text-white" />
         </div>
         <div className="w-6 h-6 border-2 border-rose-300 border-t-rose-600 rounded-full animate-spin mx-auto" />
       </div>
@@ -154,7 +154,7 @@ export default function CabinetProfile() {
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg flex items-center justify-center"
                    style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
-                <Sparkles size={13} className="text-white" strokeWidth={2} />
+                   <User size={13} className="text-white" strokeWidth={2} />
               </div>
               <span className="text-white text-xs font-medium opacity-70">Личный кабинет</span>
             </div>
@@ -199,7 +199,7 @@ export default function CabinetProfile() {
             </div>
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
                  style={{ background: '#fce7f3' }}>
-              <span className="text-xl">🌸</span>
+              <Gift size={22} style={{ color: '#be185d' }} />
             </div>
           </div>
 

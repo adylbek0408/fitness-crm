@@ -33,10 +33,10 @@ class ClientFilter(django_filters.FilterSet):
         ).filter(total_paid_sum__gte=F('total_cost')).values('client_id')
         if value == 'paid':
             return queryset.filter(
-                Q(full_payment__is_paid=True) | Q(id__in=Subquery(installment_paid))
-            )
+                Q(full_payments__is_paid=True) | Q(id__in=Subquery(installment_paid))
+            ).distinct()
         if value == 'unpaid':
             return queryset.exclude(
-                Q(full_payment__is_paid=True) | Q(id__in=Subquery(installment_paid))
+                Q(full_payments__is_paid=True) | Q(id__in=Subquery(installment_paid))
             )
         return queryset

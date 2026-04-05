@@ -6,6 +6,16 @@ from core.exceptions import NotFoundError, ValidationError
 from .models import Group
 
 
+def _get_receipt_url(receipt_field):
+    """Safely get the URL of a receipt ImageField."""
+    try:
+        if receipt_field and receipt_field.name:
+            return receipt_field.url
+    except Exception:
+        pass
+    return None
+
+
 class GroupService(BaseService):
 
     def get_group_or_raise(self, group_id: str) -> Group:
@@ -23,6 +33,23 @@ class GroupService(BaseService):
 
     def update_group(self, group_id: str, data: dict) -> Group:
         group = self.get_group_or_raise(group_id)
+
+        # ── Если статус меняется на completed → запускаем полное закрытие ──
+        if data.get('status') == 'completed':
+            if group.status == 'completed':
+                raise ValidationError("Group is already completed")
+
+            # Сохраняем остальные поля (без статуса) перед закрытием
+            other_data = {k: v for k, v in data.items() if k != 'status'}
+            if 'number' in other_data and other_data['number'] != group.number:
+                if Group.objects.filter(number=other_data['number']).exists():
+                    raise ValidationError(f"Group number {other_data['number']} already taken")
+            for field, value in other_data.items():
+                setattr(group, field, value)
+            if other_data:
+                group.save()
+            return self.close_group(group_id)
+
         if 'number' in data and data['number'] != group.number:
             if Group.objects.filter(number=data['number']).exists():
                 raise ValidationError(f"Group number {data['number']} already taken")
@@ -38,17 +65,16 @@ class GroupService(BaseService):
         if group.status == 'completed':
             raise ValidationError("Group is already completed")
 
-        # ── Сохраняем историю для каждого клиента потока ──────────
         clients = list(group.clients.select_related('trainer').prefetch_related(
             'full_payments', 'installment_plans', 'installment_plans__payments'
         ).all())
 
         for client in clients:
-            # Снимок оплаты (берём последнюю)
             p_type   = client.payment_type
             p_amount = Decimal('0')
             p_paid   = Decimal('0')
             p_closed = False
+            receipts = []
 
             if p_type == 'full':
                 fp = client.full_payments.first()
@@ -56,12 +82,29 @@ class GroupService(BaseService):
                     p_amount = fp.amount
                     p_paid   = fp.amount if fp.is_paid else Decimal('0')
                     p_closed = fp.is_paid
+                    receipt_url = _get_receipt_url(fp.receipt)
+                    receipts.append({
+                        'label':    'Полная оплата',
+                        'amount':   str(fp.amount),
+                        'paid_at':  str(fp.paid_at) if fp.paid_at else None,
+                        'is_paid':  fp.is_paid,
+                        'url':      receipt_url,
+                    })
+
             elif p_type == 'installment':
                 ip = client.installment_plans.first()
                 if ip:
                     p_amount = ip.total_cost
                     p_paid   = ip.total_paid
                     p_closed = ip.is_closed
+                    for i, payment in enumerate(ip.payments.all()):
+                        receipt_url = _get_receipt_url(payment.receipt)
+                        receipts.append({
+                            'label':   f'Платёж {i + 1}',
+                            'amount':  str(payment.amount),
+                            'paid_at': str(payment.paid_at),
+                            'url':     receipt_url,
+                        })
 
             ClientGroupHistory.objects.create(
                 client=client,
@@ -74,17 +117,17 @@ class GroupService(BaseService):
                 payment_amount=p_amount,
                 payment_paid=p_paid,
                 payment_is_closed=p_closed,
+                receipts=receipts,
             )
 
-        # ── Переводим активных клиентов в completed ────────────────
+        # Активных клиентов → completed
         group.clients.filter(status='active').update(status='completed')
-
-        # ── Очищаем привязку к группе у ВСЕХ клиентов (история уже сохранена) ──
+        # Открепляем всех клиентов от потока
         group.clients.update(group=None)
 
         group.status = 'completed'
         group.save(update_fields=['status'])
-        self.logger.info(f"Group {group_id} closed, {len(clients)} clients archived, group cleared")
+        self.logger.info(f"Group {group_id} closed, {len(clients)} clients archived")
         return group
 
     def activate_group(self, group_id: str) -> Group:
