@@ -6,7 +6,7 @@ import {
 
 const links = [
   { to: '/admin/dashboard',  icon: LayoutDashboard, label: 'Дашборд'    },
-  { to: '/admin/groups',     icon: Layers2,          label: 'Потоки'     },
+  { to: '/admin/groups',     icon: Layers2,          label: 'Группы'     },
   { to: '/admin/trainers',   icon: UserCircle,       label: 'Тренеры'    },
   { to: '/admin/clients',    icon: Users,            label: 'Клиенты'    },
   { to: '/admin/statistics', icon: BarChart2,        label: 'Статистика' },

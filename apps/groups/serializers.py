@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from apps.trainers.serializers import TrainerSerializer
@@ -29,9 +31,30 @@ class GroupWriteSerializer(serializers.ModelSerializer):
             'start_date', 'end_date', 'trainer', 'schedule', 'status',
         ]
 
+    def validate_number(self, value):
+        s = (value or '').strip()
+        if not s:
+            raise serializers.ValidationError('Укажите номер группы')
+        if not re.match(r'^[\w\-А-Яа-яЁё]+$', s):
+            raise serializers.ValidationError('Допустимы буквы, цифры, дефис и подчёркивание')
+        return s
+
     def validate(self, data):
         start = data.get('start_date')
-        end   = data.get('end_date')
+        end = data.get('end_date')
         if start and end and end < start:
-            raise serializers.ValidationError("end_date must be after start_date")
+            raise serializers.ValidationError('end_date must be after start_date')
+
+        fmt = data.get('training_format')
+        if fmt is None and self.instance:
+            fmt = self.instance.training_format
+        gt = data.get('group_type')
+        if gt is None and self.instance:
+            gt = self.instance.group_type
+
+        fmt = fmt or 'offline'
+        if fmt in ('offline', 'mixed') and not (gt or '').strip():
+            raise serializers.ValidationError({'group_type': 'Для офлайн / смешанного формата укажите тип группы'})
+        if fmt == 'online':
+            data['group_type'] = (data.get('group_type') or '').strip()
         return data

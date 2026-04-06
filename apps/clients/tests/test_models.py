@@ -24,6 +24,7 @@ class TestClientModel:
         assert client.status == 'new'
         assert client.training_format == 'offline'
         assert client.payment_type == 'full'
+        assert client.bonus_percent == 10
 
     def test_client_full_name(self):
         client = Client.objects.create(

@@ -12,7 +12,7 @@ from .models import Client, ClientAccount
 class FullPaymentReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = FullPayment
-        fields = ['id', 'amount', 'is_paid', 'paid_at', 'receipt']
+        fields = ['id', 'amount', 'course_amount', 'is_paid', 'paid_at', 'receipt']
 
 
 class InstallmentPaymentReadSerializer(serializers.ModelSerializer):
@@ -38,7 +38,7 @@ class ClientReadSerializer(serializers.ModelSerializer):
     trainer = TrainerSerializer(read_only=True)
     full_payment = serializers.SerializerMethodField()
     installment_plan = serializers.SerializerMethodField()
-    registered_by_name = serializers.CharField(source='registered_by.username', read_only=True)
+    registered_by_name = serializers.SerializerMethodField()
     cabinet_username = serializers.SerializerMethodField()
     cabinet_password = serializers.SerializerMethodField()
 
@@ -47,7 +47,7 @@ class ClientReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'first_name', 'last_name', 'full_name',
             'phone', 'training_format', 'group_type', 'group', 'trainer',
-            'status', 'is_repeat', 'discount', 'bonus_balance', 'payment_type',
+            'status', 'is_repeat', 'discount', 'bonus_balance', 'bonus_percent', 'payment_type',
             'registered_at', 'registered_by_name',
             'full_payment', 'installment_plan',
             'cabinet_username', 'cabinet_password', 'created_at'
@@ -55,16 +55,24 @@ class ClientReadSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
     def get_full_payment(self, obj):
-        fps = obj.full_payments.all()
-        if fps:
-            return FullPaymentReadSerializer(fps[0]).data
+        # Согласовано с PaymentService: последняя запись (повторные клиенты имеют несколько FP)
+        fp = obj.full_payments.order_by('-created_at').first()
+        if fp:
+            return FullPaymentReadSerializer(fp).data
         return None
 
     def get_installment_plan(self, obj):
-        ips = obj.installment_plans.all()
-        if ips:
-            return InstallmentPlanReadSerializer(ips[0]).data
+        ip = obj.installment_plans.order_by('-created_at').first()
+        if ip:
+            return InstallmentPlanReadSerializer(ip).data
         return None
+
+    def get_registered_by_name(self, obj):
+        if getattr(obj, 'registered_by_name', None):
+            return obj.registered_by_name
+        if obj.registered_by_id:
+            return obj.registered_by.username
+        return ''
 
     def get_cabinet_username(self, obj):
         try:
@@ -106,8 +114,15 @@ class ClientCreateSerializer(serializers.Serializer):
     discount = serializers.DecimalField(max_digits=5, decimal_places=2, default=0)
     registered_at = serializers.DateField(required=False)
 
+    bonus_percent = serializers.IntegerField(default=10, required=False)
+
     payment_type = serializers.ChoiceField(choices=Client.PAYMENT_TYPE_CHOICES)
     payment_data = serializers.DictField()
+
+    def validate_bonus_percent(self, value):
+        if value < 0 or value > 100:
+            raise serializers.ValidationError('Процент бонуса должен быть от 0 до 100.')
+        return value
 
     def validate(self, data):
         payment_type = data.get('payment_type')
@@ -143,5 +158,5 @@ class ClientUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'first_name', 'last_name', 'phone',
             'training_format', 'group_type', 'group', 'trainer',
-            'status', 'is_repeat', 'discount', 'bonus_balance'
+            'status', 'is_repeat', 'discount', 'bonus_balance', 'bonus_percent',
         ]

@@ -1,6 +1,7 @@
 from datetime import date
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models import UUIDTimestampedModel
@@ -59,6 +60,11 @@ class Client(UUIDTimestampedModel):
     is_repeat = models.BooleanField(default=False)
     discount  = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     bonus_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    bonus_percent = models.PositiveSmallIntegerField(
+        default=10,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='Процент бонуса с оплаты (0–100), задаётся при регистрации',
+    )
     payment_type  = models.CharField(max_length=15, choices=PAYMENT_TYPE_CHOICES)
 
     registered_at = models.DateField(default=date.today)
@@ -66,6 +72,11 @@ class Client(UUIDTimestampedModel):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='registered_clients'
     )
+    registered_by_name = models.CharField(
+        max_length=200, blank=True, default='',
+        help_text='ФИО регистратора на момент записи (если пользователь удалён)',
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Client'
@@ -98,7 +109,7 @@ class ClientGroupHistory(UUIDTimestampedModel):
         'groups.Group', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='client_history'
     )
-    group_number    = models.PositiveIntegerField()
+    group_number    = models.CharField(max_length=32)
     group_type      = models.CharField(max_length=10)
     trainer_name    = models.CharField(max_length=200, blank=True)
     start_date      = models.DateField(null=True, blank=True)
@@ -151,6 +162,18 @@ class BonusTransaction(UUIDTimestampedModel):
     created_by  = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='bonus_transactions'
+    )
+    source_full_payment = models.ForeignKey(
+        'payments.FullPayment',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bonus_accrual_transactions',
+    )
+    source_installment_plan = models.ForeignKey(
+        'payments.InstallmentPlan',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bonus_accrual_transactions',
     )
 
     class Meta:

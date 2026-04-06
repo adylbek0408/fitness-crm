@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from django.utils import timezone
+
 from core.services import BaseService
 from core.exceptions import NotFoundError, ValidationError
 
@@ -14,6 +16,14 @@ def _get_receipt_url(receipt_field):
     except Exception:
         pass
     return None
+
+
+def _format_receipt_datetime(dt):
+    if not dt:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return timezone.localtime(dt).strftime('%d.%m.%Y %H:%M')
 
 
 class GroupService(BaseService):
@@ -77,22 +87,34 @@ class GroupService(BaseService):
             receipts = []
 
             if p_type == 'full':
-                fp = client.full_payments.first()
+                # У повторного клиента несколько FullPayment — нужна оплата текущего заезда,
+                # т.е. последняя по времени создания (как в PaymentService / ClientReadSerializer).
+                fp = (
+                    client.full_payments
+                    .order_by('-created_at', '-updated_at', '-id')
+                    .first()
+                )
                 if fp:
-                    p_amount = fp.amount
+                    # Сумма курса — номинал; оплачено — факт по счёту (после бонуса)
+                    nominal = fp.course_amount if fp.course_amount is not None else fp.amount
+                    p_amount = nominal
                     p_paid   = fp.amount if fp.is_paid else Decimal('0')
                     p_closed = fp.is_paid
                     receipt_url = _get_receipt_url(fp.receipt)
                     receipts.append({
                         'label':    'Полная оплата',
                         'amount':   str(fp.amount),
-                        'paid_at':  str(fp.paid_at) if fp.paid_at else None,
+                        'paid_at':  _format_receipt_datetime(fp.paid_at),
                         'is_paid':  fp.is_paid,
                         'url':      receipt_url,
                     })
 
             elif p_type == 'installment':
-                ip = client.installment_plans.first()
+                ip = (
+                    client.installment_plans
+                    .order_by('-created_at', '-updated_at', '-id')
+                    .first()
+                )
                 if ip:
                     p_amount = ip.total_cost
                     p_paid   = ip.total_paid

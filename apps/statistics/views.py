@@ -1,3 +1,5 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -24,6 +26,8 @@ class StatisticsViewSet(viewsets.GenericViewSet):
             data['group_id'] = str(data['group_id'])
         if 'trainer_id' in data and data['trainer_id'] is not None:
             data['trainer_id'] = str(data['trainer_id'])
+        if 'registered_by_id' in data and data['registered_by_id'] is not None:
+            data['registered_by_id'] = str(data['registered_by_id'])
         return data
 
     @action(detail=False, methods=['get'], url_path='dashboard')
@@ -153,7 +157,7 @@ class StatisticsViewSet(viewsets.GenericViewSet):
             bt_qs = bt_qs.filter(created_at__date__lte=date_to)
         for bt in bt_qs.order_by('-created_at')[:limit]:
             if bt.transaction_type == BonusTransaction.ACCRUAL:
-                events.append({
+                row = {
                     'type':        'bonus_out',
                     'amount':      str(bt.amount),
                     'client_name': bt.client.full_name,
@@ -161,15 +165,28 @@ class StatisticsViewSet(viewsets.GenericViewSet):
                     'description': bt.description or 'Бонус начислен',
                     'date':        bt.created_at.isoformat(),
                     'sub_items':   [],
-                })
+                }
+                pa = bt.payment_amount
+                if pa is not None and pa > 0:
+                    row['payment_amount'] = str(pa)
+                    pct = (bt.amount / pa * Decimal('100')).quantize(
+                        Decimal('1'), rounding=ROUND_HALF_UP
+                    )
+                    row['bonus_percent'] = int(pct)
+                events.append(row)
             elif bt.transaction_type == BonusTransaction.REDEMPTION:
-                if 'Возврат средств' in (bt.description or ''):
+                desc_bt = bt.description or ''
+                if 'Возврат средств' in desc_bt or 'Аннулирование бонусов' in desc_bt:
                     events.append({
                         'type':        'bonus_returned',
                         'amount':      str(bt.amount),
                         'client_name': bt.client.full_name,
                         'client_id':   str(bt.client.id),
-                        'description': 'Бонус возвращён компании',
+                        'description': (
+                            'Аннулирование бонусов при возврате'
+                            if 'Аннулирование бонусов' in desc_bt
+                            else 'Бонус возвращён компании'
+                        ),
                         'date':        bt.created_at.isoformat(),
                         'sub_items':   [],
                     })
@@ -182,14 +199,33 @@ class StatisticsViewSet(viewsets.GenericViewSet):
             ref_qs = ref_qs.filter(created_at__date__lte=date_to)
         for ref in ref_qs.order_by('-created_at')[:limit]:
             pay_label = 'Полная оплата' if ref.payment_type == 'full' else 'Рассрочка'
+            sub_items = []
+            try:
+                ret = ref.retention_amount
+                tot = ref.total_paid
+                d = ref.created_at.isoformat()
+                if ret is not None and float(ret) > 0:
+                    sub_items.append({
+                        'label': 'Удержание',
+                        'amount': str(ret),
+                        'date': d,
+                    })
+                if tot is not None and float(tot) > 0:
+                    sub_items.append({
+                        'label': 'Оплачено до возврата',
+                        'amount': str(tot),
+                        'date': d,
+                    })
+            except (TypeError, ValueError):
+                pass
             events.append({
                 'type':        'refund',
                 'amount':      str(ref.amount),
                 'client_name': ref.client_name,
                 'client_id':   ref.client_id,
-                'description': f'Возврат ({pay_label})',
+                'description': f'Возврат клиенту ({pay_label})',
                 'date':        ref.created_at.isoformat(),
-                'sub_items':   [],
+                'sub_items':   sub_items,
             })
 
         events.sort(key=lambda x: x['date'], reverse=True)
@@ -200,16 +236,15 @@ class StatisticsViewSet(viewsets.GenericViewSet):
     def trash_data(self, request):
         """
         GET /api/statistics/trash-data/
-        Возвращает данные для корзины: клиенты, потоки, менеджеры.
-        Только для администратора.
+        Удалённые в корзине: клиенты, группы, менеджеры (soft delete).
         """
         from apps.clients.models import Client
         from apps.groups.models import Group
         from apps.accounts.models import ManagerProfile
 
-        clients = Client.objects.select_related('group', 'trainer').order_by('-registered_at')[:200]
-        groups  = Group.objects.select_related('trainer').order_by('-number')[:200]
-        managers = ManagerProfile.objects.select_related('user').order_by('user__username')
+        clients = Client.objects.filter(deleted_at__isnull=False).select_related('group', 'trainer').order_by('-deleted_at')[:200]
+        groups = Group.objects.filter(deleted_at__isnull=False).select_related('trainer').order_by('-deleted_at')[:200]
+        managers = ManagerProfile.objects.filter(deleted_at__isnull=False).select_related('user').order_by('-deleted_at')
 
         return Response({
             'clients': [
@@ -218,7 +253,7 @@ class StatisticsViewSet(viewsets.GenericViewSet):
                     'name':   c.full_name,
                     'phone':  c.phone,
                     'status': c.status,
-                    'group':  f'Поток #{c.group.number}' if c.group else None,
+                    'group':  f'Группа {c.group.number}' if c.group else None,
                 }
                 for c in clients
             ],
@@ -229,7 +264,7 @@ class StatisticsViewSet(viewsets.GenericViewSet):
                     'type':    g.group_type,
                     'trainer': g.trainer.full_name if g.trainer else '—',
                     'status':  g.status,
-                    'clients': g.clients.count(),
+                    'clients': g.clients.filter(deleted_at__isnull=True).count(),
                 }
                 for g in groups
             ],
@@ -249,7 +284,7 @@ class StatisticsViewSet(viewsets.GenericViewSet):
         """
         POST /api/statistics/trash-delete/
         Body: { "entity": "client"|"group"|"manager", "id": "uuid" }
-        Удаляет объект навсегда. Только для администратора.
+        Окончательное удаление записи из корзины.
         """
         from apps.clients.models import Client
         from apps.groups.models import Group
@@ -263,20 +298,61 @@ class StatisticsViewSet(viewsets.GenericViewSet):
 
         try:
             if entity == 'client':
-                obj = Client.objects.get(id=obj_id)
+                obj = Client.objects.get(id=obj_id, deleted_at__isnull=False)
                 name = obj.full_name
                 obj.delete()
             elif entity == 'group':
-                obj = Group.objects.get(id=obj_id)
-                name = f'Поток #{obj.number}'
+                obj = Group.objects.get(id=obj_id, deleted_at__isnull=False)
+                name = f'Группа {obj.number}'
                 obj.delete()
             elif entity == 'manager':
-                obj = ManagerProfile.objects.select_related('user').get(id=obj_id)
+                obj = ManagerProfile.objects.select_related('user').get(id=obj_id, deleted_at__isnull=False)
                 name = obj.user.username
-                obj.user.delete()  # CASCADE удалит и профиль
+                obj.user.delete()
             else:
                 return Response({'detail': f'Неизвестный тип: {entity}'}, status=400)
         except (Client.DoesNotExist, Group.DoesNotExist, ManagerProfile.DoesNotExist):
-            return Response({'detail': 'Объект не найден'}, status=404)
+            return Response({'detail': 'Объект не найден в корзине'}, status=404)
 
-        return Response({'detail': f'{name} удалён.'})
+        return Response({'detail': f'{name} удалён навсегда.'})
+
+    @action(detail=False, methods=['post'], url_path='trash-restore')
+    def trash_restore(self, request):
+        """
+        POST /api/statistics/trash-restore/
+        Body: { "entity": "client"|"group"|"manager", "id": "uuid" }
+        """
+        from apps.clients.models import Client
+        from apps.groups.models import Group
+        from apps.accounts.models import ManagerProfile
+
+        entity = request.data.get('entity')
+        obj_id = request.data.get('id')
+
+        if not entity or not obj_id:
+            return Response({'detail': 'entity и id обязательны'}, status=400)
+
+        try:
+            if entity == 'client':
+                obj = Client.objects.get(id=obj_id, deleted_at__isnull=False)
+                obj.deleted_at = None
+                obj.save(update_fields=['deleted_at'])
+                name = obj.full_name
+            elif entity == 'group':
+                obj = Group.objects.get(id=obj_id, deleted_at__isnull=False)
+                obj.deleted_at = None
+                obj.save(update_fields=['deleted_at'])
+                name = f'Группа {obj.number}'
+            elif entity == 'manager':
+                obj = ManagerProfile.objects.select_related('user').get(id=obj_id, deleted_at__isnull=False)
+                obj.deleted_at = None
+                obj.user.is_active = True
+                obj.user.save(update_fields=['is_active'])
+                obj.save(update_fields=['deleted_at'])
+                name = obj.user.username
+            else:
+                return Response({'detail': f'Неизвестный тип: {entity}'}, status=400)
+        except (Client.DoesNotExist, Group.DoesNotExist, ManagerProfile.DoesNotExist):
+            return Response({'detail': 'Объект не найден в корзине'}, status=404)
+
+        return Response({'detail': f'{name} восстановлен.'})

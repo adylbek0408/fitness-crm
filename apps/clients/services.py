@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Optional
 
 from django.db import transaction
 
@@ -38,7 +39,7 @@ class ClientService(BaseService):
         payment_data = data.pop('payment_data', {})
         payment_type = data.get('payment_type')
 
-        if Client.objects.filter(phone=data.get('phone')).exists():
+        if Client.objects.filter(phone=data.get('phone'), deleted_at__isnull=True).exists():
             raise ValidationError(f"Client with phone {data['phone']} already exists")
 
         if not data.get('is_repeat', False) and Decimal(str(data.get('discount', 0))) > 0:
@@ -58,6 +59,16 @@ class ClientService(BaseService):
                 raise ValidationError(f'Поток {group_id} не найден')
         else:
             data['status'] = 'new'
+
+        snap = ''
+        if registered_by:
+            from apps.accounts.models import ManagerProfile
+            try:
+                mp = ManagerProfile.objects.get(user_id=registered_by.id)
+                snap = f'{mp.last_name} {mp.first_name}'.strip()
+            except ManagerProfile.DoesNotExist:
+                snap = (registered_by.get_full_name() or '').strip() or registered_by.username
+            data['registered_by_name'] = snap
 
         client = Client.objects.create(**data, registered_by=registered_by)
 
@@ -264,6 +275,20 @@ class ClientService(BaseService):
         payment_type = data.get('payment_type')
         payment_data = data.get('payment_data', {})
 
+        bonus_percent_raw = data.get('bonus_percent')
+        bonus_percent_updated = False
+        if bonus_percent_raw is not None and bonus_percent_raw != '':
+            if isinstance(bonus_percent_raw, (list, tuple)):
+                bonus_percent_raw = bonus_percent_raw[0] if bonus_percent_raw else ''
+            try:
+                bp = int(bonus_percent_raw)
+            except (TypeError, ValueError):
+                raise ValidationError('Процент бонуса должен быть целым числом')
+            if bp < 0 or bp > 100:
+                raise ValidationError('Процент бонуса должен быть от 0 до 100')
+            client.bonus_percent = bp
+            bonus_percent_updated = True
+
         if not group_id:
             raise ValidationError('group_id обязателен')
         if payment_type not in ('full', 'installment'):
@@ -297,7 +322,11 @@ class ClientService(BaseService):
                 final_price = result['final_price']
             else:
                 final_price = full_price
-            FullPayment.objects.create(client=client, amount=final_price)
+            FullPayment.objects.create(
+                client=client,
+                amount=final_price,
+                course_amount=full_price,
+            )
 
         elif payment_type == 'installment':
             total_cost = Decimal(str(payment_data.get('total_cost', 0)))
@@ -316,66 +345,91 @@ class ClientService(BaseService):
 
         client.group  = group
         client.status = 'active'
-        client.save(update_fields=['is_repeat', 'payment_type', 'group', 'status'])
+        save_fields = ['is_repeat', 'payment_type', 'group', 'status']
+        if bonus_percent_updated:
+            save_fields.append('bonus_percent')
+        client.save(update_fields=save_fields)
         client.refresh_from_db()
         return client
 
     @transaction.atomic
-    def refund_client(self, client_id: str, user=None) -> dict:
+    def refund_client(self, client_id: str, user=None, retention_amount: Optional[Decimal] = None) -> dict:
         """
-        Возврат средств.
+        Возврат средств (полный или частичный по деньгам клиенту).
 
         - Удаляем последний план оплаты (FullPayment или InstallmentPlan).
-        - Для рассрочки удаляем независимо от is_closed; refunded_amount = total_paid.
-        - Бонусный баланс обнуляется, операция в BonusTransaction.
-        - Клиент всегда остаётся в базе: статус «Заморозка», от потока открепляем.
-        - is_repeat не меняем: новичок остаётся для записи «как новый»;
-          повторный — для сценария «Повторная запись».
+        - Сумма возврата клиенту = оплачено − удержание; удержание вручную (посещённые дни).
+        - Все бонусы, начисленные с этой оплаты, аннулируются (баланс может стать отрицательным).
+        - Клиент остаётся в базе: статус «Заморозка», от потока открепляем.
         """
-        from .models import BonusTransaction
+        from apps.clients.bonus_service import BonusService
         from apps.payments.models import RefundLog
 
+        if retention_amount is None:
+            retention_amount = Decimal('0')
+        retention_amount = retention_amount.quantize(Decimal('0.01'))
+        if retention_amount < Decimal('0'):
+            raise ValidationError('Сумма удержания не может быть отрицательной.')
+
         client = self.get_client_or_raise(client_id)
-        refunded_amount   = Decimal('0')
         refunded_pay_type = client.payment_type
+
+        total_paid = Decimal('0')
+        refund_to_client = Decimal('0')
+        latest_fp = None
+        latest_ip = None
+        bonus_voided = Decimal('0')
+        bonus_svc = BonusService()
 
         if client.payment_type == 'full':
             latest_fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
             if latest_fp:
-                refunded_amount = latest_fp.amount if latest_fp.is_paid else Decimal('0')
+                total_paid = latest_fp.amount if latest_fp.is_paid else Decimal('0')
+                if retention_amount > total_paid:
+                    raise ValidationError(
+                        f'Удержание ({retention_amount} сом) не может превышать оплаченную сумму ({total_paid} сом).'
+                    )
+                refund_to_client = total_paid - retention_amount
+                bonus_voided = bonus_svc.void_accruals_for_refund(
+                    client, full_payment=latest_fp, user=user
+                )
                 latest_fp.delete()
 
         elif client.payment_type == 'installment':
             latest_ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
             if latest_ip:
-                refunded_amount = latest_ip.total_paid
+                total_paid = latest_ip.total_paid
+                if retention_amount > total_paid:
+                    raise ValidationError(
+                        f'Удержание ({retention_amount} сом) не может превышать оплаченную сумму ({total_paid} сом).'
+                    )
+                refund_to_client = total_paid - retention_amount
+                bonus_voided = bonus_svc.void_accruals_for_refund(
+                    client, installment_plan=latest_ip, user=user
+                )
                 latest_ip.payments.all().delete()
                 latest_ip.delete()
 
+        if not latest_fp and not latest_ip and retention_amount > Decimal('0'):
+            raise ValidationError('Нет оплаты для возврата.')
+
         client.refresh_from_db(fields=['bonus_balance'])
-        bonus_to_return = client.bonus_balance
-        if bonus_to_return > Decimal('0'):
-            BonusTransaction.objects.create(
-                client=client,
-                transaction_type=BonusTransaction.REDEMPTION,
-                amount=bonus_to_return,
-                description=(
-                    f'Возврат средств — бонусный баланс возвращён компании. '
-                    f'Сумма возврата клиенту: {refunded_amount} сом'
-                ),
-                created_by=user,
-            )
-            client.bonus_balance = Decimal('0')
+
+        note_parts = [
+            'Возврат оплаты; клиент переведён в «Заморозка».',
+            f' Оплачено было: {total_paid} сом; удержание: {retention_amount} сом; к возврату клиенту: {refund_to_client} сом.',
+        ]
+        if bonus_voided > Decimal('0'):
+            note_parts.append(f' Аннулировано бонусов с этой оплаты: {bonus_voided} сом.')
 
         RefundLog.objects.create(
-            client_name  = client.full_name,
-            client_id    = str(client.id),
-            amount       = refunded_amount,
-            payment_type = refunded_pay_type,
-            note         = (
-                'Возврат оплаты; клиент переведён в «Заморозка».'
-                + (f' Бонус {bonus_to_return} сом возвращён компании.' if bonus_to_return > 0 else '')
-            ),
+            client_name=client.full_name,
+            client_id=str(client.id),
+            amount=refund_to_client,
+            retention_amount=retention_amount,
+            total_paid=total_paid,
+            payment_type=refunded_pay_type,
+            note=''.join(note_parts),
             created_by=user,
         )
 
@@ -386,19 +440,32 @@ class ClientService(BaseService):
         elif remaining_fp:
             client.payment_type = 'full'
 
-        client.group  = None
+        client.group = None
         client.status = 'frozen'
         client.save(update_fields=['group', 'status', 'payment_type', 'bonus_balance'])
 
         self.logger.info(
             f'Client {client_id} refunded → frozen. '
-            f'Refund={refunded_amount}, bonus_returned={bonus_to_return}.'
+            f'refund_to_client={refund_to_client}, retention={retention_amount}, bonus_voided={bonus_voided}.'
         )
+
+        detail = (
+            f'К возврату клиенту: {refund_to_client} сом'
+            + (f' (удержание: {retention_amount} сом)' if retention_amount > Decimal('0') else '')
+            + '. Оплата снята в системе.'
+        )
+        if bonus_voided > Decimal('0'):
+            detail += f' Аннулировано бонусов с этой оплаты: {bonus_voided} сом.'
+        if client.bonus_balance < Decimal('0'):
+            detail += f' Бонусный баланс: {client.bonus_balance} сом (задолженность по бонусам).'
+        detail += ' Клиент переведён в статус «Заморозка».'
+
         return {
             'action': 'frozen',
-            'detail': (
-                f'Деньги возвращены клиенту ({refunded_amount} сом). Оплата удалена.'
-                + (f' Бонус {bonus_to_return} сом возвращён компании.' if bonus_to_return > 0 else '')
-                + ' Клиент переведён в статус «Заморозка».'
-            ),
+            'detail': detail,
+            'refund_to_client': str(refund_to_client),
+            'retention_amount': str(retention_amount),
+            'total_paid': str(total_paid),
+            'bonus_voided': str(bonus_voided),
+            'bonus_balance': str(client.bonus_balance),
         }

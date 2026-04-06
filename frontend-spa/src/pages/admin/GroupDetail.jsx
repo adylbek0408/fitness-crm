@@ -162,7 +162,7 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
       const ih=(canvas.height*pw)/canvas.width; let left=ih, pos=0
       pdf.addImage(imgData,'PNG',0,pos,pw,ih); left-=ph
       while(left>0){pos=left-ih;pdf.addPage();pdf.addImage(imgData,'PNG',0,pos,pw,ih);left-=ph}
-      pdf.save(`НБ_Поток${groupNumber}_${formatDate(selectedDate)}.pdf`)
+      pdf.save(`НБ_Группа${groupNumber}_${formatDate(selectedDate)}.pdf`)
     } finally { setPdfGenerating(false) }
   }
 
@@ -172,9 +172,9 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
   const currentIdx=lessonDates.indexOf(selectedDate)
 
   if (!schedule||parseScheduleDays(schedule).length===0)
-    return <div className="crm-card p-8 text-center text-slate-400 text-sm">У потока не задано расписание.</div>
+    return <div className="crm-card p-8 text-center text-slate-400 text-sm">У группы не задано расписание.</div>
   if (!offlineClients.length)
-    return <div className="crm-card p-8 text-center text-slate-400 text-sm">В потоке нет офлайн-клиентов</div>
+    return <div className="crm-card p-8 text-center text-slate-400 text-sm">В группе нет офлайн-клиентов</div>
 
   return (
     <div>
@@ -191,8 +191,8 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
       {view==='journal' && (
         <>
           <div className="crm-card p-4 mb-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button onClick={()=>currentIdx<lessonDates.length-1&&setSelectedDate(lessonDates[currentIdx+1])}
                   disabled={currentIdx>=lessonDates.length-1}
                   className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition">
@@ -239,7 +239,7 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
             <div className="px-5 py-4 border-b bg-slate-50 flex flex-wrap items-center gap-4">
               <div>
                 <h3 className="font-bold text-slate-800">Журнал посещаемости</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Поток #{groupNumber} · {GROUP_TYPE_LABEL[groupType]} · {trainerName} · {formatDateWithDay(selectedDate)}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Группа #{groupNumber} · {GROUP_TYPE_LABEL[groupType]} · {trainerName} · {formatDateWithDay(selectedDate)}</p>
               </div>
               <div className="ml-auto flex gap-4 text-sm">
                 <span className="text-emerald-700 font-semibold">Присутствуют: {presentCount}</span>
@@ -299,7 +299,7 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
         <div className="crm-card overflow-hidden">
           <div className="px-5 py-4 border-b bg-slate-50">
             <h3 className="font-bold text-slate-800">История занятий</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Поток #{groupNumber} · {scheduleLabel(schedule)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">Группа #{groupNumber} · {scheduleLabel(schedule)}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="crm-table min-w-[700px]">
@@ -381,7 +381,7 @@ export default function GroupDetail() {
     const currentIds=new Set(groupClients.map(c=>c.id))
     setAvailableClients(
       (r.data.results||[]).filter(c => {
-        // 1. Не в текущем потоке и без группы
+        // 1. Не в текущей группе и без группы
         if (currentIds.has(c.id) || c.group) return false
         // 2. ✅ Оплата должна быть ПОЛНОСТЬЮ ЗАКРЫТА
         // Полная: is_paid == true
@@ -402,7 +402,7 @@ export default function GroupDetail() {
   const addClient = async clientId => {
     try {
       await api.post(`/groups/${id}/add-client/`,{client_id:clientId})
-      showMsg('success','Клиент добавлен в поток')
+      showMsg('success','Клиент добавлен в группу')
       loadGroupClients(); loadAvailableClients()
     } catch(e){ showMsg('error',e.response?.data?.detail||'Ошибка') }
   }
@@ -410,7 +410,7 @@ export default function GroupDetail() {
   const removeClient = (clientId, clientName) => {
     setConfirmModal({
       title: 'Убрать клиента',
-      message: `Убрать ${clientName || 'клиента'} из потока?`,
+      message: `Убрать ${clientName || 'клиента'} из группы?`,
       variant: 'warning',
       confirmText: 'Убрать',
       onConfirm: async () => {
@@ -432,9 +432,9 @@ export default function GroupDetail() {
   const isCompleted = group.status === 'completed'
 
   const TABS = [
-    { key:'current', label:`Клиенты потока (${groupClients.length})` },
+    { key:'current', label:`Клиенты группы (${groupClients.length})` },
     { key:'attendance', label:'НБ / Посещаемость' },
-    // Вкладку "Добавить" скрываем для завершённых потоков
+    // Вкладку "Добавить" скрываем для завершённых групп
     ...(!isCompleted ? [{ key:'add', label:'+ Добавить клиентов' }] : []),
   ]
 
@@ -444,7 +444,7 @@ export default function GroupDetail() {
         <Link to="/admin/groups" className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm transition">← Назад</Link>
         <div className="w-px h-5 bg-slate-200"/>
         <div className="flex items-center gap-3 flex-wrap flex-1">
-          <h2 className="crm-page-title break-words">Поток #{group.number} — {GROUP_TYPE_LABEL[group.group_type]}</h2>
+          <h2 className="crm-page-title break-words">Группа #{group.number} — {GROUP_TYPE_LABEL[group.group_type]}</h2>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[group.status]}`}>
             {STATUS_LABEL[group.status]}
           </span>
@@ -456,15 +456,15 @@ export default function GroupDetail() {
           {!isCompleted && (
             <button
               onClick={() => setConfirmModal({
-                title: 'Закрыть поток',
-                message: `Закрыть Поток #${group.number}?\n\nВсе активные клиенты получат статус «Завершил» и будут откреплены.`,
+                title: 'Закрыть группу',
+                message: `Закрыть группу #${group.number}?\n\nВсе активные клиенты получат статус «Завершил» и будут откреплены.`,
                 variant: 'danger',
-                confirmText: 'Закрыть поток',
+                confirmText: 'Закрыть группу',
                 onConfirm: async () => {
                   setCloseLoading(true); setConfirmModal(null)
                   try {
                     await api.post(`/groups/${id}/close/`)
-                    showMsg('success', 'Поток закрыт')
+                    showMsg('success', 'Группа закрыта')
                     loadGroup(); loadGroupClients()
                   } catch(e) { showMsg('error', e.response?.data?.detail || 'Ошибка') }
                   finally { setCloseLoading(false) }
@@ -472,7 +472,7 @@ export default function GroupDetail() {
               })}
               disabled={closeLoading}
               className="px-4 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition disabled:opacity-50">
-              {closeLoading ? 'Закрытие...' : <><Lock size={13} className="inline -mt-0.5" /> Закрыть поток</>}
+              {closeLoading ? 'Закрытие...' : <><Lock size={13} className="inline -mt-0.5" /> Закрыть группу</>}
             </button>
           )}
         </div>
@@ -528,12 +528,12 @@ export default function GroupDetail() {
             <table className="crm-table min-w-[860px]">
               <thead><tr>
                 <th>Клиент</th><th>Телефон</th><th>Тип</th><th>Формат</th><th>Статус</th><th>Менеджер</th>
-                {/* ✅ Колонку "Убрать" скрываем для завершённых потоков */}
+                {/* ✅ Колонку "Убрать" скрываем для завершённых групп */}
                 {!isCompleted && <th></th>}
               </tr></thead>
               <tbody>
                 {groupClients.length===0
-                  ? <tr><td colSpan={isCompleted?6:7} className="text-center py-10 text-slate-400">В потоке нет клиентов</td></tr>
+                  ? <tr><td colSpan={isCompleted?6:7} className="text-center py-10 text-slate-400">В группе нет клиентов</td></tr>
                   : groupClients.map(c=>(
                     <tr key={c.id}>
                       <td><Link to={`/admin/clients/${c.id}`} className="font-semibold text-slate-800 hover:text-indigo-600 transition">{c.full_name}</Link></td>
@@ -556,7 +556,7 @@ export default function GroupDetail() {
           </div>
           {isCompleted && (
             <div className="px-5 py-3 bg-slate-50 border-t text-xs text-slate-400">
-              Поток завершён — редактирование списка недоступно
+              Группа завершена — редактирование списка недоступно
             </div>
           )}
         </div>
@@ -574,7 +574,7 @@ export default function GroupDetail() {
           <div className="crm-card p-4 mb-4">
             {/* Подсказка */}
             <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
-            Показаны клиенты <strong>без потока</strong> с <strong>закрытой оплатой</strong>, готовые к зачислению
+            Показаны клиенты <strong>без группы</strong> с <strong>закрытой оплатой</strong>, готовые к зачислению
             </div>
             <div className="flex gap-3 flex-wrap items-center">
               <input type="text" placeholder="Поиск..." value={search} onChange={e=>setSearch(e.target.value)}
@@ -597,7 +597,7 @@ export default function GroupDetail() {
                 </tr></thead>
                 <tbody>
                   {availableClients.length===0
-                    ? <tr><td colSpan={6} className="text-center py-10 text-slate-400">Нет клиентов без потока</td></tr>
+                    ? <tr><td colSpan={6} className="text-center py-10 text-slate-400">Нет клиентов без группы</td></tr>
                     : availableClients.map(c=>(
                       <tr key={c.id}>
                         <td className="font-semibold text-slate-800">{c.full_name}</td>

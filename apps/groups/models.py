@@ -20,8 +20,14 @@ class Group(UUIDTimestampedModel):
         ('mixed', 'Mixed'),
     ]
 
-    number          = models.PositiveIntegerField(unique=True, help_text="Stream/group number")
-    group_type      = models.CharField(max_length=10, choices=GROUP_TYPE_CHOICES)
+    number = models.CharField(
+        max_length=32, unique=True,
+        help_text='Номер группы (буквы и цифры)',
+    )
+    group_type = models.CharField(
+        max_length=10, choices=GROUP_TYPE_CHOICES, blank=True, default='',
+        help_text='Для офлайн обязателен; для онлайн можно не указывать',
+    )
     training_format = models.CharField(
         max_length=10, choices=TRAINING_FORMAT_CHOICES,
         default='offline',
@@ -36,11 +42,12 @@ class Group(UUIDTimestampedModel):
     )
     schedule = models.TextField(blank=True)
     status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recruitment')
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name        = 'Group'
         verbose_name_plural = 'Groups'
-        ordering            = ['-number']
+        ordering            = ['-start_date', '-created_at']
         indexes = [
             models.Index(fields=['status']),
             models.Index(fields=['trainer']),

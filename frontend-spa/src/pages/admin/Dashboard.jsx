@@ -86,9 +86,24 @@ function EventRow({ ev }) {
           <Icon size={14} className={cfg.iconColor} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-slate-700 truncate">
-            <span className="text-slate-400">{cfg.verb} </span>
-            <span className="font-semibold">{ev.client_name}</span>
+          <p className="text-sm font-medium text-slate-700">
+            {ev.type === 'bonus_out' && ev.bonus_percent != null && ev.payment_amount != null && ev.payment_amount !== '' ? (
+              <>
+                <span className="text-slate-700">Бонус выплачен </span>
+                <span className="font-semibold">{ev.bonus_percent}%</span>
+                <span className="text-slate-700"> от суммы </span>
+                <span className="font-semibold">
+                  {Number(ev.payment_amount).toLocaleString('ru-RU')}
+                </span>
+                <span className="text-slate-700"> </span>
+                <span className="font-semibold">{ev.client_name}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-400">{cfg.verb} </span>
+                <span className="font-semibold">{ev.client_name}</span>
+              </>
+            )}
           </p>
           <p className="text-xs text-slate-400 mt-0.5">
             {fmtDateTime(ev.date)} · {cfg.label}
@@ -116,7 +131,7 @@ function EventRow({ ev }) {
         <div className="border-t border-teal-100 bg-white divide-y divide-teal-50">
           {ev.sub_items.map((s, si) => (
             <div key={si} className="flex items-center justify-between px-4 py-2 text-xs">
-              <span className="text-slate-400">{fmtDateTime(s.date)}</span>
+              <span className="text-slate-400">{s.label || (s.date ? fmtDateTime(s.date) : '—')}</span>
               <span className="font-semibold text-teal-700 crm-money">+ {fmtMoney(s.amount)}</span>
             </div>
           ))}
@@ -322,7 +337,7 @@ export default function Dashboard() {
               gradient="bg-gradient-to-br from-rose-500 to-pink-600" icon={TrendingUp} trend="Все оплаты за всё время" />
             <StatCard label="Активных клиентов" value={stats.active_clients}
               gradient="bg-gradient-to-br from-violet-500 to-purple-600" icon={Users} trend="Сейчас обучаются" />
-            <StatCard label="Активных потоков" value={stats.active_groups_count}
+            <StatCard label="Активных групп" value={stats.active_groups_count}
               gradient="bg-gradient-to-br from-amber-500 to-orange-600" icon={Layers2} trend="Идут занятия" />
             <StatCard label="Всего НБ" value={stats.total_absences}
               gradient="bg-gradient-to-br from-slate-500 to-slate-700" icon={Activity} trend="Пропуски" />
@@ -393,7 +408,7 @@ export default function Dashboard() {
               <Plus size={22} className="text-white" strokeWidth={2.5} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">Новый поток</p>
+              <p className="font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">Новая группа</p>
               <p className="text-xs text-slate-400 mt-0.5">Создать учебную группу</p>
             </div>
             <ArrowUpRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors shrink-0" />

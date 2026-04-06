@@ -1,8 +1,11 @@
+from decimal import Decimal, InvalidOperation
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Count
+from django.utils import timezone
 
 from core.permissions import IsAdmin, IsAdminOrRegistrar
 from core.exceptions import ValidationError, NotFoundError
@@ -20,7 +23,7 @@ class ClientViewSet(viewsets.ModelViewSet):
     ordering_fields = ['registered_at', 'last_name', 'status']
 
     def get_queryset(self):
-        return Client.objects.select_related(
+        return Client.objects.filter(deleted_at__isnull=True).select_related(
             'group', 'trainer', 'registered_by', 'cabinet_account'
         ).prefetch_related(
             Prefetch('full_payments', queryset=FullPayment.objects.order_by('-created_at')),
@@ -72,6 +75,19 @@ class ClientViewSet(viewsets.ModelViewSet):
             data['trainer_id'] = str(data.pop('trainer').id) if data['trainer'] else None
         client = self.service.update_client(str(instance.id), data)
         return Response(ClientReadSerializer(client).data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=['deleted_at'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'], url_path='stats-summary')
+    def stats_summary(self, request):
+        qs = self.filter_queryset(self.get_queryset())
+        total = qs.count()
+        by_status = {r['status']: r['c'] for r in qs.values('status').annotate(c=Count('id'))}
+        return Response({'total': total, 'by_status': by_status})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar])
     def change_status(self, request, pk=None):
@@ -142,8 +158,9 @@ class ClientViewSet(viewsets.ModelViewSet):
     def re_enroll(self, request, pk=None):
         """
         POST /api/clients/{id}/re-enroll/
-        Повторная запись клиента: создаёт новую оплату + записывает в поток.
-        Body: { group_id, payment_type, payment_data: {amount} | {total_cost, deadline} }
+        Повторная запись клиента: новая оплата + запись в группу.
+        Body: { group_id, payment_type, payment_data: {amount} | {total_cost, deadline},
+                bonus_percent?: 0–100 (процент бонуса с этой оплаты) }
         """
         client = self.service.re_enroll_client(pk, request.data, user=request.user)
         return Response(ClientReadSerializer(client).data)
@@ -152,7 +169,18 @@ class ClientViewSet(viewsets.ModelViewSet):
     def refund(self, request, pk=None):
         """
         POST /api/clients/{id}/refund/
-        Возврат средств: снимает последнюю оплату, статус «Заморозка», клиент в базе.
+        Body: { "retention_amount": "2100" } — удержание компании; к клиенту = оплачено − удержание.
         """
-        result = self.service.refund_client(pk, user=request.user)
+        raw = request.data.get('retention_amount', 0)
+        try:
+            s = str(raw).replace(',', '.').strip() if raw is not None else '0'
+            retention = Decimal(s) if s else Decimal('0')
+        except InvalidOperation:
+            return Response({'detail': 'Некорректная сумма удержания'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            result = self.service.refund_client(
+                pk, user=request.user, retention_amount=retention
+            )
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)

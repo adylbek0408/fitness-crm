@@ -103,15 +103,29 @@ export default function Clients() {
   const [paymentStatus, setPaymentStatus] = useState('')
   const [registeredFrom, setRegisteredFrom] = useState('')
   const [registeredTo, setRegisteredTo] = useState('')
+  const [registeredBy, setRegisteredBy] = useState('')
+  const [trainerFilter, setTrainerFilter] = useState('')
+  const [managersList, setManagersList] = useState([])
+  const [trainersList, setTrainersList] = useState([])
+  const [summary, setSummary] = useState(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [loading, setLoading] = useState(false)
+  /** Поиск с задержкой; остальные фильтры применяются сразу (менеджер, статус и т.д.). */
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const totalPages = Math.ceil(count / 25)
-  const timer = useRef(null)
+  /** Отмена устаревших запросов — иначе старый ответ перезаписывает новый (неверные строки и счётчики). */
+  const loadAbortRef = useRef(null)
+  const loadGenRef = useRef(0)
 
-  const load = async (p = page) => {
-    setLoading(true)
-    const params = new URLSearchParams({ page: p })
-    if (search) params.append('search', search)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const buildFilterParams = (pageNum) => {
+    const params = new URLSearchParams()
+    if (pageNum != null) params.set('page', String(pageNum))
+    if (debouncedSearch) params.append('search', debouncedSearch)
     if (status) params.append('status', status)
     if (format) params.append('training_format', format)
     if (group) params.append('group', group)
@@ -120,27 +134,55 @@ export default function Clients() {
     if (paymentStatus) params.append('payment_status', paymentStatus)
     if (registeredFrom) params.append('registered_from', registeredFrom)
     if (registeredTo) params.append('registered_to', registeredTo)
+    if (registeredBy) params.append('registered_by', registeredBy)
+    if (trainerFilter) params.append('trainer', trainerFilter)
+    return params
+  }
+
+  const load = async (p = page) => {
+    loadAbortRef.current?.abort()
+    const ac = new AbortController()
+    loadAbortRef.current = ac
+    const gen = ++loadGenRef.current
+    setLoading(true)
+    const params = buildFilterParams(p)
     try {
-      const r = await api.get(`/clients/?${params}`)
+      const [r, s] = await Promise.all([
+        api.get(`/clients/?${params}`, { signal: ac.signal }),
+        api.get(`/clients/stats-summary/?${buildFilterParams(null)}`, { signal: ac.signal }),
+      ])
+      if (gen !== loadGenRef.current) return
       setClients(r.data.results || [])
       setCount(r.data.count || 0)
-    } finally { setLoading(false) }
+      setSummary(s.data)
+    } catch (e) {
+      const canceled = e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.message === 'canceled'
+      if (canceled) return
+      setSummary(null)
+    } finally {
+      if (gen === loadGenRef.current) setLoading(false)
+    }
   }
 
   useEffect(() => {
     api.get('/groups/?page_size=100').then(r => setGroups(r.data.results || []))
+    api.get('/accounts/managers/?page_size=200').then(r => setManagersList(r.data.results || r.data || []))
+    api.get('/trainers/?page_size=200').then(r => setTrainersList(r.data.results || []))
   }, [])
 
   useEffect(() => {
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => { setPage(1); load(1) }, 300)
-  }, [search, status, format, group, groupType, isRepeat, paymentStatus, registeredFrom, registeredTo])
+    setPage(1)
+    load(1)
+  }, [debouncedSearch, status, format, group, groupType, isRepeat, paymentStatus, registeredFrom, registeredTo, registeredBy, trainerFilter])
 
   useEffect(() => { load() }, [page])
 
+  useEffect(() => () => { loadAbortRef.current?.abort() }, [])
+
   const resetFilters = () => {
-    setSearch(''); setStatus(''); setFormat(''); setGroup('')
+    setSearch(''); setDebouncedSearch(''); setStatus(''); setFormat(''); setGroup('')
     setGroupType(''); setIsRepeat(false); setPaymentStatus(''); setRegisteredFrom(''); setRegisteredTo('')
+    setRegisteredBy(''); setTrainerFilter('')
     setPage(1); setTimeout(() => load(1), 0)
   }
 
@@ -148,7 +190,7 @@ export default function Clients() {
     setClients(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c))
   }
 
-  const hasFilters = search || status || format || group || groupType || isRepeat || paymentStatus || registeredFrom || registeredTo
+  const hasFilters = search || debouncedSearch || status || format || group || groupType || isRepeat || paymentStatus || registeredFrom || registeredTo || registeredBy || trainerFilter
 
   return (
     <AdminLayout user={user}>
@@ -164,6 +206,18 @@ export default function Clients() {
       </div>
 
       {/* Фильтры */}
+      {summary && (summary.total > 0 || hasFilters) && (
+        <div className="crm-card p-4 mb-4 flex flex-wrap gap-2 items-center text-sm">
+          <span className="text-slate-500 font-medium">По фильтрам:</span>
+          <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold">Всего: {summary.total}</span>
+          {Object.entries(summary.by_status || {}).map(([st, n]) => (
+            <span key={st} className={`px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[st] || 'bg-slate-100 text-slate-600'}`}>
+              {STATUS_LABEL[st] || st}: {n}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="crm-card p-4 mb-5">
         {/* Основные */}
         <div className="flex flex-wrap gap-3 items-center">
@@ -214,8 +268,20 @@ export default function Clients() {
         {showAdvanced && (
           <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-3 items-center animate-fade-in">
             <select value={group} onChange={e => setGroup(e.target.value)} className="crm-input w-full sm:w-44">
-              <option value="">Все потоки</option>
-              {groups.map(g => <option key={g.id} value={g.id}>Поток #{g.number}</option>)}
+              <option value="">Все группы</option>
+              {groups.map(g => <option key={g.id} value={g.id}>Группа {g.number}</option>)}
+            </select>
+            <select value={trainerFilter} onChange={e => setTrainerFilter(e.target.value)} className="crm-input w-full sm:w-44">
+              <option value="">Все тренеры</option>
+              {trainersList.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+            </select>
+            <select value={registeredBy} onChange={e => setRegisteredBy(e.target.value)} className="crm-input w-full sm:w-48">
+              <option value="">Все менеджеры</option>
+              {managersList.filter(m => m.user_id).map(m => (
+                <option key={m.id} value={String(m.user_id)}>
+                  {[m.last_name, m.first_name].filter(Boolean).join(' ') || m.username}
+                </option>
+              ))}
             </select>
             <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)} className="crm-input w-full sm:w-44">
               <option value="">Все по оплате</option>
@@ -268,7 +334,7 @@ export default function Clients() {
                   {c.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
                   {c.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
                 </span>
-                {c.group && <span className="text-slate-400">· Поток #{c.group.number}</span>}
+                {c.group && <span className="text-slate-400">· Группа {c.group.number}</span>}
                 {c.is_repeat && (
                   <span className="flex items-center gap-0.5 text-indigo-500">
                     <RotateCcw size={11} /> Повторный
@@ -298,7 +364,7 @@ export default function Clients() {
                     <th>Клиент</th>
                     <th>Телефон</th>
                     <th>Формат</th>
-                    <th>Поток</th>
+                    <th>Группа</th>
                     <th>Оплата</th>
                     <th>Дата рег.</th>
                     <th>Менеджер</th>

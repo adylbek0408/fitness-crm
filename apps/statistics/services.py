@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Count
 from django.db.models.functions import Coalesce
 
 from core.services import BaseService
@@ -40,11 +40,28 @@ class StatisticsService(BaseService):
             'installment_payment': installment_payment_filters,
         }
 
+    def _registration_filters(self, params: dict) -> Q:
+        q = Q()
+        if params.get('training_format'):
+            q &= Q(training_format=params['training_format'])
+        if params.get('group_id'):
+            q &= Q(group_id=params['group_id'])
+        if params.get('trainer_id'):
+            q &= Q(trainer_id=params['trainer_id'])
+        if params.get('registered_from'):
+            q &= Q(registered_at__gte=params['registered_from'])
+        if params.get('registered_to'):
+            q &= Q(registered_at__lte=params['registered_to'])
+        if params.get('registered_by_id'):
+            q &= Q(registered_by_id=params['registered_by_id'])
+        return q
+
     def get_dashboard(self, params: dict) -> dict:
         f = self._build_filters(params)
+        alive = Q(deleted_at__isnull=True)
 
         client_ids = list(
-            Client.objects.filter(f['client']).values_list('id', flat=True)
+            Client.objects.filter(f['client'], alive).values_list('id', flat=True)
         )
 
         full_revenue = FullPayment.objects.filter(
@@ -66,12 +83,12 @@ class StatisticsService(BaseService):
 
         online_client_ids = list(
             Client.objects.filter(
-                f['client'], training_format='online'
+                f['client'], alive, training_format='online'
             ).values_list('id', flat=True)
         )
         offline_client_ids = list(
             Client.objects.filter(
-                f['client'], training_format='offline'
+                f['client'], alive, training_format='offline'
             ).values_list('id', flat=True)
         )
 
@@ -108,18 +125,26 @@ class StatisticsService(BaseService):
             )
         total_absences = total_absences_qs.count()
 
-        active_groups = Group.objects.filter(status='active')
+        active_groups = Group.objects.filter(status='active', deleted_at__isnull=True)
         if params.get('trainer_id'):
             active_groups = active_groups.filter(trainer_id=params['trainer_id'])
         active_groups_count = active_groups.count()
 
         completed_clients = Client.objects.filter(
-            f['client'], status='completed'
+            f['client'], alive, status='completed'
         ).count()
 
         active_clients = Client.objects.filter(
-            f['client'], status='active'
+            f['client'], alive, status='active'
         ).count()
+
+        reg_q = self._registration_filters(params)
+        creg = Client.objects.filter(alive, reg_q)
+        clients_registered_total = creg.count()
+        clients_registered_by_status = {
+            r['status']: r['c']
+            for r in creg.values('status').annotate(c=Count('id'))
+        }
 
         return {
             'total_revenue': total_revenue,
@@ -134,6 +159,8 @@ class StatisticsService(BaseService):
             'active_groups_count': active_groups_count,
             'completed_clients': completed_clients,
             'active_clients': active_clients,
+            'clients_registered_total': clients_registered_total,
+            'clients_registered_by_status': clients_registered_by_status,
         }
 
     def _calc_revenue_for_clients(
@@ -163,7 +190,7 @@ class StatisticsService(BaseService):
         from apps.clients.models import ClientGroupHistory
 
         f = self._build_filters(params)
-        groups = Group.objects.all()
+        groups = Group.objects.filter(deleted_at__isnull=True)
         if params.get('trainer_id'):
             groups = groups.filter(trainer_id=params['trainer_id'])
 
@@ -181,7 +208,7 @@ class StatisticsService(BaseService):
             else:
                 # Для активных/набор — текущие клиенты
                 client_ids = list(
-                    Client.objects.filter(group=group).values_list('id', flat=True)
+                    Client.objects.filter(group=group, deleted_at__isnull=True).values_list('id', flat=True)
                 )
                 revenue = self._calc_revenue_for_clients(client_ids, f)
                 client_count = len(client_ids)
@@ -208,7 +235,7 @@ class StatisticsService(BaseService):
         result = []
         for trainer in trainers:
             client_ids = list(
-                Client.objects.filter(trainer=trainer).values_list('id', flat=True)
+                Client.objects.filter(trainer=trainer, deleted_at__isnull=True).values_list('id', flat=True)
             )
             revenue = self._calc_revenue_for_clients(client_ids, f)
             result.append({

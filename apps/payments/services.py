@@ -62,18 +62,37 @@ class PaymentService(BaseService):
 
     def _apply_bonus_and_accrue_full(self, payment: FullPayment, user=None):
         """
-        Начисляем 10% бонус от суммы оплаты.
-
-        ВАЖНО: Бонус НЕ списывается здесь.
-        Списание происходит при записи (re_enroll_client),
-        а payment.amount уже содержит сумму после вычета бонуса.
+        При подтверждении полной оплаты:
+        1) С баланса списывается бонус не больше суммы оплаты (как при повторной записи).
+        2) Начисляется бонус по % клиента (5 или 10 при регистрации) с «живой» части.
         """
-        if payment.amount > Decimal('0'):
-            self._bonus_service().accrue(
-                client=payment.client,
-                payment_amount=payment.amount,
-                description=f'10% бонус с оплаты {payment.amount} сом',
+        client = payment.client
+        client.refresh_from_db(fields=['bonus_balance', 'bonus_percent'])
+        full_price = payment.amount
+        if full_price <= Decimal('0'):
+            return
+
+        bonus_svc = self._bonus_service()
+        available = client.bonus_balance
+        bonus_applied = min(available, full_price) if available > Decimal('0') else Decimal('0')
+
+        if bonus_applied > Decimal('0'):
+            bonus_svc.apply(str(client.pk), full_price, created_by=user)
+            client.refresh_from_db(fields=['bonus_balance'])
+
+        cash_portion = full_price - bonus_applied
+        try:
+            pct = int(client.bonus_percent)
+        except (TypeError, ValueError):
+            pct = 10
+        pct = max(0, min(100, pct))
+        if cash_portion > Decimal('0'):
+            bonus_svc.accrue(
+                client=client,
+                payment_amount=cash_portion,
+                description=f'{pct}% бонус с оплаты {payment.amount} сом',
                 created_by=user,
+                source_full_payment=payment,
             )
 
     # ─────────────────────────────────────────────────────────────
@@ -156,15 +175,21 @@ class PaymentService(BaseService):
             cash_paid = plan.total_paid - bonus_paid
 
             if cash_paid > Decimal('0'):
-                client.refresh_from_db(fields=['bonus_balance'])
+                client.refresh_from_db(fields=['bonus_balance', 'bonus_percent'])
+                try:
+                    pct = int(client.bonus_percent)
+                except (TypeError, ValueError):
+                    pct = 10
+                pct = max(0, min(100, pct))
                 bonus_svc.accrue(
                     client=client,
                     payment_amount=cash_paid,
                     description=(
-                        f'10% бонус — рассрочка закрыта. '
+                        f'{pct}% бонус — рассрочка закрыта. '
                         f'Живыми: {cash_paid} сом, бонусами: {bonus_paid} сом'
                     ),
                     created_by=user,
+                    source_installment_plan=plan,
                 )
 
         self.logger.info(

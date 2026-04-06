@@ -34,7 +34,7 @@ function GroupCard({ g, onClose }) {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold tracking-tight" style={{ color: 'var(--text)' }}>
-                Поток #{g.number}
+                Группа {g.number}
               </h3>
               <span className="text-xs px-2 py-0.5 rounded-md font-medium"
                     style={{ background: '#f5f5f5', color: 'var(--text-soft)' }}>
@@ -122,7 +122,7 @@ export default function Groups() {
   useEffect(() => { load() }, [status, trainer])
 
   const closeGroup = async (id) => {
-    if (!confirm('Закрыть поток? Все активные клиенты станут «Завершили»')) return
+    if (!confirm('Закрыть группу? Все активные клиенты станут «Завершили»')) return
     try { await api.post(`/groups/${id}/close/`); load() }
     catch (e) { alert(e.response?.data?.detail || 'Ошибка') }
   }
@@ -151,7 +151,7 @@ export default function Groups() {
       {/* ── Заголовок ── */}
       <div className="flex items-center justify-between gap-3 mb-5">
         <div>
-          <h2 className="crm-page-title">Потоки</h2>
+          <h2 className="crm-page-title">Группы</h2>
           <p className="crm-page-subtitle">{groups.length} групп всего</p>
         </div>
         <Link to="/admin/groups/add" className="crm-btn-primary shrink-0">
@@ -163,7 +163,7 @@ export default function Groups() {
       <div className="crm-card p-3 mb-4 flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[160px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-xs)' }} />
-          <input type="text" placeholder="Поиск потока..."
+          <input type="text" placeholder="Поиск группы..."
             value={search} onChange={e => setSearch(e.target.value)}
             className="crm-input pl-8" />
         </div>
@@ -221,11 +221,11 @@ export default function Groups() {
             <Plus size={20} style={{ color: '#be185d' }} />
           </div>
           <p className="font-medium mb-1" style={{ color: 'var(--text-soft)' }}>
-            {search ? 'Ничего не найдено' : `Нет потоков в статусе "${TABS.find(t=>t.key===activeTab)?.label}"`}
+            {search ? 'Ничего не найдено' : `Нет групп в статусе "${TABS.find(t=>t.key===activeTab)?.label}"`}
           </p>
           {!search && (
             <Link to="/admin/groups/add" className="crm-btn-primary mt-4 inline-flex">
-              <Plus size={14} /> Создать поток
+              <Plus size={14} /> Создать группу
             </Link>
           )}
         </div>

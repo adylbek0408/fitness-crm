@@ -12,8 +12,10 @@
 """
 
 import pytest
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
+
+from django.utils import timezone
 
 from core.exceptions import ValidationError
 
@@ -36,8 +38,9 @@ def make_trainer(**kwargs):
 
 def make_group(trainer, status='active', number=1, **kwargs):
     defaults = dict(
-        number=number,
+        number=str(number),
         group_type='1.5h',
+        training_format='offline',
         start_date=date(2025, 1, 1),
         trainer=trainer,
         status=status,
@@ -147,7 +150,7 @@ class TestGroupServiceUpdateGroupAutoClose:
         c2 = make_client(group=group, phone_suffix='302')
         svc = GroupService()
         svc.update_group(str(group.id), {'status': 'completed'})
-        assert ClientGroupHistory.objects.filter(group_number=51).count() == 2
+        assert ClientGroupHistory.objects.filter(group_number='51').count() == 2
 
     # ── 5. Замороженный клиент НЕ меняет статус ──────────────────
     def test_frozen_client_status_unchanged(self):
@@ -204,7 +207,7 @@ class TestGroupServiceUpdateGroupAutoClose:
         svc = GroupService()
         result = svc.update_group(str(group.id), {'status': 'completed'})
         assert result.status == 'completed'
-        assert ClientGroupHistory.objects.filter(group_number=56).count() == 0
+        assert ClientGroupHistory.objects.filter(group_number='56').count() == 0
 
     # ── 10. Другие поля тоже сохраняются при закрытии ────────────
     def test_other_fields_saved_before_close(self):
@@ -240,6 +243,26 @@ class TestGroupServiceCloseGroup:
         svc = GroupService()
         with pytest.raises(ValidationError, match='already completed'):
             svc.close_group(str(group.id))
+
+    def test_close_group_snapshots_latest_full_payment(self):
+        """Несколько FullPayment: в ClientGroupHistory — последняя оплата (текущий заезд), не первая."""
+        trainer = make_trainer()
+        group = make_group(trainer, status='active', number=62)
+        client = make_client(group=group, phone_suffix='801')
+        older = timezone.now() - timedelta(days=10)
+        FullPayment.objects.filter(client=client).update(created_at=older, updated_at=older)
+        FullPayment.objects.create(
+            client=client,
+            amount=Decimal('13000.00'),
+            course_amount=Decimal('13000.00'),
+            is_paid=True,
+        )
+        svc = GroupService()
+        svc.close_group(str(group.id))
+        hist = ClientGroupHistory.objects.filter(client=client, group_number='62').first()
+        assert hist is not None
+        assert hist.payment_amount == Decimal('13000.00')
+        assert hist.payment_paid == Decimal('13000.00')
 
 
 @pytest.mark.django_db

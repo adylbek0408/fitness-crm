@@ -11,6 +11,6 @@ class ClientAccountAdmin(admin.ModelAdmin):
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ('last_name', 'first_name', 'phone', 'training_format', 'group_type', 'status', 'group', 'trainer', 'registered_at', 'bonus_balance')
+    list_display = ('last_name', 'first_name', 'phone', 'training_format', 'group_type', 'status', 'group', 'trainer', 'registered_at', 'bonus_percent', 'bonus_balance')
     search_fields = ('first_name', 'last_name', 'phone')
     list_filter = ('status', 'training_format', 'group_type', 'payment_type', 'is_repeat')

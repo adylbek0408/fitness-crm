@@ -27,6 +27,11 @@ class FullPayment(UUIDTimestampedModel):
         blank=True
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # Номинал курса до списания бонуса при записи (если отличается от amount)
+    course_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Сумма курса до применения бонусного баланса; amount — итог к оплате',
+    )
     is_paid = models.BooleanField(default=False)
     paid_at = models.DateTimeField(null=True, blank=True)
 
@@ -118,7 +123,16 @@ class RefundLog(UUIDTimestampedModel):
     """
     client_name  = models.CharField(max_length=200)
     client_id    = models.CharField(max_length=36, blank=True, db_index=True)
+    # Сумма, фактически возвращённая клиенту (полная оплата − удержание)
     amount       = models.DecimalField(max_digits=12, decimal_places=2)
+    retention_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Удержано компанией (посещённые занятия и т.п.)',
+    )
+    total_paid = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Оплачено до возврата (до удержания)',
+    )
     payment_type = models.CharField(
         max_length=15,
         choices=[('full', 'Полная оплата'), ('installment', 'Рассрочка')],

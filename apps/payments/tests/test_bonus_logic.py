@@ -29,7 +29,7 @@ from apps.trainers.models import Trainer
 # Фабрики
 # ─────────────────────────────────────────────
 
-def make_client(phone='001', bonus_balance=Decimal('0'), status='completed', payment_type='full'):
+def make_client(phone='001', bonus_balance=Decimal('0'), status='completed', payment_type='full', bonus_percent=10):
     return Client.objects.create(
         first_name='Тест', last_name='Клиент',
         phone=f'+7000{phone}',
@@ -37,13 +37,15 @@ def make_client(phone='001', bonus_balance=Decimal('0'), status='completed', pay
         payment_type=payment_type,
         status=status,
         bonus_balance=bonus_balance,
+        bonus_percent=bonus_percent,
     )
 
 
 def make_group(number=1, status='active'):
     trainer = Trainer.objects.create(first_name='Тр', last_name='ер')
     return Group.objects.create(
-        number=number, group_type='1.5h',
+        number=str(number), group_type='1.5h',
+        training_format='offline',
         start_date=date(2025, 1, 1),
         trainer=trainer, status=status,
     )
@@ -64,12 +66,28 @@ class TestFullPaymentBonusLogic:
         assert client.bonus_balance == Decimal('0')
 
     def test_bonus_accrued_on_payment_no_existing_bonus(self):
-        """Нет бонуса → начисляется 10% от суммы оплаты."""
+        """Нет бонуса → начисляется процент клиента (по умолчанию 10%) от суммы оплаты."""
         client = make_client(phone='102')
         FullPayment.objects.create(client=client, amount=Decimal('15000'))
         PaymentService().mark_full_payment_paid(str(client.id))
         client.refresh_from_db()
         assert client.bonus_balance == Decimal('1500.00')   # 10% от 15000
+
+    def test_bonus_accrued_five_percent_when_registered_with_5(self):
+        """При bonus_percent=5 начисляется 5% от «живой» части оплаты."""
+        client = make_client(phone='1102', bonus_percent=5)
+        FullPayment.objects.create(client=client, amount=Decimal('12000'))
+        PaymentService().mark_full_payment_paid(str(client.id))
+        client.refresh_from_db()
+        assert client.bonus_balance == Decimal('600.00')   # 5% от 12000
+
+    def test_bonus_accrued_three_percent_when_registered_with_3(self):
+        """Произвольный процент при регистрации (например 3%)."""
+        client = make_client(phone='1103', bonus_percent=3)
+        FullPayment.objects.create(client=client, amount=Decimal('10000'))
+        PaymentService().mark_full_payment_paid(str(client.id))
+        client.refresh_from_db()
+        assert client.bonus_balance == Decimal('300.00')   # 3% от 10000
 
     def test_existing_bonus_deducted_then_new_bonus_accrued(self):
         """

@@ -7,6 +7,7 @@ from core.exceptions import ValidationError
 from apps.clients.models import Client
 from apps.clients.services import ClientService
 from apps.payments.models import FullPayment, InstallmentPlan
+from apps.payments.services import PaymentService
 
 
 @pytest.mark.django_db
@@ -146,7 +147,7 @@ class TestClientService:
         service = ClientService()
         trainer = Trainer.objects.create(first_name='Иван', last_name='Иванов')
         group = Group.objects.create(
-            number=9001,
+            number='9001',
             group_type='1.5h',
             training_format='offline',
             start_date=date(2025, 1, 1),
@@ -186,7 +187,7 @@ class TestClientService:
         )
         cid = str(client.id)
         fp = FullPayment.objects.create(client=client, amount=Decimal('8000.00'))
-        fp.mark_as_paid()
+        PaymentService().mark_full_payment_paid(cid)
 
         result = service.refund_client(cid, user=None)
         assert result['action'] == 'frozen'
@@ -195,6 +196,101 @@ class TestClientService:
         assert client.status == 'frozen'
         assert client.is_repeat is False
         assert not FullPayment.objects.filter(client_id=cid).exists()
+        # 10% бонус с 8000 = 800 — аннулирован при возврате
+        assert client.bonus_balance == Decimal('0')
+
+    def test_refund_partial_retention_and_void_bonus(self):
+        """Частичный возврат: к клиенту = оплата − удержание; бонусы с оплаты аннулируются."""
+        from apps.payments.models import FullPayment, RefundLog
+        from apps.clients.models import BonusTransaction
+
+        service = ClientService()
+        client = Client.objects.create(
+            first_name='Част',
+            last_name='Возврат',
+            phone='+79997777802',
+            training_format='offline',
+            group_type='1.5h',
+            payment_type='full',
+            status='new',
+        )
+        cid = str(client.id)
+        FullPayment.objects.create(client=client, amount=Decimal('12000.00'))
+        PaymentService().mark_full_payment_paid(cid)
+        client.refresh_from_db()
+        assert client.bonus_balance == Decimal('1200.00')  # 10%
+
+        result = service.refund_client(
+            cid, user=None, retention_amount=Decimal('2100.00'),
+        )
+        assert result['action'] == 'frozen'
+        assert result['refund_to_client'] == '9900.00'
+        assert result['retention_amount'] == '2100.00'
+        assert result['bonus_voided'] == '1200.00'
+
+        client.refresh_from_db()
+        assert client.bonus_balance == Decimal('0')
+        assert not FullPayment.objects.filter(client_id=cid).exists()
+
+        log = RefundLog.objects.filter(client_id=cid).order_by('-created_at').first()
+        assert log.amount == Decimal('9900.00')
+        assert log.retention_amount == Decimal('2100.00')
+        assert log.total_paid == Decimal('12000.00')
+
+        void_tx = BonusTransaction.objects.filter(
+            client_id=cid, transaction_type=BonusTransaction.REDEMPTION,
+        ).order_by('-created_at').first()
+        assert void_tx is not None
+        assert 'Аннулирование бонусов' in (void_tx.description or '')
+
+    def test_refund_bonus_negative_balance_if_spent(self):
+        """Если часть бонусов уже потрачена — баланс уходит в минус после аннулирования."""
+        from apps.payments.models import FullPayment
+        from apps.clients.bonus_service import BonusService
+
+        service = ClientService()
+        client = Client.objects.create(
+            first_name='Минус',
+            last_name='Бонус',
+            phone='+79997777803',
+            training_format='offline',
+            group_type='1.5h',
+            payment_type='full',
+            status='completed',
+        )
+        cid = str(client.id)
+        FullPayment.objects.create(client=client, amount=Decimal('12000.00'))
+        PaymentService().mark_full_payment_paid(cid)
+        client.refresh_from_db()
+        # «Потратил» 500 бонусов: списание вручную
+        BonusService().apply(cid, Decimal('500'), created_by=None)
+        client.refresh_from_db()
+        assert client.bonus_balance == Decimal('700.00')  # 1200 - 500
+
+        service.refund_client(cid, user=None, retention_amount=Decimal('0'))
+        client.refresh_from_db()
+        # 1200 аннулировано → 700 - 1200 = -500
+        assert client.bonus_balance == Decimal('-500.00')
+
+    def test_refund_retention_exceeds_paid_raises(self):
+        from apps.payments.models import FullPayment
+
+        service = ClientService()
+        client = Client.objects.create(
+            first_name='Ошиб',
+            last_name='Удерж',
+            phone='+79997777804',
+            training_format='offline',
+            group_type='1.5h',
+            payment_type='full',
+            status='new',
+        )
+        cid = str(client.id)
+        FullPayment.objects.create(client=client, amount=Decimal('1000.00'))
+        PaymentService().mark_full_payment_paid(cid)
+
+        with pytest.raises(ValidationError):
+            service.refund_client(cid, user=None, retention_amount=Decimal('5000.00'))
 
     def test_re_enroll_rejects_status_new(self):
         from apps.groups.models import Group
@@ -203,7 +299,7 @@ class TestClientService:
         service = ClientService()
         trainer = Trainer.objects.create(first_name='Пётр', last_name='Петров')
         group = Group.objects.create(
-            number=9002,
+            number='9002',
             group_type='1.5h',
             training_format='offline',
             start_date=date(2025, 1, 1),
@@ -227,3 +323,40 @@ class TestClientService:
                 'payment_data': {'amount': Decimal('1000')},
             })
         assert 'Новый' in str(exc_info.value) or 'новый' in str(exc_info.value).lower()
+
+    def test_re_enroll_saves_bonus_percent(self):
+        from apps.groups.models import Group
+        from apps.trainers.models import Trainer
+
+        service = ClientService()
+        trainer = Trainer.objects.create(first_name='Бон', last_name='Ус')
+        group = Group.objects.create(
+            number='9003',
+            group_type='1.5h',
+            training_format='offline',
+            start_date=date(2025, 2, 1),
+            trainer=trainer,
+            status='recruitment',
+        )
+        client = Client.objects.create(
+            first_name='Повт',
+            last_name='Бонус',
+            phone='+79997777703',
+            training_format='offline',
+            group_type='1.5h',
+            payment_type='full',
+            status='frozen',
+            bonus_percent=0,
+        )
+        FullPayment.objects.create(
+            client=client, amount=Decimal('1000.00'), is_paid=True,
+        )
+        service.re_enroll_client(str(client.id), {
+            'group_id': str(group.id),
+            'payment_type': 'full',
+            'payment_data': {'amount': Decimal('5000')},
+            'bonus_percent': 5,
+        })
+        client.refresh_from_db()
+        assert client.bonus_percent == 5
+        assert client.group_id == group.id

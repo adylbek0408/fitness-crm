@@ -177,7 +177,7 @@ export default function CabinetProfile() {
               </span>
               {grp && (
                 <span className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                  Поток #{grp.number} · {GROUP_TYPE_LABEL[grp.group_type] || grp.group_type}
+                  Группа #{grp.number} · {GROUP_TYPE_LABEL[grp.group_type] || grp.group_type}
                 </span>
               )}
             </div>
@@ -221,14 +221,14 @@ export default function CabinetProfile() {
             </div>
           </div>
 
-          {/* ── Текущий поток ── */}
+          {/* ── Текущая группа ── */}
           {grp && (
             <div className="rounded-2xl p-5" style={{ background: '#fff', border: '1px solid #ece4e8' }}>
               <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#c9afc0' }}>
-                Текущий поток
+                Текущая группа
               </p>
               <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold" style={{ color: 'var(--text)' }}>Поток #{grp.number}</span>
+                <span className="font-semibold" style={{ color: 'var(--text)' }}>Группа #{grp.number}</span>
                 <span className="text-xs px-2.5 py-1 rounded-lg font-medium"
                       style={{ background: '#f0fdf4', color: '#15803d' }}>
                   {grp.status === 'active' ? 'Идёт обучение' : grp.status === 'recruitment' ? 'Набор' : 'Завершён'}
@@ -247,17 +247,17 @@ export default function CabinetProfile() {
             </div>
           )}
 
-          {/* ── Завершённые потоки ── */}
+          {/* ── Завершённые группы ── */}
           {profile.completed_flows?.length > 0 && (
             <div className="rounded-2xl p-5" style={{ background: '#fff', border: '1px solid #ece4e8' }}>
               <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#c9afc0' }}>
-                Завершённые потоки
+                Завершённые группы
               </p>
               <ul className="space-y-2">
                 {profile.completed_flows.map((f, i) => (
                   <li key={i} className="flex items-center gap-2 text-sm">
                     <Check size={14} style={{ color: '#be185d' }} className="shrink-0" />
-                    <span className="font-medium">Поток #{f.number}</span>
+                    <span className="font-medium">Группа #{f.number}</span>
                     <span style={{ color: 'var(--text-xs)' }}>·</span>
                     <span style={{ color: 'var(--text-soft)' }}>{GROUP_TYPE_LABEL[f.group_type] || f.group_type}</span>
                   </li>
@@ -269,7 +269,7 @@ export default function CabinetProfile() {
           {!grp && !profile.completed_flows?.length && (
             <div className="rounded-2xl p-5 text-center" style={{ background: '#fdf8fb', border: '1px dashed #e0c8d5' }}>
               <p className="text-sm" style={{ color: 'var(--text-xs)' }}>
-                Информация о потоках отобразится после зачисления в группу
+                Информация о группах отобразится после зачисления
               </p>
             </div>
           )}

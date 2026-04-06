@@ -14,6 +14,8 @@ from apps.groups.models import Group
 from apps.clients.models import Client, ClientAccount
 from apps.payments.models import FullPayment, InstallmentPlan, InstallmentPayment
 from apps.attendance.models import Attendance
+from apps.clients.models import BonusTransaction, ClientGroupHistory
+from apps.payments.models import RefundLog
 
 
 # Test data constants
@@ -70,6 +72,9 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Test data created successfully.'))
 
     def _flush(self):
+        RefundLog.objects.all().delete()
+        BonusTransaction.objects.all().delete()
+        ClientGroupHistory.objects.all().delete()
         ClientAccount.objects.all().delete()
         Attendance.objects.all().delete()
         InstallmentPayment.objects.all().delete()
@@ -78,7 +83,7 @@ class Command(BaseCommand):
         Client.objects.all().delete()
         Group.objects.all().delete()
         Trainer.objects.all().delete()
-        self.stdout.write('Flushed clients, payments, attendance, groups, trainers.')
+        self.stdout.write('Flushed clients, payments, attendance, groups, trainers, refunds, bonuses.')
 
     def _ensure_users(self):
         if not User.objects.filter(role='registrar').exists():
@@ -121,9 +126,10 @@ class Command(BaseCommand):
             start = today - timedelta(days=days_ago_start * 30)
             end = today + timedelta(days=90) if status == 'active' else (today - timedelta(days=30) if status == 'completed' else None)
             g, _ = Group.objects.get_or_create(
-                number=number,
+                number=str(number),
                 defaults={
                     'group_type': group_type,
+                    'training_format': 'offline',
                     'start_date': start,
                     'end_date': end,
                     'trainer': trainers[trainer_idx % len(trainers)],
@@ -161,6 +167,7 @@ class Command(BaseCommand):
                 status='active' if idx % 5 != 4 else 'completed',
                 is_repeat=(idx % 4 == 0),
                 discount=Decimal('10.00') if idx % 3 == 0 else Decimal('0'),
+                bonus_percent=5 if idx % 2 == 0 else 10,
                 payment_type=payment_type,
                 registered_at=date.today() - timedelta(days=idx * 3),
                 registered_by=registrar,

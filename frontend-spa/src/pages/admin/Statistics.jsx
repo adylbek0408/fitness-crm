@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { flushSync } from 'react-dom'
 import { useOutletContext } from 'react-router-dom'
 import { Download, Loader, ChevronDown, ChevronUp, Check, Search, X } from 'lucide-react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
-import { fmtMoney } from '../../utils/format'
+import { fmtMoney, STATUS_LABEL } from '../../utils/format'
 
 // ── Константы дней ─────────────────────────────────────────────────────────────
 const DAY_KEYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -93,13 +94,32 @@ function FinancePDFPreview({ dash, byGroup, byTrainer, innerRef }) {
         ))}
       </div>
 
-      {/* Доход по потокам */}
+      {/* Регистрации */}
+      {dash.clients_registered_total != null && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ fontSize:15, fontWeight:'bold', color:'#1e293b', marginBottom:10 }}>Регистрация клиентов (по фильтрам дат / менеджера)</div>
+          <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+            <div style={{ background:'#f0fdf4', borderRadius:10, padding:'12px 16px', border:'1px solid #bbf7d0' }}>
+              <div style={{ fontSize:11, color:'#64748b' }}>Всего за период</div>
+              <div style={{ fontSize:18, fontWeight:'bold', color:'#15803d' }}>{dash.clients_registered_total}</div>
+            </div>
+            {dash.clients_registered_by_status && Object.entries(dash.clients_registered_by_status).map(([st, n]) => (
+              <div key={st} style={{ background:'#f8fafc', borderRadius:10, padding:'12px 16px', border:'1px solid #e2e8f0' }}>
+                <div style={{ fontSize:11, color:'#64748b' }}>{STATUS_LABEL[st] || st}</div>
+                <div style={{ fontSize:16, fontWeight:'bold', color:'#334155' }}>{n}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Доход по группам */}
       <div style={{ marginBottom:28 }}>
-        <div style={{ fontSize:15, fontWeight:'bold', color:'#1e293b', marginBottom:10 }}>Доход по потокам</div>
+        <div style={{ fontSize:15, fontWeight:'bold', color:'#1e293b', marginBottom:10 }}>Доход по группам</div>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
           <thead>
             <tr style={{ background:'#eff6ff' }}>
-              {['Поток','Тренер','Статус','Клиентов','Доход'].map(h => (
+              {['Группа','Тренер','Статус','Клиентов','Доход'].map(h => (
                 <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:'#3b82f6', fontWeight:'bold', borderBottom:'1px solid #dbeafe' }}>{h}</th>
               ))}
             </tr>
@@ -107,7 +127,7 @@ function FinancePDFPreview({ dash, byGroup, byTrainer, innerRef }) {
           <tbody>
             {byGroup.map((g, i) => (
               <tr key={g.group_id} style={{ background: i%2===0 ? '#fff' : '#f8fafc', borderBottom:'1px solid #f1f5f9' }}>
-                <td style={{ padding:'7px 12px', fontWeight:'600' }}>Поток #{g.group_number}</td>
+                <td style={{ padding:'7px 12px', fontWeight:'600' }}>Группа {g.group_number}</td>
                 <td style={{ padding:'7px 12px', color:'#475569' }}>{g.trainer||'—'}</td>
                 <td style={{ padding:'7px 12px', color:'#475569' }}>{{ recruitment:'Набор', active:'Активный', completed:'Завершён' }[g.status]||g.status}</td>
                 <td style={{ padding:'7px 12px', color:'#475569' }}>{g.client_count}</td>
@@ -146,6 +166,7 @@ function FinancePDFPreview({ dash, byGroup, byTrainer, innerRef }) {
 
 /** Один блок (скриншот html2canvas) в PDF A4 portrait; кириллица сохраняется. */
 function appendCanvasBlockToPdf(pdf, canvas, { addPageBefore = true } = {}) {
+  if (!canvas?.width || !canvas?.height || canvas.width < 2 || canvas.height < 2) return
   const PW = pdf.internal.pageSize.getWidth()
   const PH = pdf.internal.pageSize.getHeight()
   const margin = 8
@@ -208,12 +229,12 @@ function GroupAttendanceHistory({ group, clients, onAttendanceLoaded, containerR
 
   if (!offlineClients.length) return (
     <div className="crm-card p-4 text-center text-sm" style={{ color:'var(--text-xs)' }}>
-      Поток #{group.number} — нет офлайн-клиентов
+      Группа #{group.number} — нет офлайн-клиентов
     </div>
   )
   if (!lessonDates.length) return (
     <div className="crm-card p-4 text-center text-sm" style={{ color:'var(--text-xs)' }}>
-      Поток #{group.number} — нет прошедших занятий
+      Группа #{group.number} — нет прошедших занятий
     </div>
   )
 
@@ -231,7 +252,7 @@ function GroupAttendanceHistory({ group, clients, onAttendanceLoaded, containerR
           <button onClick={() => setExpanded(v => !v)} style={{ color:'var(--text-xs)' }} className="hover:opacity-70 transition">
             {expanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
           </button>
-          <span className="font-semibold" style={{ color:'var(--text)' }}>Поток #{group.number}</span>
+          <span className="font-semibold" style={{ color:'var(--text)' }}>Группа #{group.number}</span>
           <span className="text-xs" style={{ color:'var(--text-xs)' }}>
             {GROUP_TYPE_LABEL[group.group_type]} · {scheduleLabel(group.schedule)}
           </span>
@@ -347,7 +368,11 @@ export default function Statistics() {
   const [byTrainer, setByTrainer] = useState([])
   const [trainers,  setTrainers]  = useState([])
   const [allGroups, setAllGroups] = useState([])
-  const [filters,   setFilters]   = useState({ date_from:'', date_to:'', training_format:'', trainer_id:'' })
+  const [filters,   setFilters]   = useState({
+    date_from:'', date_to:'', training_format:'', trainer_id:'',
+    registered_from:'', registered_to:'', registered_by_id:'',
+  })
+  const [managers, setManagers] = useState([])
   const [isGenerating,    setIsGenerating]    = useState(false)
   const [selectedGroupIds, setSelectedGroupIds] = useState([])
   const [nbGroupsData,    setNbGroupsData]    = useState([])
@@ -365,6 +390,7 @@ export default function Statistics() {
   useEffect(() => {
     api.get('/trainers/?page_size=100').then(r => setTrainers(r.data.results||[]))
     api.get('/groups/?page_size=1000').then(r => setAllGroups(r.data.results||[]))
+    api.get('/accounts/managers/?page_size=200').then(r => setManagers(r.data.results||r.data||[]))
     loadStats({})
   }, [])
 
@@ -385,18 +411,34 @@ export default function Statistics() {
     } finally { setNbLoading(false) }
   }
 
-  const loadStats = async (f) => {
+  const buildStatsParams = (f) => {
     const params = new URLSearchParams()
-    if(f.date_from) params.append('date_from', f.date_from)
-    if(f.date_to)   params.append('date_to',   f.date_to)
-    if(f.training_format) params.append('training_format', f.training_format)
-    if(f.trainer_id)      params.append('trainer_id',      f.trainer_id)
+    if (f.date_from) params.append('date_from', f.date_from)
+    if (f.date_to) params.append('date_to', f.date_to)
+    if (f.training_format) params.append('training_format', f.training_format)
+    if (f.trainer_id) params.append('trainer_id', f.trainer_id)
+    if (f.registered_from) params.append('registered_from', f.registered_from)
+    if (f.registered_to) params.append('registered_to', f.registered_to)
+    if (f.registered_by_id) params.append('registered_by_id', f.registered_by_id)
+    return params
+  }
+
+  /** Загрузка с сервера; возвращает данные (для PDF до отрисовки). */
+  const fetchStatsData = async (f) => {
+    const params = buildStatsParams(f)
     const [d, g, tr] = await Promise.all([
       api.get(`/statistics/dashboard/?${params}`),
       api.get(`/statistics/by-group/?${params}`),
       api.get(`/statistics/by-trainer/?${params}`),
     ])
-    setDash(d.data); setByGroup(g.data); setByTrainer(tr.data)
+    return { dash: d.data, byGroup: g.data, byTrainer: tr.data }
+  }
+
+  const loadStats = async (f) => {
+    const data = await fetchStatsData(f)
+    setDash(data.dash)
+    setByGroup(data.byGroup)
+    setByTrainer(data.byTrainer)
   }
 
   const handleAttendanceLoaded = useCallback((groupId, attMap) => {
@@ -409,7 +451,10 @@ export default function Statistics() {
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }))
   const applyFilters = () => { loadStats(filters); if(selectedGroupIds.length) loadSelectedGroups() }
   const resetFilters = () => {
-    const f = { date_from:'', date_to:'', training_format:'', trainer_id:'' }
+    const f = {
+      date_from:'', date_to:'', training_format:'', trainer_id:'',
+      registered_from:'', registered_to:'', registered_by_id:'',
+    }
     setFilters(f); setSelectedGroupIds([]); setNbGroupsData([])
     setPickerSearch(''); setPickerStatus('active'); setPickerDateFrom(''); setPickerDateTo('')
     attendanceCache.current = {}; loadStats(f)
@@ -429,14 +474,22 @@ export default function Statistics() {
   const selectFiltered = () => setSelectedGroupIds(prev => [...new Set([...prev, ...filteredGroups.map(g=>g.id)])])
 
   // ── Генерация PDF ────────────────────────────────────────────────────────────
-  // Финансы и посещаемость: html2canvas → PNG → jsPDF (кириллица везде)
+  // Перед снимком экрана подгружаем те же фильтры, что на экране (иначе в PDF попадут старые данные).
   const generateFullPDF = async () => {
     setIsGenerating(true)
     try {
+      const data = await fetchStatsData(filters)
+      flushSync(() => {
+        setDash(data.dash)
+        setByGroup(data.byGroup)
+        setByTrainer(data.byTrainer)
+      })
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
       let hasContent = false
 
-      if (dash && financePdfRef.current) {
+      if (data.dash && financePdfRef.current) {
         try {
           const canvas = await html2canvas(financePdfRef.current, {
             scale: 2,
@@ -504,7 +557,7 @@ export default function Statistics() {
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h2 className="crm-page-title">Статистика и отчёты</h2>
-          <p className="crm-page-subtitle mt-1">Финансовая аналитика и журнал посещаемости — всё в одном PDF</p>
+          <p className="crm-page-subtitle mt-1">PDF подставляет текущие фильтры (в т.ч. период регистрации) — нажмите «Применить» или сразу «Скачать PDF»</p>
         </div>
         <button onClick={generateFullPDF} disabled={isGenerating}
           className="crm-btn-primary flex items-center gap-2 disabled:opacity-60">
@@ -515,36 +568,75 @@ export default function Statistics() {
         </button>
       </div>
 
-      {/* Фильтры */}
-      <div className="crm-card p-4 mb-6">
-        <div className="flex gap-3 flex-wrap items-end mb-4">
-          {[['date_from','Дата от'],['date_to','Дата до']].map(([k,label]) => (
-            <div key={k}>
-              <label className="block text-xs text-gray-500 mb-1">{label}</label>
-              <input type="date" value={filters[k]} onChange={e=>set(k,e.target.value)} className="crm-input w-full sm:w-auto"/>
-            </div>
-          ))}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Формат</label>
-            <select value={filters.training_format} onChange={e=>set('training_format',e.target.value)} className="crm-input">
-              <option value="">Все</option><option value="online">Онлайн</option><option value="offline">Оффлайн</option>
-            </select>
+      {/* Фильтры: один набор — те же параметры уходят в сводку и в PDF при «Скачать PDF» */}
+      <div className="crm-card p-4 mb-6 space-y-4">
+        <p className="text-xs text-slate-500 font-medium">Фильтры отчёта — действуют для таблиц на странице и для PDF</p>
+
+        <div>
+          <p className="text-xs font-semibold text-slate-700 mb-2">Период оплат</p>
+          <p className="text-xs text-slate-400 mb-2">Учитывается в доходах и в фильтре пропусков (даты оплат / занятий)</p>
+          <div className="flex gap-3 flex-wrap items-end">
+            {[['date_from','От'],['date_to','До']].map(([k,label]) => (
+              <div key={k}>
+                <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                <input type="date" value={filters[k]} onChange={e=>set(k,e.target.value)} className="crm-input w-full sm:w-auto"/>
+              </div>
+            ))}
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Тренер</label>
-            <select value={filters.trainer_id} onChange={e=>set('trainer_id',e.target.value)} className="crm-input">
-              <option value="">Все тренеры</option>
-              {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
-            </select>
-          </div>
-          <button onClick={applyFilters} className="crm-btn-primary">Применить</button>
-          <button onClick={resetFilters} className="crm-btn-secondary">Сбросить</button>
         </div>
 
-        {/* Выбор потоков для НБ */}
+        <div className="border-t border-slate-100 pt-3">
+          <p className="text-xs font-semibold text-slate-700 mb-2">Период регистрации клиентов</p>
+          <p className="text-xs text-slate-400 mb-2">Сводка «Регистрация клиентов» в PDF и показатели по дате записи</p>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">От</label>
+              <input type="date" value={filters.registered_from} onChange={e=>set('registered_from',e.target.value)} className="crm-input w-full sm:w-auto"/>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">До</label>
+              <input type="date" value={filters.registered_to} onChange={e=>set('registered_to',e.target.value)} className="crm-input w-full sm:w-auto"/>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Менеджер (кто зарегистрировал)</label>
+              <select value={filters.registered_by_id} onChange={e=>set('registered_by_id',e.target.value)} className="crm-input min-w-[200px]">
+                <option value="">Все</option>
+                {managers.map(m => (
+                  <option key={m.id} value={m.user_id}>{m.last_name} {m.first_name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-3">
+          <p className="text-xs font-semibold text-slate-700 mb-2">Срез по клиентам</p>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Формат обучения</label>
+              <select value={filters.training_format} onChange={e=>set('training_format',e.target.value)} className="crm-input">
+                <option value="">Все</option><option value="online">Онлайн</option><option value="offline">Оффлайн</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Тренер</label>
+              <select value={filters.trainer_id} onChange={e=>set('trainer_id',e.target.value)} className="crm-input min-w-[180px]">
+                <option value="">Все тренеры</option>
+                {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 flex-wrap pt-1">
+          <button type="button" onClick={applyFilters} className="crm-btn-primary">Применить</button>
+          <button type="button" onClick={resetFilters} className="crm-btn-secondary">Сбросить</button>
+        </div>
+
+        {/* Выбор групп для НБ */}
         <div className="border-t pt-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-gray-500 font-medium">Потоки для НБ:</span>
+            <span className="text-xs text-gray-500 font-medium">Группы для НБ:</span>
             <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
               {selectedGroupIds.length === 0
                 ? <span className="text-xs text-gray-400 italic">не выбраны</span>
@@ -562,7 +654,7 @@ export default function Statistics() {
             <button onClick={() => setShowGroupPicker(v => !v)}
               className="flex items-center gap-1 text-xs text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1.5 hover:bg-blue-50 transition shrink-0">
               {showGroupPicker ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
-              {showGroupPicker ? 'Скрыть' : 'Выбрать потоки'}
+              {showGroupPicker ? 'Скрыть' : 'Выбрать группы'}
             </button>
           </div>
 
@@ -608,7 +700,7 @@ export default function Statistics() {
                 <button onClick={() => setSelectedGroupIds([])} className="text-gray-400 hover:underline">Снять все</button>
               </div>
               {filteredGroups.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 text-sm">Нет потоков</div>
+                <div className="text-center py-6 text-gray-400 text-sm">Нет групп</div>
               ) : (
                 <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto pr-1">
                   {filteredGroups.map(g => {
@@ -619,7 +711,7 @@ export default function Statistics() {
                           isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50'
                         }`}>
                         {isSel && <Check size={11}/>}
-                        Поток #{g.number}
+                        Группа #{g.number}
                         <span className={`px-1.5 py-0.5 rounded text-xs ${isSel ? 'bg-blue-500 text-white' : STATUS_COLOR[g.status]||'bg-gray-100'}`}>
                           {STATUS_LABEL_UI[g.status]||g.status}
                         </span>
@@ -653,18 +745,18 @@ export default function Statistics() {
         </div>
       )}
 
-      {/* Доход по потокам */}
+      {/* Доход по группам */}
       <div className="crm-card overflow-hidden mb-6">
-        <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по потокам</h3></div>
+        <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по группам</h3></div>
         <div className="crm-table-wrap hidden md:block">
           <table className="crm-table min-w-[760px]">
-            <thead><tr><th>Поток</th><th>Тренер</th><th>Статус</th><th>Клиентов</th><th className="text-right">Доход</th></tr></thead>
+            <thead><tr><th>Группа</th><th>Тренер</th><th>Статус</th><th>Клиентов</th><th className="text-right">Доход</th></tr></thead>
             <tbody>
               {byGroup.length === 0
                 ? <tr><td colSpan={5} className="text-center py-6 text-gray-400">Нет данных</td></tr>
                 : byGroup.map(g => (
                   <tr key={g.group_id}>
-                    <td className="px-5 py-3 font-medium">Поток #{g.group_number}</td>
+                    <td className="px-5 py-3 font-medium">Группа #{g.group_number}</td>
                     <td className="px-5 py-3 text-gray-600">{g.trainer||'—'}</td>
                     <td className="px-5 py-3 text-gray-600">{STATUS_LABEL_UI[g.status]||g.status}</td>
                     <td className="px-5 py-3 text-gray-600">{g.client_count}</td>
@@ -705,7 +797,7 @@ export default function Statistics() {
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <h3 className="font-semibold text-gray-800 text-lg">Журнал посещаемости</h3>
             <span className="text-sm text-gray-500">
-              Потоки: {selectedGroupIds.map(gid => allGroups.find(x=>x.id===gid)).filter(Boolean).map(g=>`#${g.number}`).join(', ')}
+              Группы: {selectedGroupIds.map(gid => allGroups.find(x=>x.id===gid)).filter(Boolean).map(g=>`#${g.number}`).join(', ')}
             </span>
           </div>
           {nbLoading

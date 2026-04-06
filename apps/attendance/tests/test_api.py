@@ -97,4 +97,5 @@ class TestAttendanceAPI:
         }
         response = api_client.post('/api/attendance/bulk-mark/', data, format='json')
         assert response.status_code == 200
-        assert len(response.data) == 1
+        assert len(response.data['saved']) == 1
+        assert response.data['skipped'] == []

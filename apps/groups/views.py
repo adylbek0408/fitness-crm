@@ -1,5 +1,6 @@
 from datetime import date
 
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -13,7 +14,7 @@ from .filters import GroupFilter
 
 
 class GroupViewSet(viewsets.ModelViewSet):
-    queryset      = Group.objects.select_related('trainer').all()
+    queryset      = Group.objects.filter(deleted_at__isnull=True).select_related('trainer').all()
     service       = GroupService()
     filterset_class  = GroupFilter
     search_fields    = ['number', 'trainer__last_name']
@@ -43,6 +44,12 @@ class GroupViewSet(viewsets.ModelViewSet):
             data['trainer_id'] = str(data.pop('trainer').id)
         group = self.service.update_group(str(self.get_object().id), data)
         serializer.instance = group
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=['deleted_at'])
+        return Response(status=204)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def close(self, request, pk=None):

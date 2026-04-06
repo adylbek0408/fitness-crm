@@ -50,7 +50,7 @@ export default function GroupForm() {
   const { user } = useOutletContext()
   const [trainers, setTrainers] = useState([])
   const [form, setForm] = useState({
-    number: '', group_type: '', trainer: '',
+    number: '', group_type: '', training_format: 'offline', trainer: '',
     schedule_days: [], schedule_time: '', schedule_end_time: '',
     start_date: '', end_date: '', status: 'recruitment'
   })
@@ -65,7 +65,9 @@ export default function GroupForm() {
         const g = r.data
         const { days, time, end_time } = parseSchedule(g.schedule)
         setForm({
-          number: g.number, group_type: g.group_type,
+          number: g.number != null ? String(g.number) : '',
+          group_type: g.group_type || '',
+          training_format: g.training_format || 'offline',
           trainer: g.trainer?.id || '',
           schedule_days: days, schedule_time: time, schedule_end_time: end_time,
           start_date: g.start_date || '', end_date: g.end_date || '',
@@ -89,9 +91,17 @@ export default function GroupForm() {
   const handleSubmit = async e => {
     e.preventDefault(); setError(''); setSuccess(''); setSaving(true)
     const schedule = buildSchedule(form.schedule_days, form.schedule_time, form.schedule_end_time)
+    const num = String(form.number || '').trim()
+    if (!num) { setError('Укажите номер группы'); setSaving(false); return }
+    if (form.training_format !== 'online' && !form.group_type) {
+      setError('Для офлайн / смешанного формата выберите тип группы')
+      setSaving(false)
+      return
+    }
     const body = {
-      number: parseInt(form.number),
-      group_type: form.group_type,
+      number: num,
+      group_type: form.training_format === 'online' ? '' : form.group_type,
+      training_format: form.training_format,
       trainer: form.trainer,
       schedule,
       start_date: form.start_date || null,
@@ -101,7 +111,7 @@ export default function GroupForm() {
     try {
       if (isEdit) await api.put(`/groups/${id}/`, body)
       else await api.post('/groups/', body)
-      setSuccess(isEdit ? 'Поток обновлён!' : 'Поток создан!')
+      setSuccess(isEdit ? 'Группа обновлена!' : 'Группа создана!')
       setTimeout(() => nav('/admin/groups'), 1200)
     } catch (e) {
       const d = e.response?.data
@@ -130,8 +140,8 @@ export default function GroupForm() {
         </Link>
         <div className="w-px h-5 bg-slate-200" />
         <div>
-          <h2 className="crm-page-title">{isEdit ? 'Редактировать поток' : 'Новый поток'}</h2>
-          <p className="crm-page-subtitle">{isEdit ? `Поток #${form.number}` : 'Создание учебной группы'}</p>
+          <h2 className="crm-page-title">{isEdit ? 'Редактировать группу' : 'Новая группа'}</h2>
+          <p className="crm-page-subtitle">{isEdit ? `Группа ${form.number}` : 'Создание учебной группы'}</p>
         </div>
       </div>
 
@@ -144,22 +154,36 @@ export default function GroupForm() {
           <div className="crm-card p-6 space-y-6 mb-5">
             <p className="crm-section-title">Основная информация</p>
 
+            <Field label="Формат обучения" required hint="Для онлайн тип группы (1.5/2.5 ч) не обязателен">
+              <select
+                value={form.training_format}
+                onChange={e => set('training_format', e.target.value)}
+                className="crm-input max-w-md"
+              >
+                <option value="offline">Офлайн</option>
+                <option value="online">Онлайн</option>
+                <option value="mixed">Смешанный</option>
+              </select>
+            </Field>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <Field label="Номер потока" required>
-                <input type="number" required value={form.number}
+              <Field label="Номер группы" required hint="Буквы и цифры, например A12 или 101">
+                <input type="text" required value={form.number}
                   onChange={e => set('number', e.target.value)}
-                  placeholder="например: 101"
+                  placeholder="например: A12 или 101"
                   className="crm-input" />
               </Field>
-              <Field label="Тип группы" required>
-                <select required value={form.group_type}
-                  onChange={e => set('group_type', e.target.value)}
-                  className="crm-input">
-                  <option value="">Выберите тип</option>
-                  <option value="1.5h">1.5 часа</option>
-                  <option value="2.5h">2.5 часа</option>
-                </select>
-              </Field>
+              {form.training_format !== 'online' && (
+                <Field label="Тип группы" required>
+                  <select required value={form.group_type}
+                    onChange={e => set('group_type', e.target.value)}
+                    className="crm-input">
+                    <option value="">Выберите тип</option>
+                    <option value="1.5h">1.5 часа</option>
+                    <option value="2.5h">2.5 часа</option>
+                  </select>
+                </Field>
+              )}
             </div>
 
             <Field label="Тренер" required>
@@ -257,7 +281,7 @@ export default function GroupForm() {
               className="crm-btn-primary disabled:opacity-60">
               {saving
                 ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Сохранение...</>
-                : <><Save size={16} /> {isEdit ? 'Обновить поток' : 'Создать поток'}</>
+                : <><Save size={16} /> {isEdit ? 'Сохранить группу' : 'Создать группу'}</>
               }
             </button>
             <Link to="/admin/groups" className="crm-btn-secondary">Отмена</Link>

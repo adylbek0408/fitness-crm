@@ -57,6 +57,54 @@ class TestClientAPI:
         assert response.status_code == 201
         assert response.data['first_name'] == 'John'
         assert response.data['full_payment']['amount'] == '5000.00'
+        assert response.data['bonus_percent'] == 10
+
+    def test_create_client_bonus_percent_5(self, api_client, admin_user):
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {get_jwt_token(admin_user)}')
+        data = {
+            'first_name': 'Пять',
+            'last_name': 'Процентов',
+            'phone': '+79991234599',
+            'training_format': 'offline',
+            'group_type': '1.5h',
+            'payment_type': 'full',
+            'bonus_percent': 5,
+            'payment_data': {'amount': '5000.00'},
+        }
+        response = api_client.post('/api/clients/', data, format='json')
+        assert response.status_code == 201
+        assert response.data['bonus_percent'] == 5
+
+    def test_create_client_bonus_percent_3(self, api_client, admin_user):
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {get_jwt_token(admin_user)}')
+        data = {
+            'first_name': 'Три',
+            'last_name': 'Процента',
+            'phone': '+79991234598',
+            'training_format': 'offline',
+            'group_type': '1.5h',
+            'payment_type': 'full',
+            'bonus_percent': 3,
+            'payment_data': {'amount': '10000.00'},
+        }
+        response = api_client.post('/api/clients/', data, format='json')
+        assert response.status_code == 201
+        assert response.data['bonus_percent'] == 3
+
+    def test_create_client_bonus_percent_over_100_returns_400(self, api_client, admin_user):
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {get_jwt_token(admin_user)}')
+        data = {
+            'first_name': 'Bad',
+            'last_name': 'Percent',
+            'phone': '+79991234597',
+            'training_format': 'offline',
+            'group_type': '1.5h',
+            'payment_type': 'full',
+            'bonus_percent': 101,
+            'payment_data': {'amount': '1000.00'},
+        }
+        response = api_client.post('/api/clients/', data, format='json')
+        assert response.status_code == 400
 
     def test_create_client_installment_returns_201(self, api_client, admin_user):
         api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {get_jwt_token(admin_user)}')
@@ -131,3 +179,34 @@ class TestClientAPI:
         }
         response = api_client.post('/api/clients/', data, format='json')
         assert response.status_code == 201
+
+    def test_filter_clients_by_registered_by_matches_fk_or_name_snapshot(self, api_client, admin_user):
+        """
+        Фильтр «менеджер»: по UUID пользователя — и по FK, и по registered_by_name
+        (как в create_client: «Фамилия Имя»), если запись вела другая учётка.
+        """
+        from apps.accounts.models import ManagerProfile
+
+        mgr_user = User.objects.create_user(username='998777001', password='x', role='registrar')
+        ManagerProfile.objects.create(user=mgr_user, first_name='Adylbek', last_name='Salijanov')
+        registrar = User.objects.create_user(username='registrar_shared', password='x', role='registrar')
+
+        c_match = Client.objects.create(
+            first_name='Ivan', last_name='Test', phone='+79990000031',
+            training_format='offline', group_type='1.5h', payment_type='full', status='new',
+            registered_by=registrar,
+            registered_by_name='Salijanov Adylbek',
+        )
+        Client.objects.create(
+            first_name='Other', last_name='Client', phone='+79990000032',
+            training_format='offline', group_type='1.5h', payment_type='full', status='new',
+            registered_by=registrar,
+            registered_by_name='Someone Else',
+        )
+
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {get_jwt_token(admin_user)}')
+        r = api_client.get(f'/api/clients/?registered_by={mgr_user.id}')
+        assert r.status_code == 200
+        ids = [x['id'] for x in r.data['results']]
+        assert str(c_match.id) in ids
+        assert len(ids) == 1

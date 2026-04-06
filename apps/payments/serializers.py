@@ -8,7 +8,7 @@ from .models import FullPayment, InstallmentPlan, InstallmentPayment
 class FullPaymentReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = FullPayment
-        fields = ['id', 'amount', 'is_paid', 'paid_at', 'receipt']
+        fields = ['id', 'amount', 'course_amount', 'is_paid', 'paid_at', 'receipt']
 
 
 class FullPaymentReceiptSerializer(serializers.Serializer):

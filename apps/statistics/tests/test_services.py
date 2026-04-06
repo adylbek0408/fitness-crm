@@ -19,12 +19,15 @@ class TestStatisticsService:
         assert result['active_clients'] == 0
         assert result['full_payment_revenue'] == Decimal('0.00')
         assert result['installment_revenue'] == Decimal('0.00')
+        assert result['clients_registered_total'] == 0
+        assert result['clients_registered_by_status'] == {}
 
     def test_dashboard_counts_full_payment_revenue(self):
         trainer = Trainer.objects.create(first_name='John', last_name='Doe')
         group = Group.objects.create(
-            number=101,
+            number='101',
             group_type='1.5h',
+            training_format='offline',
             start_date=date(2025, 1, 1),
             trainer=trainer
         )
@@ -146,8 +149,9 @@ class TestStatisticsService:
     def test_by_group_returns_list(self):
         trainer = Trainer.objects.create(first_name='John', last_name='Doe')
         group = Group.objects.create(
-            number=101,
+            number='101',
             group_type='1.5h',
+            training_format='offline',
             start_date=date(2025, 1, 1),
             trainer=trainer
         )
@@ -167,7 +171,7 @@ class TestStatisticsService:
         service = StatisticsService()
         result = service.get_revenue_by_group({})
         assert len(result) >= 1
-        group_result = next(g for g in result if g['group_number'] == 101)
+        group_result = next(g for g in result if g['group_number'] == '101')
         assert group_result['revenue'] == Decimal('5000.00')
         assert group_result['client_count'] == 1
 

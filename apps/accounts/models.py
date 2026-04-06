@@ -28,6 +28,11 @@ class ManagerProfile(models.Model):
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=20, blank=True)
+    password_plain = models.CharField(
+        max_length=128, blank=True, default='',
+        help_text='Пароль для отображения администратору',
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Manager Profile'
