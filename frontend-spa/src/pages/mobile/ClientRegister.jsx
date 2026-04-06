@@ -84,25 +84,25 @@ export default function ClientRegister() {
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  // Группы: только шаг «Оплата» + полная оплата; фильтр по типу группы и формату (офлайн/онлайн; mixed подходит обоим)
+  // Группы: шаг «Оплата» + полная оплата; офлайн — фильтр по типу; онлайн — все онлайн-потоки
   useEffect(() => {
-    if (step !== 2 || form.payment_type !== 'full' || !form.training_format || !form.group_type) {
-      return
-    }
+    if (step !== 2 || form.payment_type !== 'full' || !form.training_format) return
+    if (form.training_format === 'offline' && !form.group_type) return
     setGroupsLoading(true)
-    const params = { group_type: form.group_type, page_size: 100 }
+    const base = { page_size: 100, training_format: form.training_format }
+    if (form.training_format === 'offline') base.group_type = form.group_type
     Promise.all([
-      api.get('/groups/', { params: { ...params, status: 'recruitment' } }),
-      api.get('/groups/', { params: { ...params, status: 'active' } }),
+      api.get('/groups/', { params: { ...base, status: 'recruitment' } }),
+      api.get('/groups/', { params: { ...base, status: 'active' } }),
     ])
       .then(([r, a]) => {
         const merged = [...(r.data.results || []), ...(a.data.results || [])]
         const tf = form.training_format
+        const gt = form.group_type
         const seen = new Set()
         const filtered = merged.filter(g => {
-          if (g.group_type !== form.group_type) return false
-          const matchTf = g.training_format === tf || g.training_format === 'mixed'
-          if (!matchTf) return false
+          if (g.training_format !== tf) return false
+          if (tf === 'offline' && g.group_type !== gt) return false
           if (seen.has(g.id)) return false
           seen.add(g.id)
           return true
@@ -122,7 +122,10 @@ export default function ClientRegister() {
     }
     if (step === 1) {
       if (!form.training_format) { setError('Выберите формат обучения'); return false }
-      if (!form.group_type) { setError('Выберите тип группы'); return false }
+      if (form.training_format === 'offline' && !form.group_type) {
+        setError('Выберите тип группы')
+        return false
+      }
     }
     if (step === 2) {
       if (!form.payment_type) { setError('Выберите тип оплаты'); return false }
@@ -159,7 +162,8 @@ export default function ClientRegister() {
     const bonusPct = Math.round(Number(String(form.bonus_percent).replace(',', '.')))
     const body = {
       first_name: form.first_name, last_name: form.last_name, phone: form.phone,
-      training_format: form.training_format, group_type: form.group_type,
+      training_format: form.training_format,
+      group_type: form.training_format === 'online' ? '' : form.group_type,
       is_repeat: false, discount: '0',
       bonus_percent: bonusPct,
       payment_type: pt, payment_data: paymentData,
@@ -284,25 +288,27 @@ export default function ClientRegister() {
             <div className="space-y-2">
               <OptionButton label="Онлайн" sub="Удалённый формат"
                 selected={form.training_format === 'online'}
-                onClick={() => set('training_format', 'online')} />
+                onClick={() => setForm(p => ({ ...p, training_format: 'online', group_type: '' }))} />
               <OptionButton label="Оффлайн" sub="Очный формат"
                 selected={form.training_format === 'offline'}
                 onClick={() => set('training_format', 'offline')} />
             </div>
           </div>
-          <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-xs)' }}>
-              Тип группы
-            </p>
-            <div className="space-y-2">
-              <OptionButton label="1.5 часа" sub="Стандартный формат"
-                selected={form.group_type === '1.5h'}
-                onClick={() => set('group_type', '1.5h')} />
-              <OptionButton label="2.5 часа" sub="Расширенный формат"
-                selected={form.group_type === '2.5h'}
-                onClick={() => set('group_type', '2.5h')} />
+          {form.training_format === 'offline' && (
+            <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-xs)' }}>
+                Тип группы
+              </p>
+              <div className="space-y-2">
+                <OptionButton label="1.5 часа" sub="Стандартный формат"
+                  selected={form.group_type === '1.5h'}
+                  onClick={() => set('group_type', '1.5h')} />
+                <OptionButton label="2.5 часа" sub="Расширенный формат"
+                  selected={form.group_type === '2.5h'}
+                  onClick={() => set('group_type', '2.5h')} />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -391,7 +397,9 @@ export default function ClientRegister() {
                 </span>
               </div>
               <p className="text-xs mb-3" style={{ color: 'var(--text-xs)' }}>
-                Показаны группы под ваш формат и тип. Запись в группу — после полной оплаты.
+                {form.training_format === 'online'
+                  ? 'Показаны онлайн-потоки (набор или активный). Запись в группу — после полной оплаты.'
+                  : 'Показаны группы под ваш формат и тип. Запись в группу — после полной оплаты.'}
               </p>
               {groupsLoading ? (
                 <div className="flex justify-center py-4">
@@ -423,8 +431,8 @@ export default function ClientRegister() {
                         <p className="text-sm font-semibold" style={{ color: form.group_id === g.id ? '#be185d' : 'var(--text)' }}>
                           Группа #{g.number}
                           <span className="ml-1.5 text-xs font-normal" style={{ color: 'var(--text-xs)' }}>
-                            {GROUP_TYPE_LABEL[g.group_type] || g.group_type}
-                            {g.training_format === 'mixed' ? ' · смеш.' : g.training_format === 'online' ? ' · онлайн' : ' · офлайн'}
+                            {g.group_type ? (GROUP_TYPE_LABEL[g.group_type] || g.group_type) : ''}
+                            {g.training_format === 'online' ? ' · онлайн' : ' · офлайн'}
                           </span>
                         </p>
                         <p className="text-xs mt-0.5" style={{ color: 'var(--text-xs)' }}>
@@ -449,7 +457,9 @@ export default function ClientRegister() {
                 ['Имя', `${form.last_name} ${form.first_name}`],
                 ['Телефон', form.phone],
                 ['Формат', form.training_format === 'online' ? 'Онлайн' : 'Оффлайн'],
-                ['Тип группы', form.group_type === '1.5h' ? '1.5 часа' : '2.5 часа'],
+                ...(form.training_format === 'offline'
+                  ? [['Тип группы', form.group_type === '1.5h' ? '1.5 часа' : '2.5 часа']]
+                  : []),
                 ['Группа', form.payment_type !== 'full' ? 'После полной оплаты — в карточке' : (form.group_id ? `Группа #${groups.find(g=>g.id===form.group_id)?.number || '?'}` : 'Не выбрана')],
                 ['Бонус с оплаты', `${form.bonus_percent === '' ? '—' : `${form.bonus_percent}%`}`],
                 ['Оплата', form.payment_type === 'full' ? `Полная — ${form.pay_amount || '0'} сом` : form.payment_type === 'installment' ? `Рассрочка — ${form.total_cost || '0'} сом` : '—'],

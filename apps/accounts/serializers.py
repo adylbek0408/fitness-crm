@@ -20,17 +20,30 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'role', 'phone', 'is_active')
-        read_only_fields = ('id', 'username', 'role', 'is_active')
+        fields = ('id', 'username', 'role', 'phone', 'is_active', 'display_name')
+        read_only_fields = ('id', 'username', 'role', 'is_active', 'display_name')
 
     def get_role(self, obj):
         # superuser всегда отдаём как admin
         if obj.is_superuser or obj.role == 'admin':
             return 'admin'
         return obj.role
+
+    def get_display_name(self, obj):
+        mp = ManagerProfile.objects.filter(user_id=obj.pk, deleted_at__isnull=True).first()
+        if mp:
+            s = f'{mp.last_name} {mp.first_name}'.strip()
+            if s:
+                return s
+        fn = (obj.first_name or '').strip()
+        ln = (obj.last_name or '').strip()
+        if fn or ln:
+            return f'{ln} {fn}'.strip()
+        return obj.username
 
 
 class ManagerSerializer(serializers.ModelSerializer):

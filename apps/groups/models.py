@@ -17,7 +17,6 @@ class Group(UUIDTimestampedModel):
     TRAINING_FORMAT_CHOICES = [
         ('offline', 'Offline'),
         ('online', 'Online'),
-        ('mixed', 'Mixed'),
     ]
 
     number = models.CharField(
@@ -41,6 +40,11 @@ class Group(UUIDTimestampedModel):
         related_name='groups'
     )
     schedule = models.TextField(blank=True)
+    online_subscription_tags = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Только для онлайн: подписки/тарифы (список строк)',
+    )
     status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recruitment')
     deleted_at = models.DateTimeField(null=True, blank=True)
 

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link, useOutletContext } from 'react-router-dom'
-import { Save, ArrowLeft, Calendar, Clock } from 'lucide-react'
+import { Save, ArrowLeft, Calendar, Clock, Plus, X } from 'lucide-react'
+
+const DEFAULT_ONLINE_SUBSCRIPTION_TAGS = ['Вип', 'Про', 'Интенсив', 'Марафон']
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 
@@ -51,6 +53,7 @@ export default function GroupForm() {
   const [trainers, setTrainers] = useState([])
   const [form, setForm] = useState({
     number: '', group_type: '', training_format: 'offline', trainer: '',
+    online_subscription_tags: [],
     schedule_days: [], schedule_time: '', schedule_end_time: '',
     start_date: '', end_date: '', status: 'recruitment'
   })
@@ -68,6 +71,9 @@ export default function GroupForm() {
           number: g.number != null ? String(g.number) : '',
           group_type: g.group_type || '',
           training_format: g.training_format || 'offline',
+          online_subscription_tags: Array.isArray(g.online_subscription_tags)
+            ? [...g.online_subscription_tags]
+            : [],
           trainer: g.trainer?.id || '',
           schedule_days: days, schedule_time: time, schedule_end_time: end_time,
           start_date: g.start_date || '', end_date: g.end_date || '',
@@ -88,20 +94,59 @@ export default function GroupForm() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  const setTrainingFormat = (v) => {
+    setForm(f => {
+      if (v === 'online') {
+        const prev = f.online_subscription_tags || []
+        const seed =
+          !isEdit && prev.length === 0 ? [...DEFAULT_ONLINE_SUBSCRIPTION_TAGS] : prev
+        return { ...f, training_format: 'online', group_type: '', online_subscription_tags: seed }
+      }
+      return { ...f, training_format: 'offline', online_subscription_tags: [] }
+    })
+  }
+
+  const updateOnlineTag = (i, value) => {
+    setForm(f => {
+      const next = [...(f.online_subscription_tags || [])]
+      next[i] = value
+      return { ...f, online_subscription_tags: next }
+    })
+  }
+  const removeOnlineTag = (i) => {
+    setForm(f => ({
+      ...f,
+      online_subscription_tags: (f.online_subscription_tags || []).filter((_, j) => j !== i),
+    }))
+  }
+  const addOnlineTag = () => {
+    setForm(f => ({
+      ...f,
+      online_subscription_tags: [...(f.online_subscription_tags || []), ''],
+    }))
+  }
+  const fillExampleSubscriptionTags = () => {
+    setForm(f => ({ ...f, online_subscription_tags: [...DEFAULT_ONLINE_SUBSCRIPTION_TAGS] }))
+  }
+
   const handleSubmit = async e => {
     e.preventDefault(); setError(''); setSuccess(''); setSaving(true)
     const schedule = buildSchedule(form.schedule_days, form.schedule_time, form.schedule_end_time)
     const num = String(form.number || '').trim()
     if (!num) { setError('Укажите номер группы'); setSaving(false); return }
     if (form.training_format !== 'online' && !form.group_type) {
-      setError('Для офлайн / смешанного формата выберите тип группы')
+      setError('Для офлайн выберите тип группы')
       setSaving(false)
       return
     }
+    const tags = (form.online_subscription_tags || [])
+      .map(t => String(t || '').trim())
+      .filter(Boolean)
     const body = {
       number: num,
       group_type: form.training_format === 'online' ? '' : form.group_type,
       training_format: form.training_format,
+      online_subscription_tags: form.training_format === 'online' ? tags : [],
       trainer: form.trainer,
       schedule,
       start_date: form.start_date || null,
@@ -157,14 +202,58 @@ export default function GroupForm() {
             <Field label="Формат обучения" required hint="Для онлайн тип группы (1.5/2.5 ч) не обязателен">
               <select
                 value={form.training_format}
-                onChange={e => set('training_format', e.target.value)}
+                onChange={e => setTrainingFormat(e.target.value)}
                 className="crm-input max-w-md"
               >
                 <option value="offline">Офлайн</option>
                 <option value="online">Онлайн</option>
-                <option value="mixed">Смешанный</option>
               </select>
             </Field>
+
+            {form.training_format === 'online' && (
+              <Field
+                label="Подписки / варианты"
+                hint="Список можно менять: правьте текст, удаляйте строки или добавляйте новые. Пустые строки при сохранении отбрасываются."
+              >
+                <div className="space-y-2 max-w-xl">
+                  {(form.online_subscription_tags || []).map((tag, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={tag}
+                        onChange={e => updateOnlineTag(i, e.target.value)}
+                        placeholder="Название"
+                        className="crm-input flex-1 min-w-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeOnlineTag(i)}
+                        className="shrink-0 p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition"
+                        title="Удалить"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={addOnlineTag}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 transition"
+                    >
+                      <Plus size={15} /> Добавить строку
+                    </button>
+                    <button
+                      type="button"
+                      onClick={fillExampleSubscriptionTags}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border border-dashed border-slate-300 text-slate-600 hover:border-indigo-400 hover:text-indigo-700 transition"
+                    >
+                      Подставить: Вип, Про, Интенсив, Марафон
+                    </button>
+                  </div>
+                </div>
+              </Field>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <Field label="Номер группы" required hint="Буквы и цифры, например A12 или 101">

@@ -215,16 +215,22 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
     setGroupsLoading(true); setErr('')
     try {
       const r = await api.get('/groups/', {
-        params: { status: st, group_type: client.group_type, page_size: 100 },
+        params: {
+          status: st,
+          page_size: 100,
+          training_format: client.training_format,
+          ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}),
+        },
       })
       const list = r.data.results || []
       const tf = client.training_format
+      const gt = (client.group_type || '').trim()
       setGroups(
-        list.filter(
-          g =>
-            g.group_type === client.group_type &&
-            (g.training_format === tf || g.training_format === 'mixed')
-        )
+        list.filter(g => {
+          if (g.training_format !== tf) return false
+          if (tf === 'online' && !gt) return true
+          return g.group_type === gt
+        })
       )
     } catch {
       setGroups([])
@@ -295,8 +301,9 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
         <h3 className="font-bold text-slate-800">Новый клиент — в группу</h3>
       </div>
       <p className="text-xs text-slate-500 mb-3">
-        Группы подходят под тип ({GROUP_TYPE_LABEL[client.group_type]}) и формат клиента.
-        Оплата закрыта — запись без повторного платежа.
+        {client.training_format === 'online' && !(client.group_type || '').trim()
+          ? 'Группы подходят под формат клиента (онлайн). Оплата закрыта — запись без повторного платежа.'
+          : `Группы подходят под тип (${GROUP_TYPE_LABEL[client.group_type] || '—'}) и формат клиента. Оплата закрыта — запись без повторного платежа.`}
       </p>
       {msg && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-3 flex items-center gap-2">
@@ -346,12 +353,8 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
                     <p className="font-semibold text-slate-800 text-sm">
                       Группа #{g.number}
                       <span className="ml-2 text-xs font-normal text-slate-400">
-                        {GROUP_TYPE_LABEL[g.group_type]}
-                        {g.training_format === 'mixed'
-                          ? ' · смеш.'
-                          : g.training_format === 'online'
-                            ? ' · онлайн'
-                            : ' · офлайн'}
+                        {g.group_type ? GROUP_TYPE_LABEL[g.group_type] : ''}
+                        {g.training_format === 'online' ? ' · онлайн' : ' · офлайн'}
                       </span>
                     </p>
                     <p className="text-xs text-slate-400">{g.trainer?.full_name || '—'}</p>
@@ -403,16 +406,22 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
     setGroupsLoading(true); setEnrollGroup(null)
     try {
       const r = await api.get('/groups/', {
-        params: { status, group_type: client.group_type, page_size: 100 },
+        params: {
+          status,
+          page_size: 100,
+          training_format: client.training_format,
+          ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}),
+        },
       })
       const list = r.data.results || []
       const tf = client.training_format
+      const gt = (client.group_type || '').trim()
       setGroups(
-        list.filter(
-          g =>
-            g.group_type === client.group_type &&
-            (g.training_format === tf || g.training_format === 'mixed')
-        )
+        list.filter(g => {
+          if (g.training_format !== tf) return false
+          if (tf === 'online' && !gt) return true
+          return g.group_type === gt
+        })
       )
     } catch {
       setGroups([])

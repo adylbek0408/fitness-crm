@@ -58,7 +58,7 @@ export default function MobileDashboard() {
       <div className="mb-6">
         <p className="text-sm mb-0.5" style={{ color: 'var(--text-xs)' }}>{greeting()},</p>
         <h2 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>
-          {user?.username}
+          {user?.display_name || user?.username}
         </h2>
         <p className="text-xs mt-0.5" style={{ color: 'var(--text-xs)' }}>
           {roleMap[user?.role] || user?.role}

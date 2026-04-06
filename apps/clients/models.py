@@ -46,7 +46,10 @@ class Client(UUIDTimestampedModel):
     phone      = models.CharField(max_length=20, unique=True)
 
     training_format = models.CharField(max_length=10, choices=TRAINING_FORMAT_CHOICES)
-    group_type      = models.CharField(max_length=10, choices=GROUP_TYPE_CHOICES)
+    group_type      = models.CharField(
+        max_length=10, choices=GROUP_TYPE_CHOICES, blank=True, default='',
+        help_text='Для офлайн обязателен; для онлайн можно не указывать',
+    )
     group = models.ForeignKey(
         'groups.Group', on_delete=models.PROTECT,
         related_name='clients', null=True, blank=True

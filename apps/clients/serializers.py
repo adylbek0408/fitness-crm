@@ -102,7 +102,7 @@ class ClientCreateSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
 
     training_format = serializers.ChoiceField(choices=Client.TRAINING_FORMAT_CHOICES)
-    group_type = serializers.ChoiceField(choices=Client.GROUP_TYPE_CHOICES)
+    group_type = serializers.CharField(max_length=10, allow_blank=True, required=False)
     group = serializers.PrimaryKeyRelatedField(
         queryset=Group.objects.all(), required=False, allow_null=True
     )
@@ -125,6 +125,15 @@ class ClientCreateSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
+        tf = data.get('training_format')
+        gt = (data.get('group_type') or '').strip()
+        if tf == 'offline':
+            if gt not in dict(Client.GROUP_TYPE_CHOICES):
+                raise serializers.ValidationError({'group_type': 'Выберите тип группы'})
+            data['group_type'] = gt
+        else:
+            data['group_type'] = ''
+
         payment_type = data.get('payment_type')
         payment_data = data.get('payment_data', {})
 

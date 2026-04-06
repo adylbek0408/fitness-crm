@@ -57,16 +57,22 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
     setGroupsLoading(true); setErr('')
     try {
       const r = await api.get('/groups/', {
-        params: { status: st, group_type: client.group_type, page_size: 100 },
+        params: {
+          status: st,
+          page_size: 100,
+          training_format: client.training_format,
+          ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}),
+        },
       })
       const list = r.data.results || []
       const tf = client.training_format
+      const gt = (client.group_type || '').trim()
       setGroups(
-        list.filter(
-          g =>
-            g.group_type === client.group_type &&
-            (g.training_format === tf || g.training_format === 'mixed')
-        )
+        list.filter(g => {
+          if (g.training_format !== tf) return false
+          if (tf === 'online' && !gt) return true
+          return g.group_type === gt
+        })
       )
     } catch {
       setGroups([])
@@ -169,12 +175,8 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
                     <p className="font-semibold text-sm text-gray-800">
                       Группа #{g.number}
                       <span className="ml-1 text-xs font-normal text-gray-500">
-                        {GROUP_TYPE_LABEL[g.group_type]}
-                        {g.training_format === 'mixed'
-                          ? ' · смеш.'
-                          : g.training_format === 'online'
-                            ? ' · онлайн'
-                            : ' · офлайн'}
+                        {g.group_type ? GROUP_TYPE_LABEL[g.group_type] : ''}
+                        {g.training_format === 'online' ? ' · онлайн' : ' · офлайн'}
                       </span>
                     </p>
                     <p className="text-xs text-gray-400 truncate">{g.trainer?.full_name || '—'}</p>
@@ -224,14 +226,21 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
     setGroupsLoading(true); setEnrollGroup(null)
     try {
       const r = await api.get('/groups/', {
-        params: { status, group_type: client.group_type, page_size: 100 },
+        params: {
+          status,
+          page_size: 100,
+          training_format: client.training_format,
+          ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}),
+        },
       })
       const list = r.data.results || []
       const tf = client.training_format
-      const gt = client.group_type
-      const filtered = list.filter(g =>
-        g.group_type === gt && (g.training_format === tf || g.training_format === 'mixed')
-      )
+      const gt = (client.group_type || '').trim()
+      const filtered = list.filter(g => {
+        if (g.training_format !== tf) return false
+        if (tf === 'online' && !gt) return true
+        return g.group_type === gt
+      })
       setGroups(filtered)
     } catch {
       setGroups([])

@@ -210,11 +210,11 @@ class ClientService(BaseService):
             raise ValidationError(f'Поток {group_id} не найден')
         if group.status == 'completed':
             raise ValidationError('Нельзя записать в завершённый поток')
-        if group.group_type != client.group_type:
-            raise ValidationError('Тип группы потока не совпадает с типом клиента.')
-        tf_ok = group.training_format == client.training_format or group.training_format == 'mixed'
-        if not tf_ok:
+        if group.training_format != client.training_format:
             raise ValidationError('Формат обучения потока не совпадает с форматом клиента.')
+        ct = (client.group_type or '').strip()
+        if ct and group.group_type != ct:
+            raise ValidationError('Тип группы потока не совпадает с типом клиента.')
 
         return self.assign_to_group(client_id, group_id)
 

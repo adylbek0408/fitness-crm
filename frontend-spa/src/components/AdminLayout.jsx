@@ -24,9 +24,13 @@ function Avatar({ name }) {
   )
 }
 
+const roleLabel = (role) =>
+  ({ admin: 'Администратор', registrar: 'Регистратор' }[role] || role || '')
+
 export default function AdminLayout({ children, user }) {
   const nav = useNavigate()
   const logout = () => { localStorage.clear(); nav('/login') }
+  const displayName = user?.display_name || user?.username
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
@@ -92,10 +96,10 @@ export default function AdminLayout({ children, user }) {
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg group cursor-default"
                onMouseEnter={e => e.currentTarget.style.background = 'var(--sidebar-h)'}
                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <Avatar name={user?.username} />
+            <Avatar name={displayName} />
             <div className="flex-1 min-w-0">
-              <p className="text-white text-xs font-medium truncate">{user?.username}</p>
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Администратор</p>
+              <p className="text-white text-xs font-medium truncate">{displayName}</p>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{roleLabel(user?.role)}</p>
             </div>
             <button onClick={logout} title="Выйти"
               className="p-1.5 rounded-md transition opacity-0 group-hover:opacity-100"

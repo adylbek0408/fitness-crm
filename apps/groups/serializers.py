@@ -14,6 +14,7 @@ class GroupReadSerializer(serializers.ModelSerializer):
         model  = Group
         fields = [
             'id', 'number', 'group_type', 'training_format',
+            'online_subscription_tags',
             'start_date', 'end_date',
             'trainer', 'schedule', 'status', 'client_count', 'created_at',
         ]
@@ -24,10 +25,17 @@ class GroupReadSerializer(serializers.ModelSerializer):
 
 
 class GroupWriteSerializer(serializers.ModelSerializer):
+    online_subscription_tags = serializers.ListField(
+        child=serializers.CharField(max_length=80, allow_blank=False),
+        required=False,
+        allow_empty=True,
+    )
+
     class Meta:
         model  = Group
         fields = [
             'number', 'group_type', 'training_format',
+            'online_subscription_tags',
             'start_date', 'end_date', 'trainer', 'schedule', 'status',
         ]
 
@@ -53,8 +61,30 @@ class GroupWriteSerializer(serializers.ModelSerializer):
             gt = self.instance.group_type
 
         fmt = fmt or 'offline'
-        if fmt in ('offline', 'mixed') and not (gt or '').strip():
-            raise serializers.ValidationError({'group_type': 'Для офлайн / смешанного формата укажите тип группы'})
+        if fmt == 'offline' and not (gt or '').strip():
+            raise serializers.ValidationError({'group_type': 'Для офлайн укажите тип группы'})
         if fmt == 'online':
             data['group_type'] = (data.get('group_type') or '').strip()
+            raw_tags = data.get('online_subscription_tags')
+            if raw_tags is None and self.instance:
+                raw_tags = self.instance.online_subscription_tags or []
+            if raw_tags is None:
+                raw_tags = []
+            seen = set()
+            cleaned = []
+            for t in raw_tags:
+                s = (t or '').strip()
+                if not s or s in seen:
+                    continue
+                if len(s) > 80:
+                    raise serializers.ValidationError(
+                        {'online_subscription_tags': f'Строка не длиннее 80 символов: «{s[:40]}…»'}
+                    )
+                seen.add(s)
+                cleaned.append(s)
+            if len(cleaned) > 50:
+                raise serializers.ValidationError({'online_subscription_tags': 'Не более 50 позиций'})
+            data['online_subscription_tags'] = cleaned
+        else:
+            data['online_subscription_tags'] = []
         return data
