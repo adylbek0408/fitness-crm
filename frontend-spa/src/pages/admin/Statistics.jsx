@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { flushSync } from 'react-dom'
 import { useOutletContext } from 'react-router-dom'
-import { Download, Loader, ChevronDown, ChevronUp, Check, Search, X } from 'lucide-react'
+import { Download, Loader, ChevronDown, ChevronUp, Check, Search, X, Filter, TrendingUp } from 'lucide-react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
+import DateField from '../../components/DateField'
 import { fmtMoney, STATUS_LABEL } from '../../utils/format'
 
 // ── Константы дней ─────────────────────────────────────────────────────────────
@@ -568,156 +569,165 @@ export default function Statistics() {
         </button>
       </div>
 
-      {/* Фильтры: один набор — те же параметры уходят в сводку и в PDF при «Скачать PDF» */}
-      <div className="crm-card p-4 mb-6 space-y-4">
-        <p className="text-xs text-slate-500 font-medium">Фильтры отчёта — действуют для таблиц на странице и для PDF</p>
+      {/* ── Фильтры ──────────────────────────────────────────────────────────── */}
+      <div className="crm-card p-4 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Filter size={14} className="text-slate-400" />
+          <p className="text-sm font-semibold text-slate-700">Фильтры отчёта</p>
+          <span className="text-xs text-slate-400 ml-1">— применяются для таблиц и PDF</span>
+        </div>
 
-        <div>
-          <p className="text-xs font-semibold text-slate-700 mb-2">Период оплат</p>
-          <p className="text-xs text-slate-400 mb-2">Учитывается в доходах и в фильтре пропусков (даты оплат / занятий)</p>
-          <div className="flex gap-3 flex-wrap items-end">
-            {[['date_from','От'],['date_to','До']].map(([k,label]) => (
-              <div key={k}>
-                <label className="block text-xs text-gray-500 mb-1">{label}</label>
-                <input type="date" value={filters[k]} onChange={e=>set(k,e.target.value)} className="crm-input w-full sm:w-auto"/>
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Период оплат */}
+          <div>
+            <p className="crm-filter-label">Период оплат</p>
+            <div className="flex items-end gap-1.5">
+              <div className="crm-filter-group">
+                <span className="crm-filter-label" style={{fontSize:9}}>ОТ</span>
+                <DateField value={filters.date_from} onChange={v => set('date_from', v)} />
               </div>
-            ))}
+              <span className="crm-date-range-sep">—</span>
+              <div className="crm-filter-group">
+                <span className="crm-filter-label" style={{fontSize:9}}>ДО</span>
+                <DateField value={filters.date_to} onChange={v => set('date_to', v)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Период регистрации */}
+          <div>
+            <p className="crm-filter-label">Регистрация клиентов</p>
+            <div className="flex items-end gap-1.5">
+              <div className="crm-filter-group">
+                <span className="crm-filter-label" style={{fontSize:9}}>ОТ</span>
+                <DateField value={filters.registered_from} onChange={v => set('registered_from', v)} />
+              </div>
+              <span className="crm-date-range-sep">—</span>
+              <div className="crm-filter-group">
+                <span className="crm-filter-label" style={{fontSize:9}}>ДО</span>
+                <DateField value={filters.registered_to} onChange={v => set('registered_to', v)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Формат и тренер */}
+          <div className="crm-filter-group">
+            <span className="crm-filter-label">Формат</span>
+            <select value={filters.training_format} onChange={e => set('training_format', e.target.value)} className="crm-input w-36">
+              <option value="">Все</option>
+              <option value="online">Онлайн</option>
+              <option value="offline">Оффлайн</option>
+            </select>
+          </div>
+          <div className="crm-filter-group">
+            <span className="crm-filter-label">Тренер</span>
+            <select value={filters.trainer_id} onChange={e => set('trainer_id', e.target.value)} className="crm-input w-44">
+              <option value="">Все тренеры</option>
+              {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+            </select>
+          </div>
+          <div className="crm-filter-group">
+            <span className="crm-filter-label">Менеджер</span>
+            <select value={filters.registered_by_id} onChange={e => set('registered_by_id', e.target.value)} className="crm-input w-44">
+              <option value="">Все</option>
+              {managers.map(m => (
+                <option key={m.id} value={m.user_id}>{m.last_name} {m.first_name}</option>
+              ))}
+            </select>
           </div>
         </div>
 
-        <div className="border-t border-slate-100 pt-3">
-          <p className="text-xs font-semibold text-slate-700 mb-2">Период регистрации клиентов</p>
-          <p className="text-xs text-slate-400 mb-2">Сводка «Регистрация клиентов» в PDF и показатели по дате записи</p>
-          <div className="flex gap-3 flex-wrap items-end">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">От</label>
-              <input type="date" value={filters.registered_from} onChange={e=>set('registered_from',e.target.value)} className="crm-input w-full sm:w-auto"/>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">До</label>
-              <input type="date" value={filters.registered_to} onChange={e=>set('registered_to',e.target.value)} className="crm-input w-full sm:w-auto"/>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Менеджер (кто зарегистрировал)</label>
-              <select value={filters.registered_by_id} onChange={e=>set('registered_by_id',e.target.value)} className="crm-input min-w-[200px]">
-                <option value="">Все</option>
-                {managers.map(m => (
-                  <option key={m.id} value={m.user_id}>{m.last_name} {m.first_name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-slate-100 pt-3">
-          <p className="text-xs font-semibold text-slate-700 mb-2">Срез по клиентам</p>
-          <div className="flex gap-3 flex-wrap items-end">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Формат обучения</label>
-              <select value={filters.training_format} onChange={e=>set('training_format',e.target.value)} className="crm-input">
-                <option value="">Все</option><option value="online">Онлайн</option><option value="offline">Оффлайн</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Тренер</label>
-              <select value={filters.trainer_id} onChange={e=>set('trainer_id',e.target.value)} className="crm-input min-w-[180px]">
-                <option value="">Все тренеры</option>
-                {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-2 flex-wrap pt-1">
+        <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
           <button type="button" onClick={applyFilters} className="crm-btn-primary">Применить</button>
           <button type="button" onClick={resetFilters} className="crm-btn-secondary">Сбросить</button>
         </div>
 
         {/* Выбор групп для НБ */}
-        <div className="border-t pt-3">
+        <div className="mt-4 pt-3 border-t border-slate-100">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-gray-500 font-medium">Группы для НБ:</span>
+            <span className="text-xs text-slate-500 font-semibold">Группы для журнала НБ:</span>
             <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
               {selectedGroupIds.length === 0
-                ? <span className="text-xs text-gray-400 italic">не выбраны</span>
+                ? <span className="text-xs text-slate-400">не выбраны</span>
                 : selectedGroupIds.map(gid => {
                     const g = allGroups.find(x => x.id === gid); if(!g) return null
                     return (
-                      <span key={gid} className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                      <span key={gid} className="flex items-center gap-1 px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-medium">
                         #{g.number}
-                        <button onClick={() => toggleGroup(gid)} className="hover:text-red-500 ml-0.5">×</button>
+                        <button onClick={() => toggleGroup(gid)} className="hover:text-red-600 ml-0.5 text-rose-400">×</button>
                       </span>
                     )
                   })
               }
             </div>
             <button onClick={() => setShowGroupPicker(v => !v)}
-              className="flex items-center gap-1 text-xs text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1.5 hover:bg-blue-50 transition shrink-0">
+              className={`flex items-center gap-1 text-xs border rounded-xl px-3 py-1.5 transition shrink-0 ${
+                showGroupPicker
+                  ? 'bg-rose-50 text-rose-600 border-rose-200'
+                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+              }`}>
               {showGroupPicker ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
               {showGroupPicker ? 'Скрыть' : 'Выбрать группы'}
             </button>
           </div>
 
           {showGroupPicker && (
-            <div className="mt-3 pt-3 border-t">
-              <div className="bg-gray-50 rounded-xl p-3 mb-3 flex flex-wrap gap-3 items-end">
-                <div className="relative">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
-                  <input type="text" placeholder="Поиск..." value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)}
-                    className="crm-input pl-7 w-48 text-xs"/>
-                  {pickerSearch && <button onClick={() => setPickerSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"><X size={12}/></button>}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className="bg-slate-50 rounded-xl p-3 mb-3 flex flex-wrap gap-2 items-end">
+                <div className="crm-filter-group">
+                  <span className="crm-filter-label">Поиск</span>
+                  <div className="relative">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"/>
+                    <input type="text" placeholder="Номер, тренер..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
+                      className="crm-input pl-7 w-40"/>
+                    {pickerSearch && <button onClick={() => setPickerSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"><X size={12}/></button>}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Статус</label>
-                  <select value={pickerStatus} onChange={e=>setPickerStatus(e.target.value)} className="crm-input text-xs">
-                    <option value="">Все</option><option value="active">Активные</option>
-                    <option value="recruitment">Набор</option><option value="completed">Завершённые</option>
+                <div className="crm-filter-group">
+                  <span className="crm-filter-label">Статус</span>
+                  <select value={pickerStatus} onChange={e => setPickerStatus(e.target.value)} className="crm-input w-36">
+                    <option value="">Все</option>
+                    <option value="active">Активные</option>
+                    <option value="recruitment">Набор</option>
+                    <option value="completed">Завершённые</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Старт от</label>
-                  <input type="date" value={pickerDateFrom} onChange={e=>setPickerDateFrom(e.target.value)} className="crm-input text-xs"/>
+                <div className="crm-filter-group">
+                  <span className="crm-filter-label">Старт от</span>
+                  <DateField value={pickerDateFrom} onChange={setPickerDateFrom} />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Старт до</label>
-                  <input type="date" value={pickerDateTo} onChange={e=>setPickerDateTo(e.target.value)} className="crm-input text-xs"/>
+                <div className="crm-filter-group">
+                  <span className="crm-filter-label">Старт до</span>
+                  <DateField value={pickerDateTo} onChange={setPickerDateTo} />
                 </div>
-                {(pickerSearch||pickerStatus!=='active'||pickerDateFrom||pickerDateTo) && (
+                {(pickerSearch || pickerStatus !== 'active' || pickerDateFrom || pickerDateTo) && (
                   <button onClick={() => { setPickerSearch(''); setPickerStatus('active'); setPickerDateFrom(''); setPickerDateTo('') }}
-                    className="text-xs text-gray-400 hover:underline">Сбросить</button>
+                    className="text-xs text-slate-400 hover:text-slate-700 transition self-end pb-1">Сброс</button>
                 )}
-                <div className="ml-auto text-xs text-gray-500">
-                  Найдено: <strong>{filteredGroups.length}</strong> из {allGroups.length}
-                </div>
+                <span className="text-xs text-slate-400 self-end pb-1 ml-auto">Найдено: {filteredGroups.length} из {allGroups.length}</span>
               </div>
               <div className="flex items-center gap-3 mb-2 text-xs">
-                <button onClick={selectFiltered} className="text-blue-600 hover:underline font-medium">
-                  Выбрать найденные ({filteredGroups.length})
-                </button>
-                <button onClick={() => setSelectedGroupIds(allGroups.map(g=>g.id))} className="text-blue-600 hover:underline">
-                  Все {allGroups.length}
-                </button>
-                <button onClick={() => setSelectedGroupIds([])} className="text-gray-400 hover:underline">Снять все</button>
+                <button onClick={selectFiltered} className="text-rose-600 hover:underline font-medium">Выбрать найденные ({filteredGroups.length})</button>
+                <button onClick={() => setSelectedGroupIds(allGroups.map(g => g.id))} className="text-rose-600 hover:underline">Все {allGroups.length}</button>
+                <button onClick={() => setSelectedGroupIds([])} className="text-slate-400 hover:underline">Снять все</button>
               </div>
               {filteredGroups.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 text-sm">Нет групп</div>
+                <div className="text-center py-6 text-slate-400 text-sm">Нет групп</div>
               ) : (
-                <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto pr-1">
+                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
                   {filteredGroups.map(g => {
                     const isSel = selectedGroupIds.includes(g.id)
                     return (
                       <button key={g.id} onClick={() => toggleGroup(g.id)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border-2 transition ${
-                          isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50'
+                          isSel ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200 hover:border-rose-300 hover:bg-rose-50'
                         }`}>
                         {isSel && <Check size={11}/>}
-                        Группа #{g.number}
-                        <span className={`px-1.5 py-0.5 rounded text-xs ${isSel ? 'bg-blue-500 text-white' : STATUS_COLOR[g.status]||'bg-gray-100'}`}>
+                        #{g.number}
+                        <span className={`px-1.5 py-0.5 rounded text-xs ${ isSel ? 'bg-rose-500 text-white' : STATUS_COLOR[g.status]||'bg-slate-100 text-slate-500' }`}>
                           {STATUS_LABEL_UI[g.status]||g.status}
                         </span>
-                        {g.group_type && <span className="opacity-60">{GROUP_TYPE_LABEL[g.group_type]}</span>}
-                        {g.trainer?.full_name && <span className="opacity-50 hidden sm:inline">· {g.trainer.full_name.split(' ')[0]}</span>}
-                        {g.start_date && <span className="opacity-40">{g.start_date.slice(0,7)}</span>}
+                        {g.trainer?.full_name && <span className="opacity-60 hidden sm:inline">{g.trainer.full_name.split(' ')[0]}</span>}
                       </button>
                     )
                   })}

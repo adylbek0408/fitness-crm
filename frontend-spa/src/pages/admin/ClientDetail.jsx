@@ -887,75 +887,96 @@ export default function ClientDetail() {
     ? Math.min(plan.total_cost > 0 ? (Number(plan.total_paid) / Number(plan.total_cost)) * 100 : 0, 100)
     : null
 
+  // Подсчитываем доминирующий цвет статуса для верхней полоски карточки
+  const STATUS_GRADIENT = {
+    new:       'linear-gradient(135deg,#ede9fe,#fdf4ff)',
+    active:    'linear-gradient(135deg,#d1fae5,#ecfdf5)',
+    frozen:    'linear-gradient(135deg,#e0f2fe,#f0f9ff)',
+    completed: 'linear-gradient(135deg,#f1f5f9,#f8fafc)',
+    expelled:  'linear-gradient(135deg,#ffe4e6,#fff1f2)',
+  }
+  const STATUS_LINE_COLOR = {
+    new: '#7c3aed', active: '#059669', frozen: '#0284c7', completed: '#94a3b8', expelled: '#e11d48',
+  }
+
   return (
     <AdminLayout user={user}>
-      {/* ── Хедер ── */}
-      <div className="flex items-start gap-4 mb-6 flex-wrap">
-        <Link to="/admin/clients"
-          className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm transition mt-1">
-          <ArrowLeft size={16} /> Назад
-        </Link>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="crm-page-title truncate">{client.full_name}</h2>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${STATUS_BADGE[client.status] || 'bg-slate-100 text-slate-600'}`}>
-              {client.status === 'frozen' && <Snowflake size={11} />}
-              {STATUS_LABEL[client.status]}
-            </span>
-            {client.is_repeat && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 flex items-center gap-1">
-                <RotateCcw size={11} /> Повторный
-              </span>
-            )}
-          </div>
-          <p className="crm-page-subtitle">Карточка клиента</p>
-        </div>
-      </div>
-
-      {/* ── Данные кабинета ── */}
-      <div className="crm-card p-5 mb-5"
-        style={{ background: 'linear-gradient(135deg,#eef2ff 0%,#f0f9ff 100%)', borderColor: '#c7d2fe' }}>
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-            <KeyRound size={15} className="text-indigo-600" />
-          </div>
-          <h3 className="font-bold text-indigo-900">Данные для входа в кабинет</h3>
-        </div>
-        {client.cabinet_username ? (
-          <div className="space-y-2.5 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-indigo-600/70">Логин:</span>
-              <code className="bg-white px-2.5 py-1 rounded-lg font-mono text-indigo-800 border border-indigo-100 text-xs font-bold">
-                {client.cabinet_username}
-              </code>
-              <CopyButton text={client.cabinet_username} />
-            </div>
-            {(newPassword || client.cabinet_password) && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-indigo-600/70">{newPassword ? 'Новый пароль:' : 'Пароль:'}</span>
-                <code className={`px-2.5 py-1 rounded-lg font-mono text-xs font-bold border ${
-                  newPassword ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-white text-indigo-800 border-indigo-100'
-                }`}>
-                  {newPassword || client.cabinet_password}
-                </code>
-                <CopyButton text={newPassword || client.cabinet_password} />
-                {newPassword && <span className="text-xs text-emerald-600 font-medium">✓ Пароль обновлён</span>}
+      {/* ── Hero ── */}
+      <div className="rounded-2xl overflow-hidden mb-5 border border-slate-100"
+        style={{ background: STATUS_GRADIENT[client.status] || '#f8fafc' }}>
+        {/* Цветная полоска соответствующего статуса */}
+        <div className="h-1.5 w-full" style={{ background: STATUS_LINE_COLOR[client.status] || '#94a3b8' }} />
+        <div className="p-5">
+          <div className="flex items-start gap-3 flex-wrap">
+            <Link to="/admin/clients"
+              className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm transition mt-0.5 shrink-0">
+              <ArrowLeft size={15} /> Назад
+            </Link>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap mb-1">
+                <h2 className="crm-page-title truncate">{client.full_name}</h2>
+                {client.is_repeat && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 flex items-center gap-1 shrink-0">
+                    <RotateCcw size={10} /> Повторный
+                  </span>
+                )}
               </div>
-            )}
-            <p className="text-indigo-600/70 text-xs">
-              Вход: <a href="/cabinet" target="_blank" rel="noreferrer" className="underline hover:text-indigo-800">/cabinet</a>
-            </p>
-            {resetError && <p className="text-red-500 text-xs">{resetError}</p>}
-            <button onClick={resetCabinetPassword} disabled={resetPasswordLoading}
-              className="crm-btn-primary text-xs py-2 disabled:opacity-60">
-              {resetPasswordLoading
-                ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                : <KeyRound size={13} />
-              }
-              Сбросить пароль
-            </button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-sm text-slate-500">{client.phone}</span>
+                <span className="text-slate-300">·</span>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[client.status] || 'bg-slate-100 text-slate-600'}`}>
+                  {client.status === 'frozen' && <Snowflake size={10} className="inline mr-1" />}
+                  {STATUS_LABEL[client.status]}
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  client.training_format === 'online' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'
+                }`}>
+                  {client.training_format === 'online' ? <Globe size={11} /> : <Dumbbell size={11} />}
+                  {client.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
+                </span>
+                {client.group && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                    Группа #{client.group.number}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-        ) : <p className="text-sm text-indigo-700/70">Кабинет не создан.</p>}
+
+          {/* Кабинет — компактно в hero */}
+          {client.cabinet_username && (
+            <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
+              <div className="flex items-center gap-2">
+                <KeyRound size={12} className="text-slate-400" />
+                <span className="text-slate-500">Логин:</span>
+                <code className="bg-white/80 px-2 py-0.5 rounded font-mono font-semibold text-slate-700 border border-slate-200">{client.cabinet_username}</code>
+                <CopyButton text={client.cabinet_username} />
+              </div>
+              {(newPassword || client.cabinet_password) && (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500">Пароль:</span>
+                  <code className={`px-2 py-0.5 rounded font-mono font-semibold border ${
+                    newPassword ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-white/80 text-slate-700 border-slate-200'
+                  }`}>{newPassword || client.cabinet_password}</code>
+                  <CopyButton text={newPassword || client.cabinet_password} />
+                  {newPassword && <span className="text-emerald-600 font-medium">✓ Обновлён</span>}
+                </div>
+              )}
+              <button onClick={resetCabinetPassword} disabled={resetPasswordLoading}
+                className="flex items-center gap-1 text-slate-400 hover:text-indigo-600 transition disabled:opacity-50">
+                {resetPasswordLoading
+                  ? <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  : <KeyRound size={11} />
+                }
+                <span>Сбросить пароль</span>
+              </button>
+            </div>
+          )}
+          {!client.cabinet_username && (
+            <p className="text-xs text-slate-400 mt-3"><KeyRound size={11} className="inline mr-1" />Кабинет не создан</p>
+          )}
+          {resetError && <p className="text-red-500 text-xs mt-1">{resetError}</p>}
+        </div>
       </div>
 
       {/* ── Инфо + Оплата ── */}

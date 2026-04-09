@@ -29,8 +29,9 @@ ENV/
 env.bak/
 venv.bak/
 
-# Разрешаем .env фронтенда (продакшн URL)
+# Разрешаем конфиги фронтенда (продакшн URL)
 !frontend-spa/.env
+!frontend-spa/.env.production
 
 # Django
 *.log

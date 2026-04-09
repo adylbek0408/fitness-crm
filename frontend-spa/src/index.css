@@ -337,3 +337,30 @@
 .mobile-daypicker-wrap .rdp-months { justify-content: center; }
 .mobile-daypicker-wrap .rdp-caption_label { font-weight: 600; color: var(--text); }
 .mobile-daypicker-wrap .rdp-head_cell, .mobile-daypicker-wrap .rdp-day { font-size: 13px; }
+
+/* ── rdp calendar (admin desktop DateField) ── */
+.admin-daypicker-wrap .rdp {
+  --rdp-cell-size: 34px;
+  --rdp-accent-color: #be185d;
+  --rdp-background-color: #fce7f3;
+  margin: 0;
+}
+.admin-daypicker-wrap .rdp-months { justify-content: center; }
+.admin-daypicker-wrap .rdp-caption_label { font-size: 13px; font-weight: 600; color: #1c1420; }
+.admin-daypicker-wrap .rdp-head_cell { font-size: 11px; color: #b09aac; font-weight: 600; }
+.admin-daypicker-wrap .rdp-day { font-size: 12px; font-weight: 500; border-radius: 8px; }
+.admin-daypicker-wrap .rdp-day_today:not(.rdp-day_selected) { color: #be185d; font-weight: 700; }
+.admin-daypicker-wrap .rdp-nav_button { border-radius: 8px; }
+.admin-daypicker-wrap .rdp-button:hover:not([disabled]):not(.rdp-day_selected) { background: #fce7f3; color: #be185d; }
+
+/* ── Filter helpers ── */
+.crm-filter-label { display: block; font-size: 10.5px; font-weight: 600; color: #b09aac; margin-bottom: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
+.crm-filter-group { display: flex; flex-direction: column; }
+.crm-date-range { display: flex; align-items: flex-end; gap: 6px; }
+.crm-date-range-sep { font-size: 11px; color: #b09aac; flex-shrink: 0; padding-bottom: 8px; }
+
+/* ── Tag chips (GroupForm / filter) ── */
+.crm-tag-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 13px; border-radius: 20px; font-size: 12.5px; font-weight: 500; border: 1.5px solid #ece4e8; background: #ffffff; color: #7a6878; cursor: pointer; transition: all 0.13s; user-select: none; white-space: nowrap; }
+.crm-tag-chip:hover { border-color: #f9a8d4; background: #fff5f8; color: #be185d; }
+.crm-tag-chip.active { background: #fce7f3; border-color: #f9a8d4; color: #be185d; font-weight: 600; }
+.crm-tag-chip.active:hover { background: #fbcfe8; }

@@ -104,12 +104,12 @@ export default function ClientList() {
 
         <button type="button" onClick={() => setFiltersOpen(o => !o)}
         className="w-full flex items-center justify-between py-3 px-4 rounded-2xl touch-manipulation min-h-[48px] transition"
-          style={{ background: '#fff', border: '1px solid var(--border)', color: 'var(--text)', fontWeight: 600, fontSize: 15 }}>
+          style={{ background: filtersOpen ? '#fce7f3' : '#fff', border: `1px solid ${filtersOpen ? '#f9a8d4' : 'var(--border)'}`, color: filtersOpen ? '#be185d' : 'var(--text)', fontWeight: 600, fontSize: 15 }}>
           <span className="inline-flex items-center gap-2">
             <SlidersHorizontal size={18} />
             Фильтры
             {activeFiltersCount > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-blue-600 text-white text-xs font-semibold">
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-rose-600 text-white text-xs font-semibold">
                 {activeFiltersCount}
               </span>
             )}
@@ -119,39 +119,45 @@ export default function ClientList() {
 
         {!filtersOpen && activeFiltersCount > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
-            {status && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>Статус: {STATUS_LABEL[status]}</span>}
-            {format && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>Формат: {format === 'online' ? 'Онлайн' : 'Оффлайн'}</span>}
-            {paymentStatus && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>Оплата: {paymentStatus === 'paid' ? 'Оплачено' : 'Есть остаток'}</span>}
+            {status && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>{STATUS_LABEL[status]}</span>}
+            {format && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>{format === 'online' ? 'Онлайн' : 'Оффлайн'}</span>}
+            {paymentStatus && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>{paymentStatus === 'paid' ? 'Оплачено' : 'Есть остаток'}</span>}
             {registeredFrom && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>С: {registeredFrom}</span>}
             {registeredTo && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>По: {registeredTo}</span>}
           </div>
         )}
 
         {filtersOpen && (
-          <div className="space-y-3 pt-1 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+          <div className="space-y-3 pt-1 rounded-2xl border border-pink-100 p-4 bg-pink-50/40">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <select value={status} onChange={e => setStatus(e.target.value)}
-                className="crm-mobile-select">
-                <option value="">Все статусы</option>
-                <option value="new">Новые</option>
-                <option value="active">Активные</option>
-                <option value="frozen">Заморозка</option>
-                <option value="completed">Завершили</option>
-                <option value="expelled">Отчислены</option>
-              </select>
-              <select value={format} onChange={e => setFormat(e.target.value)}
-                className="crm-mobile-select">
-                <option value="">Онлайн и Оффлайн</option>
-                <option value="online">Онлайн</option>
-                <option value="offline">Оффлайн</option>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Статус</label>
+                <select value={status} onChange={e => setStatus(e.target.value)} className="crm-mobile-input crm-mobile-select">
+                  <option value="">Все</option>
+                  <option value="new">Новые</option>
+                  <option value="active">Активные</option>
+                  <option value="frozen">Заморозка</option>
+                  <option value="completed">Завершили</option>
+                  <option value="expelled">Отчислены</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Формат</label>
+                <select value={format} onChange={e => setFormat(e.target.value)} className="crm-mobile-input crm-mobile-select">
+                  <option value="">Все</option>
+                  <option value="online">Онлайн</option>
+                  <option value="offline">Оффлайн</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Оплата</label>
+              <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)} className="crm-mobile-input crm-mobile-select">
+                <option value="">Все</option>
+                <option value="paid">Оплачено</option>
+                <option value="unpaid">Есть остаток</option>
               </select>
             </div>
-            <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)}
-              className="crm-mobile-select">
-              <option value="">Все по оплате</option>
-              <option value="paid">Оплатили полностью</option>
-              <option value="unpaid">Есть остаток</option>
-            </select>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <MobileDateField label="Регистрация с" value={registeredFrom} onChange={setRegisteredFrom} />
               <MobileDateField label="Регистрация по" value={registeredTo} onChange={setRegisteredTo} />

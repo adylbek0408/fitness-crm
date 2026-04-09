@@ -1,0 +1,25 @@
+[Unit]
+Description=Fitness CRM — Gunicorn Django
+After=network.target postgresql.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/fitness-crm
+EnvironmentFile=/var/www/fitness-crm/.env
+ExecStart=/var/www/fitness-crm/venv/bin/gunicorn \
+    --workers 3 \
+    --bind unix:/run/fitness-crm.sock \
+    --access-logfile /var/log/fitness-crm/access.log \
+    --error-logfile /var/log/fitness-crm/error.log \
+    --timeout 120 \
+    config.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

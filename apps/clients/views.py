@@ -84,9 +84,15 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='stats-summary')
     def stats_summary(self, request):
-        qs = self.filter_queryset(self.get_queryset())
+        # Используем лёгкий queryset без select_related/prefetch_related,
+        # чтобы JOIN-ы не ломали COUNT при GROUP BY
+        simple_qs = Client.objects.filter(deleted_at__isnull=True)
+        qs = self.filter_queryset(simple_qs)
         total = qs.count()
-        by_status = {r['status']: r['c'] for r in qs.values('status').annotate(c=Count('id'))}
+        by_status = {
+            r['status']: r['c']
+            for r in qs.values('status').annotate(c=Count('id', distinct=True))
+        }
         return Response({'total': total, 'by_status': by_status})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar])
