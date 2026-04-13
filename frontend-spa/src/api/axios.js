@@ -53,6 +53,10 @@ api.interceptors.response.use(
               refresh: refreshToken
             })
             localStorage.setItem('access_token', r.data.access)
+            // Сохраняем новый refresh токен (ROTATE_REFRESH_TOKENS=True на бэке)
+            if (r.data.refresh) {
+              localStorage.setItem('refresh_token', r.data.refresh)
+            }
             originalRequest.headers.Authorization = `Bearer ${r.data.access}`
             return api(originalRequest)
           } catch {

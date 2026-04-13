@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'apps.attendance',
     'apps.trainers',
     'apps.statistics',
+    'rest_framework_simplejwt.token_blacklist',
 ]
 
 MIDDLEWARE = [
@@ -120,4 +121,6 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=12),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,   # старые refresh блокируются после ротации
+    'UPDATE_LAST_LOGIN': True,           # обновляет last_login при каждом входе
 }

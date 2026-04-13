@@ -188,8 +188,9 @@ export default function GroupForm() {
     setForm(f => {
       if (v === 'online') {
         const prev = f.online_subscription_tags || []
-        const seed =
-          !isEdit && prev.length === 0 ? [...DEFAULT_ONLINE_SUBSCRIPTION_TAGS] : prev
+        // При создании — пустой массив (пользователь выбирает сам)
+        // При редактировании — оставляем сохранённые теги
+        const seed = isEdit ? prev : []
         return { ...f, training_format: 'online', group_type: '', online_subscription_tags: seed }
       }
       return { ...f, training_format: 'offline', online_subscription_tags: [] }
