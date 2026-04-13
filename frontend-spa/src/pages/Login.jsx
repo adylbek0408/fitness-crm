@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
 const LogoIcon = ({ size = 36 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -10,6 +11,7 @@ const LogoIcon = ({ size = 36 }) => (
 import api from '../api/axios'
 
 export default function Login({ defaultMode = 'staff' }) {
+  const { login } = useAuth()
   const [mode, setMode] = useState(defaultMode)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -38,9 +40,9 @@ export default function Login({ defaultMode = 'staff' }) {
         nav('/cabinet/profile')
       } else {
         const r = await api.post('/accounts/token/', { username, password })
-        localStorage.setItem('access_token', r.data.access)
-        localStorage.setItem('refresh_token', r.data.refresh)
-        nav(r.data.role === 'admin' ? '/admin/dashboard' : '/mobile')
+        // login() сохраняет токены + загружает /accounts/me/ → обновляет AuthContext
+        const userData = await login(r.data.access, r.data.refresh)
+        nav(userData?.role === 'admin' ? '/admin/dashboard' : '/mobile')
       }
     } catch (e) {
       const msg = e.response?.data?.detail || 'Неверный логин или пароль'

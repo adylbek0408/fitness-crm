@@ -101,6 +101,7 @@ export default function Groups() {
   const [trainers, setTrainers] = useState([])
   const [status, setStatus] = useState('')
   const [trainer, setTrainer] = useState('')
+  const [format, setFormat] = useState('')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('active')
@@ -110,6 +111,7 @@ export default function Groups() {
     const params = new URLSearchParams()
     if (status) params.append('status', status)
     if (trainer) params.append('trainer', trainer)
+    if (format) params.append('training_format', format)
     params.append('page_size', '200')
     const r = await api.get(`/groups/?${params}`)
     setGroups(r.data.results || [])
@@ -119,7 +121,10 @@ export default function Groups() {
   useEffect(() => {
     api.get('/trainers/?page_size=100').then(r => setTrainers(r.data.results || []))
   }, [])
-  useEffect(() => { load() }, [status, trainer])
+  useEffect(() => { load() }, [status, trainer, format])
+
+  const resetFilters = () => { setSearch(''); setTrainer(''); setFormat('') }
+  const hasFilters = !!(search || trainer || format)
 
   const closeGroup = async (id) => {
     if (!confirm('Закрыть группу? Все активные клиенты станут «Завершили»')) return
@@ -159,25 +164,60 @@ export default function Groups() {
         </Link>
       </div>
 
-      {/* ── Поиск + фильтр тренера ── */}
-      <div className="crm-card p-3 mb-4 flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[160px]">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-xs)' }} />
-          <input type="text" placeholder="Поиск группы..."
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="crm-input pl-8" />
+      {/* ── Фильтры ── */}
+      <div className="crm-card p-3 mb-4">
+        <div className="flex flex-wrap gap-2 items-end">
+
+          {/* Поиск */}
+          <div className="crm-filter-group flex-1 min-w-[180px]">
+            <span className="crm-filter-label">Поиск</span>
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-xs)' }} />
+              <input type="text" placeholder="Номер группы, тренер..."
+                value={search} onChange={e => setSearch(e.target.value)}
+                className="crm-input pl-8" />
+              {search && (
+                <button onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 transition"
+                  style={{ color: 'var(--text-xs)' }}>
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Тренер */}
+          <div className="crm-filter-group">
+            <span className="crm-filter-label">Тренер</span>
+            <select value={trainer} onChange={e => setTrainer(e.target.value)}
+              className="crm-input w-44">
+              <option value="">Все тренеры</option>
+              {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+            </select>
+          </div>
+
+          {/* Формат */}
+          <div className="crm-filter-group">
+            <span className="crm-filter-label">Формат</span>
+            <select value={format} onChange={e => setFormat(e.target.value)}
+              className="crm-input w-36">
+              <option value="">Все форматы</option>
+              <option value="online">Онлайн</option>
+              <option value="offline">Оффлайн</option>
+            </select>
+          </div>
+
+          {/* Сброс */}
+          {hasFilters && (
+            <button onClick={resetFilters}
+              className="flex items-center gap-1.5 text-xs transition pb-[1px]"
+              style={{ color: 'var(--text-xs)' }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-xs)'}>
+              <X size={13} /> Сброс
+            </button>
+          )}
         </div>
-        <select value={trainer} onChange={e => setTrainer(e.target.value)}
-          className="crm-input w-full sm:w-44">
-          <option value="">Все тренеры</option>
-          {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
-        </select>
-        {(search || trainer) && (
-          <button onClick={() => { setSearch(''); setTrainer('') }}
-            className="flex items-center gap-1 text-xs transition" style={{ color: 'var(--text-xs)' }}>
-            <X size={13} /> Сброс
-          </button>
-        )}
       </div>
 
       {/* ── Табы ── */}

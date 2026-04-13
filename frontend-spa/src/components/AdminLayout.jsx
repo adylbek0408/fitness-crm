@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Layers2, UserCircle, Users,
   BarChart2, UserCog, LogOut, Trash2,
 } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
 const links = [
   { to: '/admin/dashboard',  icon: LayoutDashboard, label: 'Дашборд'    },
@@ -29,7 +30,8 @@ const roleLabel = (role) =>
 
 export default function AdminLayout({ children, user }) {
   const nav = useNavigate()
-  const logout = () => { localStorage.clear(); nav('/login') }
+  const { logout } = useAuth()
+  const handleLogout = () => { logout(); nav('/login') }
   const displayName = user?.display_name || user?.username
 
   return (
@@ -101,7 +103,7 @@ export default function AdminLayout({ children, user }) {
               <p className="text-white text-xs font-medium truncate">{displayName}</p>
               <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{roleLabel(user?.role)}</p>
             </div>
-            <button onClick={logout} title="Выйти"
+            <button onClick={handleLogout} title="Выйти"
               className="p-1.5 rounded-md transition opacity-0 group-hover:opacity-100"
               style={{ color: 'rgba(255,255,255,0.4)' }}
               onMouseEnter={e => { e.currentTarget.style.color = '#fda4af'; e.currentTarget.style.background = 'rgba(244,63,94,0.12)' }}
@@ -125,7 +127,8 @@ export default function AdminLayout({ children, user }) {
           <span className="text-white font-bold text-sm flex-1 truncate">CRM система</span>
           <button onClick={logout}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition"
-            style={{ color: '#fda4af', border: '1px solid rgba(253,164,175,0.2)' }}>
+            style={{ color: '#fda4af', border: '1px solid rgba(253,164,175,0.2)' }}
+            onClick={handleLogout}>
             <LogOut size={13} /> Выйти
           </button>
         </div>

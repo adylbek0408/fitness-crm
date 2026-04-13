@@ -19,9 +19,11 @@ import MobileClientDetail from './pages/mobile/ClientDetail'
 import CabinetLogin from './pages/cabinet/CabinetLogin'
 import CabinetProfile from './pages/cabinet/CabinetProfile'
 import { RefreshProvider } from './contexts/RefreshContext'
+import { AuthProvider } from './contexts/AuthContext'
 
 export default function App() {
   return (
+    <AuthProvider>
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -52,5 +54,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
+    </AuthProvider>
   )
 }
