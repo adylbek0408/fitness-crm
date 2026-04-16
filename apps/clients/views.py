@@ -56,7 +56,12 @@ class ClientViewSet(viewsets.ModelViewSet):
             data['trainer_id'] = str(data.pop('trainer').id)
         else:
             data.pop('trainer', None)
-        client = self.service.create_client(data, registered_by=request.user)
+        try:
+            client = self.service.create_client(data, registered_by=request.user)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
         out = ClientReadSerializer(client).data
         if getattr(client, '_cabinet_username_plain', None):
             out['cabinet_username'] = client._cabinet_username_plain
@@ -73,7 +78,10 @@ class ClientViewSet(viewsets.ModelViewSet):
             data['group_id'] = str(data.pop('group').id) if data['group'] else None
         if 'trainer' in data:
             data['trainer_id'] = str(data.pop('trainer').id) if data['trainer'] else None
-        client = self.service.update_client(str(instance.id), data)
+        try:
+            client = self.service.update_client(str(instance.id), data)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(ClientReadSerializer(client).data)
 
     def destroy(self, request, *args, **kwargs):
@@ -98,7 +106,12 @@ class ClientViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar])
     def change_status(self, request, pk=None):
         new_status = request.data.get('status')
-        client = self.service.change_status(pk, new_status)
+        try:
+            client = self.service.change_status(pk, new_status)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
         return Response(ClientReadSerializer(client).data)
 
     @action(detail=True, methods=['get'])
@@ -168,7 +181,12 @@ class ClientViewSet(viewsets.ModelViewSet):
         Body: { group_id, payment_type, payment_data: {amount} | {total_cost, deadline},
                 bonus_percent?: 0–100 (процент бонуса с этой оплаты) }
         """
-        client = self.service.re_enroll_client(pk, request.data, user=request.user)
+        try:
+            client = self.service.re_enroll_client(pk, request.data, user=request.user)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
         return Response(ClientReadSerializer(client).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='refund')
