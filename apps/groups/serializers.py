@@ -43,8 +43,11 @@ class GroupWriteSerializer(serializers.ModelSerializer):
         s = (value or '').strip()
         if not s:
             raise serializers.ValidationError('Укажите номер группы')
-        if not re.match(r'^[\w\-А-Яа-яЁё]+$', s):
-            raise serializers.ValidationError('Допустимы буквы, цифры, дефис и подчёркивание')
+        # Разрешаем: буквы (латиница + кириллица), цифры, пробел, точку, двоеточие, дефис, подчёркивание, /, запятую
+        if not re.match(r'^[A-Za-zА-Яа-яЁё0-9 .,:/_\-]+$', s):
+            raise serializers.ValidationError(
+                'Допустимы буквы, цифры, пробел, точка, двоеточие, дефис, подчёркивание'
+            )
         return s
 
     def validate(self, data):

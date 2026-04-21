@@ -44,6 +44,10 @@ class Client(UUIDTimestampedModel):
     first_name = models.CharField(max_length=100)
     last_name  = models.CharField(max_length=100)
     phone      = models.CharField(max_length=20, unique=True)
+    telegram_link = models.CharField(
+        max_length=300, blank=True, default='',
+        help_text='Ссылка на Telegram (для онлайн-клиентов); если заполнено — клиент считается как «из ТГ»',
+    )
 
     training_format = models.CharField(max_length=10, choices=TRAINING_FORMAT_CHOICES)
     group_type      = models.CharField(

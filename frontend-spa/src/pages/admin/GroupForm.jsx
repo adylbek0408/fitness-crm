@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link, useOutletContext } from 'react-router-dom'
-import { Save, ArrowLeft, Calendar, Clock, Plus, X, Check } from 'lucide-react'
+import { Save, ArrowLeft, Calendar, Clock, Check } from 'lucide-react'
 
 const DEFAULT_ONLINE_SUBSCRIPTION_TAGS = ['Вип', 'Про', 'Интенсив', 'Марафон']
 import api from '../../api/axios'
@@ -45,91 +45,58 @@ function Field({ label, required, hint, children }) {
   )
 }
 
-// ── Компонент подписок/вариантов (chips) ─────────────────────────────────────
+// ── Компонент подписок онлайн: ОДИН вариант (как статус) ─────────────────────
 function SubscriptionTagsField({ tags, onChange }) {
-  const [customInput, setCustomInput] = useState('')
+  // tags — массив для совместимости с бэком, но по факту выбираем один
+  const current = (tags && tags.length > 0) ? tags[0] : ''
 
-  const togglePreset = (tag) => {
-    if (tags.includes(tag)) {
-      onChange(tags.filter(t => t !== tag))
+  const select = (tag) => {
+    if (current === tag) {
+      onChange([]) // снять выбор
     } else {
-      onChange([...tags, tag])
+      onChange([tag])
     }
   }
 
-  const removeCustom = (tag) => {
-    onChange(tags.filter(t => t !== tag))
+  const COLOR_MAP = {
+    'Вип':       'border-rose-400 bg-rose-50 text-rose-700',
+    'Про':       'border-indigo-400 bg-indigo-50 text-indigo-700',
+    'Интенсив':  'border-amber-400 bg-amber-50 text-amber-700',
+    'Марафон':   'border-violet-400 bg-violet-50 text-violet-700',
   }
-
-  const addCustom = () => {
-    const v = customInput.trim()
-    if (v && !tags.includes(v)) {
-      onChange([...tags, v])
-    }
-    setCustomInput('')
-  }
-
-  const customTags = tags.filter(t => !DEFAULT_ONLINE_SUBSCRIPTION_TAGS.includes(t))
 
   return (
     <div>
       <label className="block text-sm font-semibold text-slate-700 mb-2">
-        Подписки / варианты
+        Подписка <span className="text-red-400">*</span>
       </label>
       <p className="text-xs text-slate-400 mb-3">
-        Выберите из готовых или добавьте свои. Выбранные теги сохраняются в группе.
+        Выберите одну подписку — она сохранится в группе.
       </p>
 
-      {/* Preset chips */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {DEFAULT_ONLINE_SUBSCRIPTION_TAGS.map(tag => (
-          <button
-            key={tag}
-            type="button"
-            onClick={() => togglePreset(tag)}
-            className={`crm-tag-chip ${tags.includes(tag) ? 'active' : ''}`}
-          >
-            {tags.includes(tag) && <Check size={12} />}
-            {tag}
-          </button>
-        ))}
-      </div>
-
-      {/* Custom added tags */}
-      {customTags.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-3">
-          {customTags.map(tag => (
-            <span key={tag}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+      <div className="flex flex-wrap gap-2">
+        {DEFAULT_ONLINE_SUBSCRIPTION_TAGS.map(tag => {
+          const isActive = current === tag
+          return (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => select(tag)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition flex items-center gap-1.5 ${
+                isActive
+                  ? COLOR_MAP[tag] || 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              {isActive && <Check size={12} />}
               {tag}
-              <button type="button" onClick={() => removeCustom(tag)}
-                className="text-indigo-400 hover:text-red-500 transition">
-                <X size={11} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Добавить свой */}
-      <div className="flex gap-2 items-center max-w-sm">
-        <input
-          type="text"
-          value={customInput}
-          onChange={e => setCustomInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
-          placeholder="Добавить свой вариант..."
-          className="crm-input flex-1"
-        />
-        <button type="button" onClick={addCustom}
-          disabled={!customInput.trim()}
-          className="crm-btn-secondary shrink-0 disabled:opacity-40">
-          <Plus size={14} />
-        </button>
+            </button>
+          )
+        })}
       </div>
 
-      {tags.length === 0 && (
-        <p className="text-xs text-amber-600 mt-2">Выберите хотя бы один вариант</p>
+      {!current && (
+        <p className="text-xs text-amber-600 mt-2">Выберите одну подписку</p>
       )}
     </div>
   )

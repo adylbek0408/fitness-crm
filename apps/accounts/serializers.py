@@ -52,6 +52,7 @@ class ManagerSerializer(serializers.ModelSerializer):
     login_username = serializers.CharField(source='user.username', read_only=True)
     role = serializers.CharField(source='user.role', read_only=True)
     is_active = serializers.BooleanField(source='user.is_active', read_only=True)
+    date_joined = serializers.DateTimeField(source='user.date_joined', read_only=True)
     password_plain = serializers.CharField(read_only=True)
     clients_count = serializers.SerializerMethodField()
 
@@ -64,13 +65,14 @@ class ManagerSerializer(serializers.ModelSerializer):
             'login_username',
             'role',
             'is_active',
+            'date_joined',
             'first_name',
             'last_name',
             'phone',
             'password_plain',
             'clients_count',
         )
-        read_only_fields = ('id', 'user_id', 'username', 'login_username', 'role', 'is_active', 'password_plain')
+        read_only_fields = ('id', 'user_id', 'username', 'login_username', 'role', 'is_active', 'date_joined', 'password_plain')
 
     def get_clients_count(self, obj):
         return Client.objects.filter(registered_by=obj.user, deleted_at__isnull=True).count()

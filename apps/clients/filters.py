@@ -23,11 +23,24 @@ class ClientFilter(django_filters.FilterSet):
         choices=[('', 'Все'), ('paid', 'Оплатили полностью'), ('unpaid', 'Есть остаток')],
         method='filter_payment_status'
     )
+    from_telegram = django_filters.ChoiceFilter(
+        choices=[('', 'Все'), ('yes', 'Из Telegram'), ('no', 'Обычные')],
+        method='filter_from_telegram'
+    )
 
     class Meta:
         model = Client
         # registered_by задан вручную (filter_registered_by), не дублировать в fields
         fields = ['group', 'trainer', 'status', 'training_format', 'group_type', 'is_repeat']
+
+    def filter_from_telegram(self, queryset, name, value):
+        if not value:
+            return queryset
+        if value == 'yes':
+            return queryset.exclude(telegram_link='').exclude(telegram_link__isnull=True)
+        if value == 'no':
+            return queryset.filter(Q(telegram_link='') | Q(telegram_link__isnull=True))
+        return queryset
 
     def filter_registered_by(self, queryset, name, value):
         """

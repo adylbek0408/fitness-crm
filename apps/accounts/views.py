@@ -22,6 +22,7 @@ from apps.accounts.serializers import (
 )
 from apps.clients.models import Client
 from apps.clients.serializers import ClientListMinimalSerializer
+from apps.accounts.filters import ManagerFilter
 
 
 UserModel = get_user_model()
@@ -48,6 +49,10 @@ class UserMeView(APIView):
 
 class ManagerViewSet(viewsets.ModelViewSet):
     queryset = ManagerProfile.objects.select_related('user').filter(deleted_at__isnull=True)
+    filterset_class = ManagerFilter
+    search_fields = ['first_name', 'last_name', 'phone', 'user__username']
+    ordering_fields = ['user__date_joined', 'last_name']
+    ordering = ['-user__date_joined']
 
     def get_permissions(self):
         return [IsAdmin()]

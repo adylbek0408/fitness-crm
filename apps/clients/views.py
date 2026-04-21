@@ -23,12 +23,31 @@ class ClientViewSet(viewsets.ModelViewSet):
     ordering_fields = ['registered_at', 'last_name', 'status']
 
     def get_queryset(self):
-        return Client.objects.filter(deleted_at__isnull=True).select_related(
+        qs = Client.objects.filter(deleted_at__isnull=True).select_related(
             'group', 'trainer', 'registered_by', 'cabinet_account'
         ).prefetch_related(
             Prefetch('full_payments', queryset=FullPayment.objects.order_by('-created_at')),
             Prefetch('installment_plans', queryset=InstallmentPlan.objects.order_by('-created_at').prefetch_related('payments')),
         ).order_by('-registered_at')
+
+        # Менеджеры (registrar) видят только своих клиентов;
+        # админ / superuser видит всех.
+        user = self.request.user
+        role = getattr(user, 'role', None)
+        if not (user.is_superuser or role == 'admin'):
+            from django.db.models import Q
+            from apps.accounts.models import ManagerProfile
+            mp = ManagerProfile.objects.filter(user_id=user.pk).first()
+            snap = ''
+            if mp:
+                snap = f'{mp.last_name} {mp.first_name}'.strip()
+            if snap:
+                qs = qs.filter(
+                    Q(registered_by_id=user.pk) | Q(registered_by_name__iexact=snap)
+                ).distinct()
+            else:
+                qs = qs.filter(registered_by_id=user.pk)
+        return qs
 
     def get_permissions(self):
         if self.action == 'create':
@@ -154,6 +173,64 @@ class ClientViewSet(viewsets.ModelViewSet):
             for r in records
         ]
         return Response(data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[IsAdminOrRegistrar], url_path='edit-info')
+    def edit_info(self, request, pk=None):
+        """
+        PATCH /api/clients/{id}/edit-info/
+        Редактирование: ФИО, телефон, группа.
+        Доступно всем (admin + registrar).
+        Body: { first_name?, last_name?, phone?, group_id? }
+        """
+        instance = self.get_object()
+        data = request.data.copy()
+
+        # Нормализуем group_id → group
+        if 'group_id' in data:
+            gid = data.pop('group_id')
+            if gid:
+                from apps.groups.models import Group
+                try:
+                    grp = Group.objects.get(id=gid)
+                    if grp.status == 'completed':
+                        return Response({'detail': 'Нельзя перевести в завершённый поток'}, status=status.HTTP_400_BAD_REQUEST)
+                    data['group'] = gid
+                    # автоматом ставим тренера из группы если не задан
+                    if not data.get('trainer') and grp.trainer_id:
+                        data['trainer'] = str(grp.trainer_id)
+                except Group.DoesNotExist:
+                    return Response({'detail': 'Поток не найден'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                data['group'] = None
+
+        allowed = {'first_name', 'last_name', 'phone', 'group', 'trainer'}
+        filtered = {k: v for k, v in data.items() if k in allowed}
+
+        serializer = ClientUpdateSerializer(instance, data=filtered, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            client = self.service.update_client(str(instance.id), dict(serializer.validated_data))
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ClientReadSerializer(client).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='cancel-payment')
+    def cancel_payment(self, request, pk=None):
+        """
+        POST /api/clients/{id}/cancel-payment/
+        Полная отмена текущей оплаты клиента:
+        — удаляет FullPayment или InstallmentPlan (со всеми частичными платежами)
+        — аннулирует начисленные бонусы с этой оплаты
+        — сбрасывает payment_type / bonus_percent / group (клиент → статус 'new')
+        После этого менеджер заново выбирает тип оплаты и вводит данные.
+        """
+        try:
+            result = self.service.cancel_payment(pk, user=request.user)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(result)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='add-to-group')
     def add_to_group(self, request, pk=None):

@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import {
   UserPlus, Users, PowerOff, Eye, Shield,
-  Phone, X, ChevronRight, Pencil
+  Phone, X, ChevronRight, Pencil, Search
 } from 'lucide-react'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
+import DateField from '../../components/DateField'
 import { STATUS_BADGE, STATUS_LABEL } from '../../utils/format'
 
 function ManagerAvatar({ name }) {
@@ -23,6 +24,7 @@ function ManagerAvatar({ name }) {
 export default function Managers() {
   const { user } = useOutletContext()
   const [managers, setManagers] = useState([])
+  const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [selectedManager, setSelectedManager] = useState(null)
   const [managerClients, setManagerClients] = useState([])
@@ -34,12 +36,31 @@ export default function Managers() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  // ── Фильтры: поиск + даты
+  const [search, setSearch] = useState('')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+
   const load = async () => {
-    const r = await api.get('/accounts/managers/')
-    setManagers(r.data.results || r.data || [])
+    setLoading(true)
+    try {
+      // Запрашиваем сразу всех (до 500), чтобы страницы DRF не скрывали часть менеджеров
+      const params = new URLSearchParams({ page_size: '500', ordering: '-user__date_joined' })
+      if (search.trim())  params.append('q', search.trim())
+      if (createdFrom)    params.append('created_from', createdFrom)
+      if (createdTo)      params.append('created_to', createdTo)
+      const r = await api.get(`/accounts/managers/?${params}`)
+      setManagers(r.data.results || r.data || [])
+    } finally {
+      setLoading(false)
+    }
   }
 
-  useEffect(() => { load() }, [])
+  // debounce поиска + реакция на даты
+  useEffect(() => {
+    const t = setTimeout(load, 250)
+    return () => clearTimeout(t)
+  }, [search, createdFrom, createdTo])
 
   const handleCreate = async e => {
     e.preventDefault(); setError(''); setSuccess('')
@@ -115,6 +136,46 @@ export default function Managers() {
 
       {success && <div className="crm-toast-success mb-5 animate-fade-in whitespace-pre-wrap">{success}</div>}
 
+      {/* Поиск + фильтр по дате */}
+      <div className="crm-card p-4 mb-5">
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text" placeholder="Поиск: фамилия, имя, логин, телефон..."
+              value={search} onChange={e => setSearch(e.target.value)}
+              className="crm-input pl-9 w-full"
+            />
+            {search && (
+              <button type="button" onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="crm-filter-group">
+            <span className="crm-filter-label">С даты</span>
+            <DateField value={createdFrom} onChange={setCreatedFrom} />
+          </div>
+          <div className="crm-filter-group">
+            <span className="crm-filter-label">По дату</span>
+            <DateField value={createdTo} onChange={setCreatedTo} align="right" />
+          </div>
+          {(search || createdFrom || createdTo) && (
+            <button type="button"
+              onClick={() => { setSearch(''); setCreatedFrom(''); setCreatedTo('') }}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-700 transition self-end pb-2.5">
+              <X size={13} /> Сбросить
+            </button>
+          )}
+        </div>
+        {!loading && (
+          <p className="text-xs text-slate-400 mt-3">
+            Найдено: <span className="font-semibold text-slate-700">{managers.length}</span> менеджер(ов)
+          </p>
+        )}
+      </div>
+
       {showForm && (
         <div className="crm-card p-6 mb-6 max-w-lg animate-fade-in">
           <div className="flex items-center justify-between mb-4">
@@ -145,7 +206,11 @@ export default function Managers() {
         </div>
       )}
 
-      {managers.length === 0 ? (
+      {loading ? (
+        <div className="crm-card p-16 text-center">
+          <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : managers.length === 0 ? (
         <div className="crm-card p-16 text-center">
           <Shield size={32} className="mx-auto mb-3 text-slate-200" />
           <p className="text-slate-500 font-medium mb-1">Менеджеров пока нет</p>

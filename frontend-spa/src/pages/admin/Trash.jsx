@@ -94,9 +94,9 @@ export default function Trash() {
 
   const loadActive = useCallback(() => {
     return Promise.all([
-      api.get('/clients/', { params: { page_size: 100 } }),
-      api.get('/groups/', { params: { page_size: 100 } }),
-      api.get('/accounts/managers/', { params: { page_size: 100 } }),
+      api.get('/clients/', { params: { page_size: 500 } }),
+      api.get('/groups/', { params: { page_size: 500 } }),
+      api.get('/accounts/managers/', { params: { page_size: 500 } }),
     ]).then(([c, g, m]) => {
       const cr = c.data.results ?? c.data ?? []
       const gr = g.data.results ?? g.data ?? []

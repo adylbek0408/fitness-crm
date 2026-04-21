@@ -6,7 +6,8 @@ import { useRefresh } from '../../contexts/RefreshContext'
 import {
   Globe, Dumbbell, CreditCard, CheckCircle, Clock, Receipt,
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp, ChevronRight,
-  RotateCcw, Gift, Check, Layers, X, UserPlus, Percent
+  RotateCcw, Gift, Check, Layers, X, UserPlus, Percent,
+  Pencil, Ban, AlertTriangle, Send
 } from 'lucide-react'
 import {
   STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
@@ -33,6 +34,212 @@ const fmtSchedule = s => {
 }
 
 // ── Новый клиент: добавить в группу (оплата закрыта) ───────────────────────────
+function MobileEditInfoPanel({ client, clientId, onSuccess }) {
+  const [open, setOpen] = useState(false)
+  const [firstName, setFirstName] = useState(client.first_name)
+  const [lastName, setLastName] = useState(client.last_name)
+  const [phone, setPhone] = useState(client.phone)
+  const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
+  const [groupId, setGroupId] = useState(client.group?.id || '')
+  const [groups, setGroups] = useState([])
+  const [gLoading, setGLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const handleOpen = async () => {
+    setFirstName(client.first_name); setLastName(client.last_name)
+    setPhone(client.phone); setTelegramLink(client.telegram_link || '')
+    setGroupId(client.group?.id || ''); setErr('')
+    if (!open) {
+      setGLoading(true)
+      try {
+        const r  = await api.get('/groups/', { params: { page_size: 200, status: 'recruitment' } })
+        const r2 = await api.get('/groups/', { params: { page_size: 200, status: 'active' } })
+        const all  = [...(r.data.results || []), ...(r2.data.results || [])]
+        const seen = new Set()
+        setGroups(all.filter(g => { if (seen.has(g.id)) return false; seen.add(g.id); return true }))
+      } catch { setGroups([]) }
+      finally { setGLoading(false) }
+    }
+    setOpen(v => !v)
+  }
+
+  const handleSave = async () => {
+    if (!firstName.trim() || !lastName.trim() || !phone.trim()) { setErr('Заполните ФИО и телефон'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.patch(`/clients/${clientId}/edit-info/`, {
+        first_name: firstName.trim(), last_name: lastName.trim(),
+        phone: phone.trim(), telegram_link: (telegramLink || '').trim(),
+        group_id: groupId || null,
+      })
+      setOpen(false); onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка сохранения')
+    } finally { setSaving(false) }
+  }
+
+  const GROUP_STATUS_LABEL = { recruitment: 'Набор', active: 'Активный' }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+      <button type="button" onClick={handleOpen}
+        className="w-full flex items-center justify-between p-4 touch-manipulation">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#ede9fe' }}>
+            <Pencil size={18} style={{ color: '#7c3aed' }} />
+          </div>
+          <div className="text-left">
+            <p className="font-semibold text-gray-800 text-sm">Редактировать данные</p>
+            <p className="text-xs text-gray-400">ФИО, телефон, группа{client.training_format === 'online' ? ', Telegram' : ''}</p>
+          </div>
+        </div>
+        <ChevronRight size={18} className={`text-gray-400 transition ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-5 space-y-3 border-t border-gray-100">
+          <div className="pt-3 grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-1">Фамилия</p>
+              <input value={lastName} onChange={e => setLastName(e.target.value)} className="crm-mobile-input w-full" placeholder="Фамилия" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-1">Имя</p>
+              <input value={firstName} onChange={e => setFirstName(e.target.value)} className="crm-mobile-input w-full" placeholder="Имя" />
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1">Телефон</p>
+            <input value={phone} onChange={e => setPhone(e.target.value)} className="crm-mobile-input w-full" placeholder="+996..." type="tel" />
+          </div>
+          {client.training_format === 'online' && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-1">Ссылка Telegram (необяз.)</p>
+              <input value={telegramLink} onChange={e => setTelegramLink(e.target.value)} className="crm-mobile-input w-full" placeholder="https://t.me/username или @username" />
+            </div>
+          )}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1">Группа</p>
+            {gLoading ? (
+              <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
+                <span className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#be185d' }} />
+                Загрузка...
+              </div>
+            ) : (
+              <select value={groupId} onChange={e => setGroupId(e.target.value)} className="crm-mobile-input w-full">
+                <option value="">— Без группы —</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>
+                    #{g.number} {g.group_type ? `(${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
+                    {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
+                    {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          {err && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+              <AlertTriangle size={13} /> {err}
+            </div>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+              style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+              Сохранить
+            </button>
+            <button type="button" onClick={() => setOpen(false)}
+              className="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-medium touch-manipulation">
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MobileCancelPaymentPanel({ client, clientId, onSuccess }) {
+  const [open, setOpen] = useState(false)
+  const [confirm, setConfirm] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+
+  const fp = client.full_payment
+  const ip = client.installment_plan
+  if (!(fp || ip)) return null
+
+  const payLabel = client.payment_type === 'full'
+    ? `Полная оплата — ${fmtMoney(fp?.amount || 0)}`
+    : `Рассрочка — ${fmtMoney(ip?.total_cost || 0)} (опл. ${fmtMoney(ip?.total_paid || 0)})`
+
+  const handleCancel = async () => {
+    setLoading(true); setErr('')
+    try {
+      await api.post(`/clients/${clientId}/cancel-payment/`)
+      setOpen(false); setConfirm(false); onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+      <button type="button" onClick={() => { setOpen(v => !v); setConfirm(false); setErr('') }}
+        className="w-full flex items-center justify-between p-4 touch-manipulation">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#fff7ed' }}>
+            <Ban size={18} style={{ color: '#ea580c' }} />
+          </div>
+          <div className="text-left">
+            <p className="font-semibold text-gray-800 text-sm">Отменить оплату</p>
+            <p className="text-xs text-gray-400">Ошибка ввода — удалить и ввести заново</p>
+          </div>
+        </div>
+        <ChevronRight size={18} className={`text-gray-400 transition ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 border-t border-gray-100 space-y-3 pt-3">
+          <div className="p-3 rounded-xl text-sm" style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+            <p className="font-semibold text-orange-800 text-xs">Текущая оплата:</p>
+            <p className="text-orange-700 text-xs mt-0.5">{payLabel}</p>
+          </div>
+          <p className="text-xs text-gray-500">Деньги не возвращаются. Используйте это только если менеджер сделал ошибку при вводе.</p>
+          {!confirm ? (
+            <button type="button" onClick={() => setConfirm(true)}
+              className="w-full py-3 rounded-2xl text-sm font-semibold touch-manipulation"
+              style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' }}>
+              Отменить оплату
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="p-3 rounded-xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                <p className="text-xs font-semibold text-red-700">Уверены? Оплата будет удалена полностью.</p>
+                <p className="text-xs text-red-600 mt-0.5">Клиент станет «Новый» без группы. Затем введите оплату заново.</p>
+              </div>
+              {err && <p className="text-xs text-red-600">{err}</p>}
+              <div className="flex gap-2">
+                <button type="button" onClick={handleCancel} disabled={loading}
+                  className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-60 touch-manipulation"
+                  style={{ background: '#dc2626' }}>
+                  {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Ban size={14} />}
+                  Да, удалить
+                </button>
+                <button type="button" onClick={() => setConfirm(false)}
+                  className="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-medium touch-manipulation">
+                  Назад
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const [open, setOpen] = useState(false)
   const [groups, setGroups] = useState([])
@@ -40,12 +247,6 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const [statusFilter, setStatusFilter] = useState('recruitment')
   const [loadingId, setLoadingId] = useState(null)
   const [err, setErr] = useState('')
-
-  const fp = client.full_payment
-  const ip = client.installment_plan
-  const isPaymentClosed =
-    (client.payment_type === 'full' && !!fp?.is_paid) ||
-    (client.payment_type === 'installment' && !!ip?.is_closed)
 
   const canUseNewClientFlow =
     (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat))
@@ -103,28 +304,6 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
     } finally {
       setLoadingId(null)
     }
-  }
-
-  if (!isPaymentClosed) {
-    const remainingDebt =
-      client.payment_type === 'installment' && ip
-        ? ` Остаток: ${fmtMoney(ip.remaining)}.`
-        : ' Оплата не подтверждена.'
-    const afterRefundHint =
-      client.status === 'frozen' && !fp && !ip
-        ? ' После возврата оформите новую оплату через блок «Повторная запись» ниже, затем можно добавить в группу или записаться из того блока.'
-        : ''
-    return (
-      <div className="bg-white rounded-2xl p-4 shadow-sm border">
-        <div className="flex items-center gap-2 mb-2">
-          <UserPlus size={18} style={{ color: '#7c3aed' }} />
-          <p className="font-semibold text-gray-800 text-sm">Добавить в группу</p>
-        </div>
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
-          {afterRefundHint || `Сначала закройте оплату.${remainingDebt}`}
-        </p>
-      </div>
-    )
   }
 
   return (
@@ -829,6 +1008,16 @@ export default function MobileClientDetail() {
                 {client.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
                 {client.training_format === 'online' ? 'Онлайн' : 'Оффлайн'} · {client.group_type}
               </p>
+              {client.training_format === 'online' && client.telegram_link && (
+                <p className="text-xs mt-1 flex items-center gap-1 break-all">
+                  <Send size={12} style={{ color: '#0ea5e9' }} />
+                  <a href={client.telegram_link.startsWith('http') ? client.telegram_link : `https://t.me/${client.telegram_link.replace(/^@/, '')}`}
+                     target="_blank" rel="noreferrer"
+                     style={{ color: '#0284c7' }} className="underline">
+                    {client.telegram_link}
+                  </a>
+                </p>
+              )}
               {client.bonus_balance != null && Number(client.bonus_balance) !== 0 && (
                 <p className={`text-sm mt-1 flex items-center gap-1 ${Number(client.bonus_balance) < 0 ? 'text-red-600' : 'text-green-600'}`}>
                   <Gift size={13} /> {Number(client.bonus_balance) < 0 ? 'Бонус (задолженность)' : 'Бонусы'}: {fmtMoney(client.bonus_balance)}
@@ -972,6 +1161,9 @@ export default function MobileClientDetail() {
             )
           })()}
         </div>
+
+        <MobileEditInfoPanel client={client} clientId={id} onSuccess={load} />
+        <MobileCancelPaymentPanel client={client} clientId={id} onSuccess={load} />
 
         <MobileNewClientAddPanel client={client} clientId={id} onSuccess={load} />
 

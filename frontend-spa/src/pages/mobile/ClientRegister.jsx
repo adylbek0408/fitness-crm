@@ -79,6 +79,7 @@ export default function ClientRegister() {
   const [form, setForm] = useState({
     first_name: '', last_name: '', phone: '',
     training_format: '', group_type: '', group_id: '',
+    telegram_link: '',
     payment_type: '', pay_amount: '', total_cost: '', deadline: '',
     bonus_percent: '10',
   })
@@ -162,6 +163,7 @@ export default function ClientRegister() {
     const bonusPct = Math.round(Number(String(form.bonus_percent).replace(',', '.')))
     const body = {
       first_name: form.first_name, last_name: form.last_name, phone: form.phone,
+      telegram_link: form.training_format === 'online' ? (form.telegram_link || '').trim() : '',
       training_format: form.training_format,
       group_type: form.training_format === 'online' ? '' : form.group_type,
       is_repeat: false, discount: '0',
@@ -307,6 +309,20 @@ export default function ClientRegister() {
                   selected={form.group_type === '2.5h'}
                   onClick={() => set('group_type', '2.5h')} />
               </div>
+            </div>
+          )}
+          {form.training_format === 'online' && (
+            <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-xs)' }}>
+                Ссылка Telegram (необязательно)
+              </p>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-xs)' }}>
+                Если клиент пришёл из Telegram — вставьте ссылку на его профиль или @username
+              </p>
+              <input type="text" placeholder="https://t.me/username или @username"
+                value={form.telegram_link}
+                onChange={e => set('telegram_link', e.target.value)}
+                className="crm-mobile-input" />
             </div>
           )}
         </div>

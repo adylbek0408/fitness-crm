@@ -25,6 +25,28 @@ class FullPaymentViewSet(viewsets.GenericViewSet):
         payment = self.service.mark_full_payment_paid(pk, user=request.user)
         return Response(FullPaymentReadSerializer(payment).data)
 
+    @action(detail=True, methods=['patch'], url_path='edit')
+    def edit_payment(self, request, pk=None):
+        """PATCH /api/payments/full/{client_id}/edit/  — исправить сумму полной оплаты."""
+        payment = FullPayment.objects.filter(client_id=pk).order_by('-created_at').first()
+        if not payment:
+            from rest_framework.exceptions import NotFound
+            raise NotFound('Оплата не найдена')
+        new_amount_raw = request.data.get('amount')
+        if new_amount_raw is None:
+            return Response({'detail': 'amount обязателен'}, status=status.HTTP_400_BAD_REQUEST)
+        from decimal import Decimal, InvalidOperation
+        try:
+            new_amount = Decimal(str(new_amount_raw))
+        except InvalidOperation:
+            return Response({'detail': 'Некорректная сумма'}, status=status.HTTP_400_BAD_REQUEST)
+        if new_amount <= 0:
+            return Response({'detail': 'Сумма должна быть больше 0'}, status=status.HTTP_400_BAD_REQUEST)
+        payment.amount = new_amount
+        payment.course_amount = new_amount
+        payment.save(update_fields=['amount', 'course_amount'])
+        return Response(FullPaymentReadSerializer(payment).data)
+
     @action(detail=True, methods=['post'], url_path='receipt',
             parser_classes=[MultiPartParser])
     def upload_receipt(self, request, pk=None):

@@ -46,7 +46,8 @@ class ClientReadSerializer(serializers.ModelSerializer):
         model = Client
         fields = [
             'id', 'first_name', 'last_name', 'full_name',
-            'phone', 'training_format', 'group_type', 'group', 'trainer',
+            'phone', 'telegram_link',
+            'training_format', 'group_type', 'group', 'trainer',
             'status', 'is_repeat', 'discount', 'bonus_balance', 'bonus_percent', 'payment_type',
             'registered_at', 'registered_by_name',
             'full_payment', 'installment_plan',
@@ -100,6 +101,7 @@ class ClientCreateSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=100)
     last_name = serializers.CharField(max_length=100)
     phone = serializers.CharField(max_length=20)
+    telegram_link = serializers.CharField(max_length=300, required=False, allow_blank=True, default='')
 
     training_format = serializers.ChoiceField(choices=Client.TRAINING_FORMAT_CHOICES)
     group_type = serializers.CharField(max_length=10, allow_blank=True, required=False)
@@ -165,7 +167,7 @@ class ClientUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         fields = [
-            'first_name', 'last_name', 'phone',
+            'first_name', 'last_name', 'phone', 'telegram_link',
             'training_format', 'group_type', 'group', 'trainer',
             'status', 'is_repeat', 'discount', 'bonus_balance', 'bonus_percent',
         ]

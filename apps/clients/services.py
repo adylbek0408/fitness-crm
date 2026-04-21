@@ -185,25 +185,6 @@ class ClientService(BaseService):
         if client.group_id:
             raise ValidationError(f'Клиент уже в Потоке #{client.group.number}.')
 
-        if client.payment_type == 'full':
-            fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
-            if not fp:
-                raise ValidationError(
-                    'Нет подтверждённой полной оплаты. Оформите оплату (например, через повторную запись в поток).'
-                )
-            if not fp.is_paid:
-                raise ValidationError('Сначала подтвердите полную оплату.')
-        elif client.payment_type == 'installment':
-            ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
-            if not ip:
-                raise ValidationError(
-                    'Нет плана рассрочки. Оформите оплату (например, через повторную запись в поток).'
-                )
-            if not ip.is_closed:
-                raise ValidationError(
-                    f'Нельзя добавить в поток — есть непогашенный остаток: {ip.remaining} сом.'
-                )
-
         try:
             group = Group.objects.get(id=group_id)
         except Group.DoesNotExist:
@@ -226,6 +207,47 @@ class ClientService(BaseService):
         client.group = None
         client.save(update_fields=['group'])
         return client
+
+    @transaction.atomic
+    def cancel_payment(self, client_id: str, user=None) -> dict:
+        """
+        Отмена текущей оплаты без возврата денег (коррекция ввода).
+        Клиент остаётся в базе, статус 'new', без группы и оплаты.
+        """
+        from apps.clients.bonus_service import BonusService
+
+        client = self.get_client_or_raise(client_id)
+
+        bonus_svc = BonusService()
+        voided = Decimal('0')
+
+        if client.payment_type == 'full':
+            fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
+            if fp:
+                voided = bonus_svc.void_accruals_for_refund(client, full_payment=fp, user=user)
+                fp.delete()
+
+        elif client.payment_type == 'installment':
+            ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
+            if ip:
+                voided = bonus_svc.void_accruals_for_refund(client, installment_plan=ip, user=user)
+                ip.payments.all().delete()
+                ip.delete()
+
+        # Сбрасываем состояние клиента: группа, статус, тип оплаты
+        client.group = None
+        client.status = 'new'
+        client.save(update_fields=['group', 'status', 'bonus_balance'])
+
+        self.logger.info(
+            f'Payment cancelled for client {client_id}. '
+            f'Voided bonus accruals: {voided}.'
+        )
+
+        return {
+            'detail': 'Оплата отменена. Теперь выберите новый тип оплаты и введите данные.',
+            'voided_bonus': str(voided),
+        }
 
     def reset_cabinet_password(self, client_id: str) -> str:
         client = self.get_client_or_raise(client_id)

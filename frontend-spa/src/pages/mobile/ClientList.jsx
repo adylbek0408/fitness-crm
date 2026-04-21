@@ -18,6 +18,7 @@ export default function ClientList() {
   const [paymentStatus, setPaymentStatus] = useState('')
   const [registeredFrom, setRegisteredFrom] = useState('')
   const [registeredTo, setRegisteredTo] = useState('')
+  const [fromTelegram, setFromTelegram] = useState('')
   const [loading, setLoading] = useState(true)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const totalPages = Math.ceil(count / 25)
@@ -31,6 +32,7 @@ export default function ClientList() {
     paymentStatus,
     registeredFrom,
     registeredTo,
+    fromTelegram,
   ].filter(Boolean).length
 
   const load = async (p = page) => {
@@ -43,6 +45,7 @@ export default function ClientList() {
       if (paymentStatus) params.append('payment_status', paymentStatus)
       if (registeredFrom) params.append('registered_from', registeredFrom)
       if (registeredTo) params.append('registered_to', registeredTo)
+      if (fromTelegram) params.append('from_telegram', fromTelegram)
       const r = await api.get(`/clients/?${params}`)
       setClients(r.data.results || []); setCount(r.data.count || 0)
     } finally {
@@ -53,7 +56,7 @@ export default function ClientList() {
   useEffect(() => {
     clearTimeout(timer.current)
     timer.current = setTimeout(() => { setPage(1); load(1) }, 300)
-  }, [search, status, format, paymentStatus, registeredFrom, registeredTo])
+  }, [search, status, format, paymentStatus, registeredFrom, registeredTo, fromTelegram])
 
   useEffect(() => { load() }, [page])
 
@@ -64,6 +67,7 @@ export default function ClientList() {
     setPaymentStatus('')
     setRegisteredFrom('')
     setRegisteredTo('')
+    setFromTelegram('')
     setPage(1)
     setTimeout(() => load(1), 0)
   }
@@ -156,6 +160,14 @@ export default function ClientList() {
                 <option value="">Все</option>
                 <option value="paid">Оплачено</option>
                 <option value="unpaid">Есть остаток</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Источник клиента</label>
+              <select value={fromTelegram} onChange={e => setFromTelegram(e.target.value)} className="crm-mobile-input crm-mobile-select">
+                <option value="">Все</option>
+                <option value="yes">Из Telegram</option>
+                <option value="no">Обычные</option>
               </select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

@@ -7,7 +7,8 @@ import {
   Clock, Receipt, Snowflake, ArrowLeft, Copy, Check,
   RotateCcw, User, Phone, Calendar, Layers, UserCircle, Gift,
   TrendingUp, TrendingDown, History, ChevronDown, ChevronUp, ChevronRight,
-  Undo2, XCircle, GraduationCap, ShieldOff, AlertTriangle, UserPlus, Percent
+  Undo2, XCircle, GraduationCap, ShieldOff, AlertTriangle, UserPlus, Percent,
+  Pencil, X, Ban, Send
 } from 'lucide-react'
 import {
   STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
@@ -189,7 +190,250 @@ function StreamsInfoRow({ client, clientId }) {
   )
 }
 
-// ── Клиент «Новый»: добавить в группу (оплата закрыта, без новой оплаты) ───────
+// ── Редактирование: ФИО, телефон, группа ─────────────────────────────────────
+function EditInfoPanel({ client, clientId, onSuccess }) {
+  const [open,       setOpen]       = useState(false)
+  const [firstName,  setFirstName]  = useState(client.first_name)
+  const [lastName,   setLastName]   = useState(client.last_name)
+  const [phone,      setPhone]      = useState(client.phone)
+  const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
+  const [groupId,    setGroupId]    = useState(client.group?.id || '')
+  const [groups,     setGroups]     = useState([])
+  const [gLoading,   setGLoading]   = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [err,        setErr]        = useState('')
+  const [ok,         setOk]         = useState('')
+
+  // При открытии формы — сбрасываем значения и загружаем группы
+  const handleOpen = async () => {
+    setFirstName(client.first_name)
+    setLastName(client.last_name)
+    setPhone(client.phone)
+    setTelegramLink(client.telegram_link || '')
+    setGroupId(client.group?.id || '')
+    setErr(''); setOk('')
+    if (!open) {
+      setGLoading(true)
+      try {
+        const r = await api.get('/groups/', { params: { page_size: 200, status: 'recruitment' } })
+        const r2 = await api.get('/groups/', { params: { page_size: 200, status: 'active' } })
+        const all = [...(r.data.results || []), ...(r2.data.results || [])]
+        // Убираем дубликаты
+        const seen = new Set()
+        setGroups(all.filter(g => { if (seen.has(g.id)) return false; seen.add(g.id); return true }))
+      } catch { setGroups([]) }
+      finally { setGLoading(false) }
+    }
+    setOpen(v => !v)
+  }
+
+  const handleSave = async () => {
+    if (!firstName.trim() || !lastName.trim() || !phone.trim()) {
+      setErr('Заполните ФИО и телефон')
+      return
+    }
+    setSaving(true); setErr(''); setOk('')
+    try {
+      await api.patch(`/clients/${clientId}/edit-info/`, {
+        first_name: firstName.trim(),
+        last_name:  lastName.trim(),
+        phone:      phone.trim(),
+        telegram_link: (telegramLink || '').trim(),
+        group_id:   groupId || null,
+      })
+      setOk('Изменения сохранены!')
+      setOpen(false)
+      onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка сохранения')
+    } finally { setSaving(false) }
+  }
+
+  const GROUP_STATUS_LABEL = { recruitment: 'Набор', active: 'Активный' }
+
+  return (
+    <div className="crm-card p-5 mb-5">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+            <Pencil size={14} className="text-indigo-600" />
+          </div>
+          <h3 className="font-bold text-slate-800">Редактировать данные</h3>
+        </div>
+        <button type="button" onClick={handleOpen}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition
+            bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100">
+          {open ? <><X size={12} /> Скрыть</> : <><Pencil size={12} /> Изменить</>}
+        </button>
+      </div>
+      <p className="text-xs text-slate-400 mb-3">ФИО, телефон, группа — исправить ошибку ввода</p>
+
+      {ok && !open && (
+        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-2">
+          <Check size={14} /> {ok}
+        </div>
+      )}
+
+      {open && (
+        <div className="space-y-3 pt-2 border-t border-slate-100 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="crm-label">Фамилия</label>
+              <input value={lastName} onChange={e => setLastName(e.target.value)}
+                className="crm-input w-full" placeholder="Фамилия" />
+            </div>
+            <div>
+              <label className="crm-label">Имя</label>
+              <input value={firstName} onChange={e => setFirstName(e.target.value)}
+                className="crm-input w-full" placeholder="Имя" />
+            </div>
+          </div>
+          <div>
+            <label className="crm-label">Телефон</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)}
+              className="crm-input w-full" placeholder="+996..."
+              type="tel" />
+          </div>
+          {client.training_format === 'online' && (
+            <div>
+              <label className="crm-label">Ссылка Telegram (необязательно)</label>
+              <input value={telegramLink} onChange={e => setTelegramLink(e.target.value)}
+                className="crm-input w-full" placeholder="https://t.me/username или @username" />
+              <p className="text-xs text-slate-400 mt-1">Если заполнено — клиент отмечается в фильтрах как «Из Telegram»</p>
+            </div>
+          )}
+          <div>
+            <label className="crm-label">Группа ({'оставить пустым — без группы'})</label>
+            {gLoading ? (
+              <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                Загрузка...
+              </div>
+            ) : (
+              <select value={groupId} onChange={e => setGroupId(e.target.value)}
+                className="crm-input w-full">
+                <option value="">— Без группы —</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>
+                    Группа #{g.number}
+                    {g.group_type ? ` (${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
+                    {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
+                    {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          {err && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+              <AlertTriangle size={14} /> {err}
+            </div>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="crm-btn-primary flex-1 justify-center disabled:opacity-60">
+              {saving
+                ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                : <Check size={14} />
+              }
+              Сохранить
+            </button>
+            <button type="button" onClick={() => setOpen(false)}
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition">
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Отмена оплаты (коррекция ввода) ──────────────────────────────────────
+function CancelPaymentPanel({ client, clientId, onSuccess }) {
+  const [confirm, setConfirm] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [err,     setErr]     = useState('')
+
+  // Показываем только если есть оплата
+  const fp = client.full_payment
+  const ip = client.installment_plan
+  const hasPayment = !!(fp || ip)
+  if (!hasPayment) return null
+
+  const handleCancel = async () => {
+    setLoading(true); setErr('')
+    try {
+      await api.post(`/clients/${clientId}/cancel-payment/`)
+      setConfirm(false)
+      onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setLoading(false) }
+  }
+
+  const payLabel = client.payment_type === 'full'
+    ? `Полная оплата — ${fmtMoney(fp?.amount || 0)}`
+    : `Рассрочка — ${fmtMoney(ip?.total_cost || 0)} (оплачено ${fmtMoney(ip?.total_paid || 0)})`
+
+  return (
+    <div className="crm-card p-5 mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
+          <Ban size={14} className="text-orange-600" />
+        </div>
+        <h3 className="font-bold text-slate-800">Отменить оплату</h3>
+      </div>
+      <p className="text-xs text-slate-400 mb-3">
+        Если менеджер ошибся — отмените оплату и введите заново. Деньги не возвращаются — это исправление ошибки.
+      </p>
+
+      <div className="p-3 bg-orange-50 border border-orange-200 rounded-xl text-sm text-orange-800 mb-3 flex items-start gap-2">
+        <AlertTriangle size={14} className="shrink-0 mt-0.5 text-orange-500" />
+        <div>
+          <p className="font-semibold">Текущая оплата:</p>
+          <p className="text-xs mt-0.5">{payLabel}</p>
+        </div>
+      </div>
+
+      {!confirm ? (
+        <button type="button" onClick={() => setConfirm(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold
+            bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition w-full justify-center">
+          <Ban size={14} /> Отменить оплату
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-sm font-semibold text-red-700 mb-1">Уверены?</p>
+            <p className="text-xs text-red-600">
+              Оплата будет полностью удалена. Клиент перейдёт в статус «Новый» без группы.
+              После этого можно заново выбрать тип оплаты и ввести данные.
+            </p>
+          </div>
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={handleCancel} disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold
+                bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">
+              {loading
+                ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                : <Ban size={13} />
+              }
+              Да, отменить
+            </button>
+            <button type="button" onClick={() => { setConfirm(false); setErr('') }}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition">
+              Назад
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Клиент «Новый»: добавить в группу (без проверки оплаты) ───────
 function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
   const [open, setOpen] = useState(false)
   const [groups, setGroups] = useState([])
@@ -198,12 +442,6 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
   const [loadingId, setLoadingId] = useState(null)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
-
-  const fp = client.full_payment
-  const ip = client.installment_plan
-  const isPaymentClosed =
-    (client.payment_type === 'full' && !!fp?.is_paid) ||
-    (client.payment_type === 'installment' && !!ip?.is_closed)
 
   const canUseNewClientFlow =
     (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat))
@@ -262,48 +500,18 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
     }
   }
 
-  if (!isPaymentClosed) {
-    const remainingDebt =
-      client.payment_type === 'installment' && ip
-        ? ` Остаток: ${fmtMoney(ip.remaining)}.`
-        : ' Оплата не подтверждена.'
-    const afterRefundHint =
-      client.status === 'frozen' && !fp && !ip
-        ? ' После возврата оформите новую оплату в блоке «Повторный клиент», затем при необходимости добавьте в группу без нового платежа из этой карточки.'
-        : ''
-    return (
-      <div className="crm-card p-5 mb-5">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
-            <UserPlus size={15} className="text-violet-600" />
-          </div>
-          <h3 className="font-bold text-slate-800">Новый клиент</h3>
-        </div>
-        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-          <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-amber-800">Добавление в группу недоступно</p>
-            <p className="text-xs text-amber-700 mt-1">
-              {afterRefundHint || `Сначала полностью закройте оплату.${remainingDebt}`}
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="crm-card p-5 mb-5">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
           <UserPlus size={15} className="text-violet-600" />
         </div>
-        <h3 className="font-bold text-slate-800">Новый клиент — в группу</h3>
+        <h3 className="font-bold text-slate-800">Добавить в группу</h3>
       </div>
       <p className="text-xs text-slate-500 mb-3">
         {client.training_format === 'online' && !(client.group_type || '').trim()
-          ? 'Группы подходят под формат клиента (онлайн). Оплата закрыта — запись без повторного платежа.'
-          : `Группы подходят под тип (${GROUP_TYPE_LABEL[client.group_type] || '—'}) и формат клиента. Оплата закрыта — запись без повторного платежа.`}
+          ? 'Группы подходят под формат клиента (онлайн).'
+          : `Группы подходят под тип (${GROUP_TYPE_LABEL[client.group_type] || '—'}) и формат клиента.`}
       </p>
       {msg && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-3 flex items-center gap-2">
@@ -990,6 +1198,20 @@ export default function ClientDetail() {
           </div>
           <div>
             <InfoRow icon={Phone} label="Телефон" value={client.phone} />
+            {client.training_format === 'online' && (
+              <InfoRow
+                icon={Send}
+                label="Telegram"
+                value={client.telegram_link
+                  ? <a href={client.telegram_link.startsWith('http') ? client.telegram_link : `https://t.me/${client.telegram_link.replace(/^@/, '')}`}
+                      target="_blank" rel="noreferrer"
+                      className="text-sky-600 hover:text-sky-800 underline text-sm break-all">
+                      {client.telegram_link}
+                    </a>
+                  : <span className="text-slate-400">— без ссылки</span>
+                }
+              />
+            )}
             <InfoRow icon={Globe} label="Формат"
               value={client.training_format === 'online'
                 ? <span className="flex items-center gap-1 text-blue-600"><Globe size={13} /> Онлайн</span>
@@ -1155,6 +1377,12 @@ export default function ClientDetail() {
           <AddPaymentForm planId={planId} onSuccess={load} />
         </div>
       )}
+
+      {/* ── Редактировать данные ── */}
+      <EditInfoPanel client={client} clientId={id} onSuccess={load} />
+
+      {/* ── Отменить оплату ── */}
+      <CancelPaymentPanel client={client} clientId={id} onSuccess={load} />
 
       {/* ── Новый клиент: в группу без новой оплаты ── */}
       <NewClientAddToGroupPanel client={client} clientId={id} onSuccess={load} />

@@ -472,6 +472,7 @@ export default function Clients() {
   const [registeredTo,  setRegisteredTo]  = useState('')
   const [registeredBy,  setRegisteredBy]  = useState('')
   const [trainerFilter, setTrainerFilter] = useState('')
+  const [fromTelegram,  setFromTelegram]  = useState('')
   const [managersList,  setManagersList]  = useState([])
   const [trainersList,  setTrainersList]  = useState([])
   const [onlineTags,    setOnlineTags]    = useState([])
@@ -506,6 +507,7 @@ export default function Clients() {
     if (registeredTo)        p.append('registered_to',   registeredTo)
     if (registeredBy)        p.append('registered_by',   registeredBy)
     if (trainerFilter)       p.append('trainer',         trainerFilter)
+    if (fromTelegram)        p.append('from_telegram',   fromTelegram)
     return p
   }
 
@@ -556,7 +558,7 @@ export default function Clients() {
   useEffect(() => {
     setPage(1); load(1)
   }, [debouncedSearch, status, format, group, groupType, isRepeat, paymentStatus,
-      registeredFrom, registeredTo, registeredBy, trainerFilter, onlineTagFilter])
+      registeredFrom, registeredTo, registeredBy, trainerFilter, onlineTagFilter, fromTelegram])
 
   useEffect(() => { load() }, [page])
   useEffect(() => () => { loadAbortRef.current?.abort() }, [])
@@ -565,6 +567,7 @@ export default function Clients() {
     setSearch(''); setDebouncedSearch(''); setStatus(''); setFormat(''); setGroup('')
     setGroupType(''); setIsRepeat(false); setPaymentStatus(''); setRegisteredFrom('')
     setRegisteredTo(''); setRegisteredBy(''); setTrainerFilter(''); setOnlineTagFilter('')
+    setFromTelegram('')
     setPage(1); setTimeout(() => load(1), 0)
   }
 
@@ -573,7 +576,7 @@ export default function Clients() {
 
   const hasFilters = search || debouncedSearch || status || format || group || groupType ||
     isRepeat || paymentStatus || registeredFrom || registeredTo || registeredBy ||
-    trainerFilter || onlineTagFilter
+    trainerFilter || onlineTagFilter || fromTelegram
 
   // ── Лейблы фильтров для PDF ────────────────────────────────────────────────
   const buildFilterLabels = () => {
@@ -599,6 +602,7 @@ export default function Clients() {
     if (registeredFrom || registeredTo)
       labels.push(`Рег.: ${registeredFrom ? fmtDate(registeredFrom) : '...'} — ${registeredTo ? fmtDate(registeredTo) : '...'}`)
     if (debouncedSearch) labels.push(`Поиск: «${debouncedSearch}»`)
+    if (fromTelegram)    labels.push(`Источник: ${fromTelegram === 'yes' ? 'Из Telegram' : 'Обычные'}`)
     return labels
   }
 
@@ -744,6 +748,15 @@ export default function Clients() {
               </select>
             </div>
           )}
+
+          <div className="crm-filter-group">
+            <span className="crm-filter-label">Источник</span>
+            <select value={fromTelegram} onChange={e => setFromTelegram(e.target.value)} className="crm-input w-36">
+              <option value="">Все</option>
+              <option value="yes">Из Telegram</option>
+              <option value="no">Обычные</option>
+            </select>
+          </div>
 
           <button
             onClick={() => setShowAdvanced(v => !v)}
