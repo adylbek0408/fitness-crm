@@ -125,10 +125,9 @@ export default function AdminLayout({ children, user }) {
             </svg>
           </div>
           <span className="text-white font-bold text-sm flex-1 truncate">CRM система</span>
-          <button onClick={logout}
+          <button onClick={handleLogout}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition"
-            style={{ color: '#fda4af', border: '1px solid rgba(253,164,175,0.2)' }}
-            onClick={handleLogout}>
+            style={{ color: '#fda4af', border: '1px solid rgba(253,164,175,0.2)' }}>
             <LogOut size={13} /> Выйти
           </button>
         </div>

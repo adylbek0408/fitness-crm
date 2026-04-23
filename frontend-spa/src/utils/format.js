@@ -47,7 +47,7 @@ export const GROUP_TYPE_LABEL = {
   '2.5h': '2.5 часа',
 }
 
-// ── URL бэкенда Django (из .env) ──────────────────────────────────────────────
+// ── URL бэкенда Django (из .env) ─────────────────────────────────────────
 // Нужен для прямого открытия медиафайлов (чеки, изображения).
 // Без него /media/... попадает в React Router → редирект на /login.
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ''
@@ -61,10 +61,20 @@ export const toAbsoluteUrl = (url) => {
   const normalized = url.startsWith('/') ? url : `/${url}`
 
   // ✅ Медиафайлы открываем НАПРЯМУЮ через Django, а не через React SPA.
-  // Иначе React Router перехватывает /media/... и редиректит на /login.
-  if (normalized.startsWith('/media/') && BACKEND_ORIGIN) {
-    return `${BACKEND_ORIGIN}${normalized}`
+  // Иначе React Router / Service Worker перехватывают /media/... и редиректят на /login.
+  if (normalized.startsWith('/media/')) {
+    if (BACKEND_ORIGIN) return `${BACKEND_ORIGIN}${normalized}`
+    return `${window.location.origin}${normalized}`
   }
 
   return `${window.location.origin}${normalized}`
+}
+
+// ── Безопасное открытие чека/медиафайла в новой вкладке ──────────────────
+// Используем window.open с обходом Service Worker — SW не должен перехватить запрос.
+export const openReceiptUrl = (url) => {
+  const abs = toAbsoluteUrl(url)
+  if (!abs) return
+  // noopener — безопасность; noreferrer — не передавать Referer на backend
+  window.open(abs, '_blank', 'noopener,noreferrer')
 }
