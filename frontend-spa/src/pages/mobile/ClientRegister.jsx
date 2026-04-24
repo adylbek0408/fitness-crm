@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { User, Phone, BookOpen, CreditCard, ChevronRight, Check, Users, ChevronDown } from 'lucide-react'
+import { User, Phone, BookOpen, CreditCard, ChevronRight, Check, Users, FlaskConical } from 'lucide-react'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
 import MobileDateField from '../../components/MobileDateField'
@@ -78,6 +78,7 @@ export default function ClientRegister() {
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [form, setForm] = useState({
     first_name: '', last_name: '', phone: '',
+    is_trial: false,
     training_format: '', group_type: '', group_id: '',
     telegram_link: '',
     payment_type: '', pay_amount: '', total_cost: '', deadline: '',
@@ -85,9 +86,9 @@ export default function ClientRegister() {
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  // Группы: шаг «Оплата» + полная оплата; офлайн — фильтр по типу; онлайн — все онлайн-потоки
+  // Группы: шаг «Оплата» + полная оплата + не пробный
   useEffect(() => {
-    if (step !== 2 || form.payment_type !== 'full' || !form.training_format) return
+    if (step !== 2 || form.payment_type !== 'full' || !form.training_format || form.is_trial) return
     if (form.training_format === 'offline' && !form.group_type) return
     setGroupsLoading(true)
     const base = { page_size: 100, training_format: form.training_format }
@@ -112,7 +113,7 @@ export default function ClientRegister() {
       })
       .catch(() => setGroups([]))
       .finally(() => setGroupsLoading(false))
-  }, [step, form.payment_type, form.training_format, form.group_type])
+  }, [step, form.payment_type, form.training_format, form.group_type, form.is_trial])
 
   const validateStep = () => {
     setError('')
@@ -167,11 +168,12 @@ export default function ClientRegister() {
       training_format: form.training_format,
       group_type: form.training_format === 'online' ? '' : form.group_type,
       is_repeat: false, discount: '0',
+      is_trial: form.is_trial,
       bonus_percent: bonusPct,
       payment_type: pt, payment_data: paymentData,
     }
-    // Группа только при полной оплате (на рассрочке — запись в группу после закрытия долга, из карточки клиента)
-    if (form.payment_type === 'full' && form.group_id) body.group = form.group_id
+    // Группа только при полной оплате и если клиент не пробный
+    if (form.payment_type === 'full' && form.group_id && !form.is_trial) body.group = form.group_id
     try {
       const r = await api.post('/clients/', body)
       const cabinet = r.data.cabinet_username
@@ -243,7 +245,7 @@ export default function ClientRegister() {
         <div className="crm-toast-error mb-4 text-sm whitespace-pre-line animate-fade-in">{error}</div>
       )}
 
-      {/* Шаг 0: Личные данные */}
+      {/* ── Шаг 0: Личные данные ── */}
       {step === 0 && (
         <div className="space-y-3 animate-fade-in">
           <div className="rounded-2xl p-4 space-y-3"
@@ -271,10 +273,82 @@ export default function ClientRegister() {
                 className="crm-mobile-input pl-11" />
             </div>
           </div>
+
+          {/* ── Пробный клиент ── */}
+          <div className="rounded-2xl p-4"
+               style={{ background: '#fff', border: '1px solid var(--border)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center"
+                   style={{ background: '#fff7ed' }}>
+                <FlaskConical size={13} style={{ color: '#ea580c' }} />
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-xs)' }}>
+                Тип клиента
+              </span>
+            </div>
+
+            {/* Переключатель: Обычный / Пробный */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => set('is_trial', false)}
+                className="flex-1 flex items-center justify-between px-4 py-3.5 rounded-xl transition-all"
+                style={!form.is_trial
+                  ? { background: '#fce7f3', border: '2px solid #be185d' }
+                  : { background: '#fafafa', border: '2px solid #e5e7eb' }
+                }
+              >
+                <div className="text-left">
+                  <p className="text-sm font-semibold" style={{ color: !form.is_trial ? '#be185d' : 'var(--text)' }}>
+                    Обычный
+                  </p>
+                </div>
+                <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
+                     style={!form.is_trial
+                       ? { borderColor: '#be185d', background: '#be185d' }
+                       : { borderColor: '#d1d5db', background: '#fff' }
+                     }>
+                  {!form.is_trial && <Check size={11} className="text-white" strokeWidth={3} />}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => set('is_trial', true)}
+                className="flex-1 flex items-center justify-between px-4 py-3.5 rounded-xl transition-all"
+                style={form.is_trial
+                  ? { background: '#fff7ed', border: '2px solid #ea580c' }
+                  : { background: '#fafafa', border: '2px solid #e5e7eb' }
+                }
+              >
+                <div className="text-left flex items-center gap-1.5">
+                  <FlaskConical size={13} style={{ color: form.is_trial ? '#ea580c' : '#9ca3af' }} />
+                  <p className="text-sm font-semibold" style={{ color: form.is_trial ? '#ea580c' : 'var(--text)' }}>
+                    Пробный
+                  </p>
+                </div>
+                <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
+                     style={form.is_trial
+                       ? { borderColor: '#ea580c', background: '#ea580c' }
+                       : { borderColor: '#d1d5db', background: '#fff' }
+                     }>
+                  {form.is_trial && <Check size={11} className="text-white" strokeWidth={3} />}
+                </div>
+              </button>
+            </div>
+
+            {form.is_trial && (
+              <div className="mt-3 px-3 py-2.5 rounded-xl text-xs"
+                   style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>
+                <FlaskConical size={11} className="inline mr-1" />
+                Пробный клиент — посещает пробное занятие. Статус будет «Пробный», в группу не добавляется.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Шаг 1: Обучение */}
+      {/* ── Шаг 1: Обучение ── */}
       {step === 1 && (
         <div className="space-y-4 animate-fade-in">
           <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
@@ -328,9 +402,21 @@ export default function ClientRegister() {
         </div>
       )}
 
-      {/* Шаг 2: Оплата */}
+      {/* ── Шаг 2: Оплата ── */}
       {step === 2 && (
         <div className="space-y-4 animate-fade-in">
+
+          {/* Инфо-блок для пробного */}
+          {form.is_trial && (
+            <div className="rounded-2xl px-4 py-3 flex items-start gap-2"
+                 style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+              <FlaskConical size={15} style={{ color: '#ea580c', marginTop: 1, flexShrink: 0 }} />
+              <p className="text-xs" style={{ color: '#c2410c' }}>
+                Клиент пробный — в группу не добавляется. Укажите тип оплаты за пробное занятие.
+              </p>
+            </div>
+          )}
+
           <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-6 h-6 rounded-lg flex items-center justify-center"
@@ -400,8 +486,8 @@ export default function ClientRegister() {
             </div>
           )}
 
-          {/* Группа — только при полной оплаты, после ввода суммы; совпадает с форматом и типом группы */}
-          {form.payment_type === 'full' && (
+          {/* Группа — только при полной оплате и НЕ пробный */}
+          {form.payment_type === 'full' && !form.is_trial && (
             <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 rounded-lg flex items-center justify-center"
@@ -472,13 +558,22 @@ export default function ClientRegister() {
               {[
                 ['Имя', `${form.last_name} ${form.first_name}`],
                 ['Телефон', form.phone],
+                ['Тип клиента', form.is_trial ? '⚗️ Пробный' : 'Обычный'],
                 ['Формат', form.training_format === 'online' ? 'Онлайн' : 'Оффлайн'],
                 ...(form.training_format === 'offline'
                   ? [['Тип группы', form.group_type === '1.5h' ? '1.5 часа' : '2.5 часа']]
                   : []),
-                ['Группа', form.payment_type !== 'full' ? 'После полной оплаты — в карточке' : (form.group_id ? `Группа #${groups.find(g=>g.id===form.group_id)?.number || '?'}` : 'Не выбрана')],
+                ...(!form.is_trial
+                  ? [['Группа', form.payment_type !== 'full'
+                      ? 'После полной оплаты — в карточке'
+                      : (form.group_id ? `Группа #${groups.find(g=>g.id===form.group_id)?.number || '?'}` : 'Не выбрана')]]
+                  : []),
                 ['Бонус с оплаты', `${form.bonus_percent === '' ? '—' : `${form.bonus_percent}%`}`],
-                ['Оплата', form.payment_type === 'full' ? `Полная — ${form.pay_amount || '0'} сом` : form.payment_type === 'installment' ? `Рассрочка — ${form.total_cost || '0'} сом` : '—'],
+                ['Оплата', form.payment_type === 'full'
+                  ? `Полная — ${form.pay_amount || '0'} сом`
+                  : form.payment_type === 'installment'
+                    ? `Рассрочка — ${form.total_cost || '0'} сом`
+                    : '—'],
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between">
                   <span style={{ color: 'var(--text-soft)' }}>{label}</span>
