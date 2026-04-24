@@ -40,6 +40,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const [lastName, setLastName] = useState(client.last_name)
   const [phone, setPhone] = useState(client.phone)
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
+  const [isTrial, setIsTrial] = useState(client.is_trial || false)
   const [groupId, setGroupId] = useState(client.group?.id || '')
   const [groups, setGroups] = useState([])
   const [gLoading, setGLoading] = useState(false)
@@ -49,6 +50,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const handleOpen = async () => {
     setFirstName(client.first_name); setLastName(client.last_name)
     setPhone(client.phone); setTelegramLink(client.telegram_link || '')
+    setIsTrial(client.is_trial || false)
     setGroupId(client.group?.id || ''); setErr('')
     if (!open) {
       setGLoading(true)
@@ -68,11 +70,18 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
     if (!firstName.trim() || !lastName.trim() || !phone.trim()) { setErr('Заполните ФИО и телефон'); return }
     setSaving(true); setErr('')
     try {
-      await api.patch(`/clients/${clientId}/edit-info/`, {
-        first_name: firstName.trim(), last_name: lastName.trim(),
-        phone: phone.trim(), telegram_link: (telegramLink || '').trim(),
-        group_id: groupId || null,
-      })
+      const body = {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        phone: phone.trim(),
+        telegram_link: (telegramLink || '').trim(),
+        is_trial: isTrial,
+      }
+      // Группу передаём только если клиент не пробный
+      if (!isTrial) {
+        body.group_id = groupId || null
+      }
+      await api.patch(`/clients/${clientId}/edit-info/`, body)
       setOpen(false); onSuccess()
     } catch (e) {
       setErr(e.response?.data?.detail || 'Ошибка сохранения')
@@ -91,43 +100,121 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
           </div>
           <div className="text-left">
             <p className="font-semibold text-gray-800 text-sm">Редактировать данные</p>
-            <p className="text-xs text-gray-400">ФИО, телефон, группа</p>
+            <p className="text-xs text-gray-400">ФИО, телефон, тип клиента</p>
           </div>
         </div>
         <ChevronRight size={18} className={`text-gray-400 transition ${open ? 'rotate-90' : ''}`} />
       </button>
+
       {open && (
         <div className="px-4 pb-5 space-y-3 border-t border-gray-100">
+
+          {/* ФИО и телефон */}
           <div className="pt-3 grid grid-cols-2 gap-3">
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Фамилия</p>
-              <input value={lastName} onChange={e => setLastName(e.target.value)} className="crm-mobile-input w-full" placeholder="Фамилия" />
+              <input value={lastName} onChange={e => setLastName(e.target.value)}
+                className="crm-mobile-input w-full" placeholder="Фамилия" />
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Имя</p>
-              <input value={firstName} onChange={e => setFirstName(e.target.value)} className="crm-mobile-input w-full" placeholder="Имя" />
+              <input value={firstName} onChange={e => setFirstName(e.target.value)}
+                className="crm-mobile-input w-full" placeholder="Имя" />
             </div>
           </div>
           <div>
             <p className="text-xs font-semibold text-gray-500 mb-1">Телефон</p>
-            <input value={phone} onChange={e => setPhone(e.target.value)} className="crm-mobile-input w-full" placeholder="+996..." type="tel" />
+            <input value={phone} onChange={e => setPhone(e.target.value)}
+              className="crm-mobile-input w-full" placeholder="+996..." type="tel" />
           </div>
           {client.training_format === 'online' && (
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Ссылка Telegram (необяз.)</p>
-              <input value={telegramLink} onChange={e => setTelegramLink(e.target.value)} className="crm-mobile-input w-full" placeholder="https://t.me/username или @username" />
+              <input value={telegramLink} onChange={e => setTelegramLink(e.target.value)}
+                className="crm-mobile-input w-full" placeholder="https://t.me/username или @username" />
             </div>
           )}
-          {!client.is_trial && (
+
+          {/* ── Тип клиента: Обычный / Пробный ── */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">Тип клиента</p>
+            <div className="flex gap-2">
+              {/* Обычный */}
+              <button
+                type="button"
+                onClick={() => setIsTrial(false)}
+                className="flex-1 flex items-center justify-between px-3 py-3 rounded-xl transition-all"
+                style={!isTrial
+                  ? { background: '#fce7f3', border: '2px solid #be185d' }
+                  : { background: '#fafafa', border: '2px solid #e5e7eb' }
+                }
+              >
+                <p className="text-sm font-semibold" style={{ color: !isTrial ? '#be185d' : '#6b7280' }}>
+                  Обычный
+                </p>
+                <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                     style={!isTrial
+                       ? { borderColor: '#be185d', background: '#be185d' }
+                       : { borderColor: '#d1d5db', background: '#fff' }
+                     }>
+                  {!isTrial && <Check size={9} className="text-white" strokeWidth={3} />}
+                </div>
+              </button>
+
+              {/* Пробный */}
+              <button
+                type="button"
+                onClick={() => setIsTrial(true)}
+                className="flex-1 flex items-center justify-between px-3 py-3 rounded-xl transition-all"
+                style={isTrial
+                  ? { background: '#fff7ed', border: '2px solid #ea580c' }
+                  : { background: '#fafafa', border: '2px solid #e5e7eb' }
+                }
+              >
+                <div className="flex items-center gap-1.5">
+                  <FlaskConical size={13} style={{ color: isTrial ? '#ea580c' : '#9ca3af' }} />
+                  <p className="text-sm font-semibold" style={{ color: isTrial ? '#ea580c' : '#6b7280' }}>
+                    Пробный
+                  </p>
+                </div>
+                <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                     style={isTrial
+                       ? { borderColor: '#ea580c', background: '#ea580c' }
+                       : { borderColor: '#d1d5db', background: '#fff' }
+                     }>
+                  {isTrial && <Check size={9} className="text-white" strokeWidth={3} />}
+                </div>
+              </button>
+            </div>
+
+            {/* Подсказка при смене с пробного на обычный */}
+            {client.is_trial && !isTrial && (
+              <div className="mt-2 px-3 py-2 rounded-xl text-xs"
+                   style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }}>
+                ✓ Статус изменится с «Пробный» на «Новый». Можно будет добавить в группу.
+              </div>
+            )}
+            {!client.is_trial && isTrial && (
+              <div className="mt-2 px-3 py-2 rounded-xl text-xs"
+                   style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' }}>
+                ⚗️ Клиент будет помечен как пробный. Добавление в группу станет недоступным.
+              </div>
+            )}
+          </div>
+
+          {/* Группа — только для НЕ пробных */}
+          {!isTrial && (
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Группа</p>
               {gLoading ? (
                 <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
-                  <span className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#be185d' }} />
+                  <span className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin"
+                        style={{ borderColor: '#be185d' }} />
                   Загрузка...
                 </div>
               ) : (
-                <select value={groupId} onChange={e => setGroupId(e.target.value)} className="crm-mobile-input w-full">
+                <select value={groupId} onChange={e => setGroupId(e.target.value)}
+                  className="crm-mobile-input w-full">
                   <option value="">— Без группы —</option>
                   {groups.map(g => (
                     <option key={g.id} value={g.id}>
@@ -140,16 +227,22 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
               )}
             </div>
           )}
+
           {err && (
-            <div className="flex items-center gap-2 p-3 rounded-xl text-xs" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+                 style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
               <AlertTriangle size={13} /> {err}
             </div>
           )}
+
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={handleSave} disabled={saving}
               className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
               style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+              {saving
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <Check size={16} />
+              }
               Сохранить
             </button>
             <button type="button" onClick={() => setOpen(false)}
@@ -255,7 +348,6 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
   const [err,          setErr]          = useState('')
   const [ok,           setOk]           = useState('')
 
-  // Показываем только если статус new/trial и нет оплаты
   const hasPayment = !!(client.full_payment || client.installment_plan)
   if (!['new', 'trial'].includes(client.status) || hasPayment) return null
 
@@ -295,15 +387,12 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
       <button type="button" onClick={() => { setOpen(v => !v); setErr(''); setOk('') }}
         className="w-full flex items-center justify-between p-4 touch-manipulation">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-               style={{ background: '#eef2ff' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#eef2ff' }}>
             <CreditCard size={18} style={{ color: '#4f46e5' }} />
           </div>
           <div className="text-left">
             <p className="font-semibold text-gray-800 text-sm">Ввести оплату</p>
-            <p className="text-xs font-semibold" style={{ color: '#d97706' }}>
-              ⚠ Требуется — оплата отменена
-            </p>
+            <p className="text-xs font-semibold" style={{ color: '#d97706' }}>⚠ Требуется — оплата отменена</p>
           </div>
         </div>
         <ChevronRight size={18} className={`text-gray-400 transition ${open ? 'rotate-90' : ''}`} />
@@ -320,17 +409,10 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
 
       {open && (
         <div className="px-4 pb-5 border-t border-gray-100 space-y-4 pt-4">
-
-          {/* Тип оплаты */}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
-              Шаг 1 — Тип оплаты
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Шаг 1 — Тип оплаты</p>
             <div className="flex gap-2">
-              {[
-                { v: 'full', l: 'Полная оплата' },
-                { v: 'installment', l: 'Рассрочка' },
-              ].map(({ v, l }) => (
+              {[{ v: 'full', l: 'Полная оплата' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
                 <button key={v} type="button" onClick={() => setPayType(v)}
                   className="flex-1 py-3 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
                   style={payType === v
@@ -342,13 +424,9 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
               ))}
             </div>
           </div>
-
-          {/* Сумма */}
           {payType === 'full' && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
-                Шаг 2 — Сумма курса
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Шаг 2 — Сумма</p>
               <input type="number" min="0" step="100" placeholder="Сумма (сом)"
                 value={payAmount} onChange={e => setPayAmount(e.target.value)}
                 className="crm-mobile-input w-full" />
@@ -356,9 +434,7 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
           )}
           {payType === 'installment' && (
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
-                Шаг 2 — Детали рассрочки
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Шаг 2 — Рассрочка</p>
               <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
                 value={totalCost} onChange={e => setTotalCost(e.target.value)}
                 className="crm-mobile-input w-full" />
@@ -366,36 +442,23 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
                 className="crm-mobile-input w-full" />
             </div>
           )}
-
-          {/* Процент бонуса */}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
-              Шаг 3 — Бонус с оплаты (%)
-            </p>
-            <input type="number" min={0} max={100} step={1}
-              placeholder="Например: 10"
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Шаг 3 — Бонус (%)</p>
+            <input type="number" min={0} max={100} step={1} placeholder="Например: 10"
               value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
               className="crm-mobile-input w-full" />
-            <p className="text-xs text-gray-400 mt-1">
-              Начислится клиенту после подтверждения оплаты
-            </p>
           </div>
-
           {err && (
             <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
                  style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
               <AlertTriangle size={13} /> {err}
             </div>
           )}
-
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={handleSubmit} disabled={loading}
               className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
               style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
-              {loading
-                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                : <Check size={16} />
-              }
+              {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
               Сохранить оплату
             </button>
             <button type="button" onClick={() => { setOpen(false); setErr('') }}
@@ -447,10 +510,7 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
     finally { setGroupsLoading(false) }
   }
 
-  const handleToggle = () => {
-    const next = !open; setOpen(next)
-    if (next) loadGroups(statusFilter)
-  }
+  const handleToggle = () => { const next = !open; setOpen(next); if (next) loadGroups(statusFilter) }
   const switchFilter = (st) => { setStatusFilter(st); loadGroups(st) }
   const addToGroup = async (groupId) => {
     setLoadingId(groupId); setErr('')
@@ -501,8 +561,7 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
                     <p className="font-semibold text-sm text-gray-800">
                       Группа #{g.number}
                       <span className="ml-1 text-xs font-normal text-gray-500">
-                        {g.group_type ? GROUP_TYPE_LABEL[g.group_type] : ''}
-                        {g.training_format === 'online' ? ' · онлайн' : ' · офлайн'}
+                        {g.group_type ? GROUP_TYPE_LABEL[g.group_type] : ''}{g.training_format === 'online' ? ' · онлайн' : ' · офлайн'}
                       </span>
                     </p>
                     <p className="text-xs text-gray-400 truncate">{g.trainer?.full_name || '—'}</p>
@@ -548,22 +607,17 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
     setGroupsLoading(true); setEnrollGroup(null)
     try {
       const r = await api.get('/groups/', {
-        params: {
-          status, page_size: 100,
-          training_format: client.training_format,
-          ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}),
-        },
+        params: { status, page_size: 100, training_format: client.training_format,
+          ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}) },
       })
       const list = r.data.results || []
-      const tf = client.training_format
-      const gt = (client.group_type || '').trim()
+      const tf = client.training_format; const gt = (client.group_type || '').trim()
       setGroups(list.filter(g => {
         if (g.training_format !== tf) return false
         if (tf === 'online' && !gt) return true
         return g.group_type === gt
       }))
-    } catch { setGroups([]) }
-    finally { setGroupsLoading(false) }
+    } catch { setGroups([]) } finally { setGroupsLoading(false) }
   }
 
   const handleOpen = () => {
@@ -572,7 +626,6 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
     setBonusPercent(String(bonusPercentDisplay(client.bonus_percent)))
     setError(''); setSuccessMsg(''); loadGroups(statusFilter)
   }
-
   const switchFilter = (s) => { setStatusFilter(s); loadGroups(s) }
   const handleSelectGroup = (g) => { setEnrollGroup(g); setStep(2); setPayType('full'); setError('') }
 
@@ -590,26 +643,20 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
       })
       setSuccessMsg(`Клиент записан в группу #${enrollGroup.number}`)
       setOpen(false); setEnrollGroup(null); onSuccess()
-    } catch(e) {
-      setError(e.response?.data?.detail || 'Ошибка записи')
-    } finally { setLoading(false) }
+    } catch(e) { setError(e.response?.data?.detail || 'Ошибка') } finally { setLoading(false) }
   }
 
-  // Пробных клиентов не показываем + обычные условия
   const statusAllowsReEnroll = !client.is_trial && !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
   if (!statusAllowsReEnroll) return null
 
-  const fpCheck = client.full_payment
-  const ipCheck = client.installment_plan
+  const fpCheck = client.full_payment; const ipCheck = client.installment_plan
   const hasOpenPaymentObligation =
     (client.payment_type === 'full' && fpCheck && !fpCheck.is_paid) ||
     (client.payment_type === 'installment' && ipCheck && !ipCheck.is_closed)
-  const isPaymentClosed = !hasOpenPaymentObligation
 
-  if (!isPaymentClosed) {
+  if (hasOpenPaymentObligation) {
     const remainingDebt = client.payment_type === 'installment' && ipCheck
-      ? ` Остаток: ${fmtMoney(ipCheck.remaining)}.`
-      : ' Оплата не подтверждена.'
+      ? ` Остаток: ${fmtMoney(ipCheck.remaining)}.` : ' Оплата не подтверждена.'
     return (
       <div className="bg-white rounded-2xl shadow-sm border p-4">
         <div className="flex items-start gap-3">
@@ -618,9 +665,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
           </div>
           <div>
             <p className="font-semibold text-gray-800 text-sm">Повторная запись</p>
-            <p className="text-xs mt-1" style={{ color: '#92400e' }}>
-              Недоступно — сначала закройте оплату.{remainingDebt}
-            </p>
+            <p className="text-xs mt-1" style={{ color: '#92400e' }}>Недоступно — сначала закройте оплату.{remainingDebt}</p>
           </div>
         </div>
       </div>
@@ -649,22 +694,16 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
             <h3 className="font-semibold text-gray-800">
               {step === 1 ? 'Выберите группу' : `Оплата — Группа #${enrollGroup?.number}`}
             </h3>
-            <button type="button" onClick={() => setOpen(false)} className="text-gray-400">
-              <X size={18} />
-            </button>
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400"><X size={18} /></button>
           </div>
-
-          {/* Бонус % */}
           <div className="rounded-2xl p-4 mb-3" style={{ background: '#fff', border: '1px solid var(--border)' }}>
             <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-xs)' }}>Бонус с оплаты</p>
             <label className="block">
               <span className="text-xs" style={{ color: 'var(--text-soft)' }}>Процент (0–100) *</span>
-              <input type="number" min={0} max={100} step={1}
-                value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
-                className="crm-mobile-input w-full mt-1" />
+              <input type="number" min={0} max={100} step={1} value={bonusPercent}
+                onChange={e => setBonusPercent(e.target.value)} className="crm-mobile-input w-full mt-1" />
             </label>
           </div>
-
           {step === 1 && (
             <div>
               {Number(client.bonus_balance) > 0 && (
@@ -680,8 +719,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                     className="flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
                     style={statusFilter === val
                       ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
-                      : { background: '#fff', borderColor: '#e5e7eb', color: '#6b7280' }
-                    }>
+                      : { background: '#fff', borderColor: '#e5e7eb', color: '#6b7280' }}>
                     {label}
                   </button>
                 ))}
@@ -700,8 +738,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                       style={{ background: '#fafafa', borderColor: '#e5e7eb' }}>
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-semibold text-gray-800 text-sm">
-                            Группа #{g.number}
+                          <p className="font-semibold text-gray-800 text-sm">Группа #{g.number}
                             <span className="ml-2 text-xs font-normal text-gray-400">{GROUP_TYPE_LABEL[g.group_type] || g.group_type}</span>
                           </p>
                           <p className="text-xs text-gray-400 mt-0.5">{g.trainer?.full_name || '—'} · {fmtSchedule(g.schedule)}</p>
@@ -714,7 +751,6 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
               )}
             </div>
           )}
-
           {step === 2 && enrollGroup && (
             <div className="space-y-4">
               <button type="button" onClick={() => setStep(1)} className="flex items-center gap-1.5 text-sm text-gray-400 touch-manipulation">
@@ -722,9 +758,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
               </button>
               <div className="p-3 rounded-xl text-sm" style={{ background: '#fce7f3' }}>
                 <span className="font-semibold" style={{ color: '#be185d' }}>Группа #{enrollGroup.number}</span>
-                <span className="ml-2 text-xs" style={{ color: '#9d174d' }}>
-                  {GROUP_TYPE_LABEL[enrollGroup.group_type]} · {enrollGroup.trainer?.full_name || '—'}
-                </span>
+                <span className="ml-2 text-xs" style={{ color: '#9d174d' }}>{GROUP_TYPE_LABEL[enrollGroup.group_type]} · {enrollGroup.trainer?.full_name || '—'}</span>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Тип оплаты</p>
@@ -734,8 +768,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                       className="flex-1 py-3 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
                       style={payType === v
                         ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
-                        : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
-                      }>
+                        : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
                       {l}
                     </button>
                   ))}
@@ -745,36 +778,17 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Сумма курса</p>
                   <input type="number" min="0" step="100" placeholder="Сумма (сом)"
-                    value={payAmount} onChange={e => setPayAmount(e.target.value)}
-                    className="crm-mobile-input w-full" />
+                    value={payAmount} onChange={e => setPayAmount(e.target.value)} className="crm-mobile-input w-full" />
                 </div>
               )}
               {payType === 'installment' && (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Детали рассрочки</p>
                   <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
-                    value={totalCost} onChange={e => setTotalCost(e.target.value)}
-                    className="crm-mobile-input w-full" />
-                  <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
-                    className="crm-mobile-input w-full" />
+                    value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-mobile-input w-full" />
+                  <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className="crm-mobile-input w-full" />
                 </div>
               )}
-              {Number(client.bonus_balance) > 0 && (() => {
-                const price = Number(payType === 'full' ? payAmount : totalCost)
-                if (!price || price <= 0) return null
-                const bonus = Math.min(Number(client.bonus_balance), price)
-                return (
-                  <div className="p-3 rounded-xl text-sm space-y-1.5" style={{ background: '#fefce8', border: '1px solid #fde68a' }}>
-                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#92400e' }}>Расчёт бонуса</p>
-                    <div className="flex justify-between"><span className="text-gray-500">Цена</span><span className="font-semibold crm-money">{fmtMoney(price)}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Бонус</span><span className="font-semibold text-red-500 crm-money">- {fmtMoney(bonus)}</span></div>
-                    <div className="border-t border-yellow-200 pt-1.5 flex justify-between font-bold">
-                      <span className="text-gray-700">К оплате</span>
-                      <span className="text-green-600 crm-money">{fmtMoney(price - bonus)}</span>
-                    </div>
-                  </div>
-                )
-              })()}
               {error && <p className="text-red-500 text-sm">{error}</p>}
               <button type="button" onClick={handleEnroll} disabled={loading}
                 className="w-full py-4 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
@@ -789,9 +803,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
       {successMsg && (
         <div className="px-4 pb-4">
           <div className="p-3 rounded-xl text-sm" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-            <span className="flex items-center gap-1.5" style={{ color: '#15803d' }}>
-              <Check size={14} /> {successMsg}
-            </span>
+            <span className="flex items-center gap-1.5" style={{ color: '#15803d' }}><Check size={14} /> {successMsg}</span>
           </div>
         </div>
       )}
@@ -801,9 +813,9 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
 
 // ── История групп ─────────────────────────────────────────────────────────────
 function MobileStreamsHistory({ client, clientId }) {
-  const [open,     setOpen]     = useState(false)
-  const [history,  setHistory]  = useState([])
-  const [loading,  setLoading]  = useState(false)
+  const [open, setOpen] = useState(false)
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState(null)
 
   const load = async () => {
@@ -812,7 +824,6 @@ function MobileStreamsHistory({ client, clientId }) {
     try { const r = await api.get(`/clients/${clientId}/group-history/`); setHistory(r.data) }
     catch { } finally { setLoading(false) }
   }
-
   const toggle = () => { if (!open) load(); setOpen(v => !v) }
 
   return (
@@ -832,7 +843,6 @@ function MobileStreamsHistory({ client, clientId }) {
         </div>
         {open ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
       </button>
-
       {open && (
         <div className="px-4 pb-4 space-y-2">
           {loading ? (
@@ -874,12 +884,9 @@ function MobileStreamsHistory({ client, clientId }) {
                   </button>
                   {selected?.id === h.id && (
                     <div className="px-3 py-3 bg-white space-y-2">
-                      {[
-                        ['Тренер', h.trainer_name || '—'],
-                        ['Старт', h.start_date || '—'],
+                      {[['Тренер', h.trainer_name || '—'], ['Старт', h.start_date || '—'],
                         ['Тип оплаты', h.payment_type === 'full' ? 'Полная' : 'Рассрочка'],
-                        ['Сумма курса', fmtMoney(h.payment_amount)],
-                        ['Оплачено', fmtMoney(h.payment_paid)],
+                        ['Сумма курса', fmtMoney(h.payment_amount)], ['Оплачено', fmtMoney(h.payment_paid)]
                       ].map(([lbl, val]) => (
                         <div key={lbl} className="flex justify-between text-xs">
                           <span className="text-gray-400">{lbl}</span>
@@ -1014,8 +1021,7 @@ export default function MobileClientDetail() {
     ? (full?.is_paid ? Number(full.amount) : 0)
     : (plan ? Number(plan.total_paid) : 0)
   const pct = plan && Number(plan.total_cost) > 0
-    ? Math.min(Math.round((Number(plan.total_paid) / Number(plan.total_cost)) * 100), 100)
-    : 0
+    ? Math.min(Math.round((Number(plan.total_paid) / Number(plan.total_cost)) * 100), 100) : 0
   const justCreatedCreds = location.state?.cabinet
 
   const allReceipts = []
@@ -1064,8 +1070,7 @@ export default function MobileClientDetail() {
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
                       {statusLoading
                         ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        : STATUS_LABEL[client.status]
-                      }
+                        : STATUS_LABEL[client.status]}
                       <ChevronDown size={11} />
                     </button>
                     {statusMenuOpen && (
@@ -1097,7 +1102,6 @@ export default function MobileClientDetail() {
                   </a>
                 </p>
               )}
-              {/* Бейдж пробного */}
               {client.is_trial && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold mt-1"
                       style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa' }}>
@@ -1143,23 +1147,11 @@ export default function MobileClientDetail() {
           </div>
         </div>
 
-        {/* Пробный — инфо-блок */}
-        {client.is_trial && (
-          <div className="rounded-2xl px-4 py-3 flex items-start gap-3"
-               style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
-            <FlaskConical size={16} style={{ color: '#ea580c', marginTop: 1, flexShrink: 0 }} />
-            <p className="text-xs" style={{ color: '#c2410c' }}>
-              Пробный клиент — добавление в группу недоступно. После пробного занятия можно изменить тип клиента через редактирование.
-            </p>
-          </div>
-        )}
-
         {/* Оплата */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border">
           <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
             <CreditCard size={18} /> Оплата
           </h3>
-
           {client.payment_type === 'full' && full && (
             <div className="space-y-3">
               {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) && (
@@ -1194,43 +1186,27 @@ export default function MobileClientDetail() {
               )}
             </div>
           )}
-
           {client.payment_type === 'installment' && plan && (() => {
-            const rem = Number(plan.remaining)
-            const isOverpaid = rem < 0
-            const isDone = rem <= 0
+            const rem = Number(plan.remaining); const isOverpaid = rem < 0; const isDone = rem <= 0
             return (
               <div className="space-y-3 text-sm">
                 <div className="bg-gray-50 rounded-xl p-3 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Общая стоимость</span>
-                    <span className="crm-money text-gray-800">{fmtMoney(plan.total_cost)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Оплачено</span>
-                    <span className="crm-money text-green-600">{fmtMoney(plan.total_paid)}</span>
-                  </div>
-                  <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
-                    {isOverpaid
-                      ? <><span className="text-gray-500">Переплата</span><span className="text-amber-600 font-semibold">+{fmtMoney(Math.abs(rem))}</span></>
-                      : <><span className="text-gray-500">Остаток</span><span className={`crm-money ${isDone ? 'text-green-600' : 'text-red-500'}`}>{isDone ? '—' : fmtMoney(rem)}</span></>
-                    }
+                  <div className="flex justify-between"><span className="text-gray-500">Общая стоимость</span><span className="crm-money text-gray-800">{fmtMoney(plan.total_cost)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Оплачено</span><span className="crm-money text-green-600">{fmtMoney(plan.total_paid)}</span></div>
+                  <div className="border-t border-gray-200 pt-2 flex justify-between">
+                    {isOverpaid ? <><span className="text-gray-500">Переплата</span><span className="text-amber-600 font-semibold">+{fmtMoney(Math.abs(rem))}</span></> : <><span className="text-gray-500">Остаток</span><span className={`crm-money ${isDone ? 'text-green-600' : 'text-red-500'}`}>{isDone ? '—' : fmtMoney(rem)}</span></>}
                   </div>
                 </div>
                 <div>
                   <div className="w-full bg-gray-100 rounded-full h-1.5">
-                    <div className={`h-1.5 rounded-full transition-all ${isOverpaid ? 'bg-amber-400' : isDone ? 'bg-green-500' : 'bg-blue-500'}`}
-                      style={{ width: `${pct}%` }} />
+                    <div className={`h-1.5 rounded-full transition-all ${isOverpaid ? 'bg-amber-400' : isDone ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
                   </div>
                   <div className="flex justify-between mt-1">
                     <span className="text-xs text-gray-400">{pct}% оплачено</span>
                     {isDone && !isOverpaid && <span className="text-xs text-green-600 font-medium">Полностью закрыто</span>}
                   </div>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-500">Дедлайн</span>
-                  <span className="text-gray-700">{plan.deadline}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-gray-500">Дедлайн</span><span className="text-gray-700">{plan.deadline}</span></div>
                 {plan.payments?.length > 0 && (
                   <div className="pt-1 border-t border-gray-100">
                     <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-2">История платежей</p>
@@ -1239,13 +1215,7 @@ export default function MobileClientDetail() {
                         <div key={p.id} className="flex justify-between items-center text-xs py-1.5 px-2 rounded-lg hover:bg-gray-50 gap-3">
                           <span className="text-gray-400 shrink-0">{p.paid_at}</span>
                           <span className="crm-money text-gray-700 flex-1 text-right">{fmtMoney(p.amount)}</span>
-                          {p.receipt
-                            ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer"
-                                className="text-blue-500 hover:text-blue-700 shrink-0 flex items-center gap-1">
-                                <Receipt size={11} /> Чек
-                              </a>
-                            : <span className="text-gray-300 shrink-0">—</span>
-                          }
+                          {p.receipt ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer" className="text-blue-500 flex items-center gap-1"><Receipt size={11} /> Чек</a> : <span className="text-gray-300">—</span>}
                         </div>
                       ))}
                     </div>
@@ -1254,20 +1224,16 @@ export default function MobileClientDetail() {
               </div>
             )
           })()}
-
-          {/* Нет оплаты */}
-          {!full && !plan && (
-            <p className="text-sm text-gray-400 text-center py-4">Оплата не введена</p>
-          )}
+          {!full && !plan && <p className="text-sm text-gray-400 text-center py-4">Оплата не введена</p>}
         </div>
 
-        {/* Редактировать */}
+        {/* Редактировать (с переключателем Пробный/Обычный) */}
         <MobileEditInfoPanel client={client} clientId={id} onSuccess={load} />
 
         {/* Отменить оплату */}
         <MobileCancelPaymentPanel client={client} clientId={id} onSuccess={load} />
 
-        {/* !! ВВЕСТИ ОПЛАТУ ЗАНОВО (после отмены) !! */}
+        {/* Ввести оплату заново */}
         <MobileEnterPaymentPanel client={client} clientId={id} onSuccess={load} />
 
         {/* Добавить в группу */}
@@ -1279,22 +1245,15 @@ export default function MobileClientDetail() {
         {/* Чеки */}
         {allReceipts.length > 0 && (
           <div className="bg-white rounded-2xl p-5 shadow-sm border">
-            <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-              <Receipt size={18} /> История чеков
-            </h3>
+            <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2"><Receipt size={18} /> История чеков</h3>
             <div className="space-y-2">
               {allReceipts.map((r, i) => (
                 <div key={`receipt-${r.id}-${i}`}
                   className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 bg-gray-50 rounded-xl text-sm gap-2">
                   <span className="text-gray-400 text-xs">{r.date ? fmtDateTime(r.date) : '—'}</span>
                   <span className="crm-money break-words">{r.label} — {fmtMoney(r.amount)}</span>
-                  {r.receipt
-                    ? <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer"
-                        className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium">
-                        <Receipt size={13} /> Открыть чек →
-                      </a>
-                    : <span className="text-gray-400 text-xs">Чек не прикреплён</span>
-                  }
+                  {r.receipt ? <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium"><Receipt size={13} /> Открыть чек →</a>
+                    : <span className="text-gray-400 text-xs">Чек не прикреплён</span>}
                 </div>
               ))}
             </div>
@@ -1312,7 +1271,7 @@ export default function MobileClientDetail() {
         {/* Повторный клиент */}
         <MobileRepeatPanel client={client} clientId={id} onSuccess={load} />
 
-        {/* Возврат средств */}
+        {/* Возврат */}
         {(client.group || client.status === 'active' || client.status === 'new' || client.status === 'trial') && (
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between">
@@ -1340,8 +1299,7 @@ export default function MobileClientDetail() {
               try {
                 await api.post(`/clients/${id}/change_status/`, { status: statusConfirm.newStatus })
                 setClient(c => ({ ...c, status: statusConfirm.newStatus }))
-              } catch { }
-              finally { setStatusLoading(false) }
+              } catch { } finally { setStatusLoading(false) }
             }}
             onClose={() => setStatusConfirm(null)}
           />
@@ -1357,12 +1315,8 @@ export default function MobileClientDetail() {
             try {
               const r = await api.post(`/clients/${id}/refund/`, { retention_amount: String(retention) })
               setRefundOpen(false)
-              if (r.data.action === 'deleted') {
-                navigate('/mobile/clients')
-              } else {
-                setRefundMsg({ type: 'success', text: r.data.detail })
-                load()
-              }
+              if (r.data.action === 'deleted') { navigate('/mobile/clients') }
+              else { setRefundMsg({ type: 'success', text: r.data.detail }); load() }
             } catch (e) {
               setRefundOpen(false)
               setRefundMsg({ type: 'error', text: e.response?.data?.detail || 'Ошибка' })
@@ -1372,12 +1326,8 @@ export default function MobileClientDetail() {
 
         {refundMsg && (
           <div className={`p-3 rounded-xl text-sm border ${
-            refundMsg.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-              : 'bg-red-50 border-red-200 text-red-600'
-          }`}>
-            {refundMsg.text}
-          </div>
+            refundMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-600'
+          }`}>{refundMsg.text}</div>
         )}
       </div>
     </MobileLayout>
