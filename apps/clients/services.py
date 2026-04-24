@@ -45,8 +45,15 @@ class ClientService(BaseService):
         if not data.get('is_repeat', False) and Decimal(str(data.get('discount', 0))) > 0:
             raise ValidationError("Discount can only be applied to repeat clients")
 
+        is_trial = data.get('is_trial', False)
+
         group_id = data.get('group_id')
-        if group_id:
+        if is_trial:
+            # Пробный клиент — никогда не добавляем в группу, статус = 'trial'
+            data.pop('group_id', None)
+            data.pop('group', None)
+            data['status'] = 'trial'
+        elif group_id:
             from apps.groups.models import Group
             try:
                 grp = Group.objects.get(id=group_id)
@@ -89,7 +96,7 @@ class ClientService(BaseService):
         else:
             raise ValidationError(f"Invalid payment_type: {payment_type}")
 
-        self.logger.info(f"Client created: {client.id}, payment_type: {payment_type}")
+        self.logger.info(f"Client created: {client.id}, payment_type: {payment_type}, is_trial: {is_trial}")
         client._cabinet_password_plain = plain_password
         client._cabinet_username_plain = username
         return client
@@ -148,6 +155,8 @@ class ClientService(BaseService):
     def assign_to_group(self, client_id: str, group_id: str) -> Client:
         from apps.groups.models import Group
         client = self.get_client_or_raise(client_id)
+        if client.is_trial:
+            raise ValidationError('Пробный клиент не может быть добавлен в группу.')
         if client.group_id and str(client.group_id) != str(group_id):
             raise ValidationError(f'Клиент уже в Потоке #{client.group.number}')
         try:
@@ -173,6 +182,9 @@ class ClientService(BaseService):
         from apps.groups.models import Group
 
         client = self.get_client_or_raise(client_id)
+
+        if client.is_trial:
+            raise ValidationError('Пробный клиент не может быть добавлен в группу.')
 
         if client.status not in ('new', 'frozen'):
             raise ValidationError(
@@ -212,7 +224,7 @@ class ClientService(BaseService):
     def cancel_payment(self, client_id: str, user=None) -> dict:
         """
         Отмена текущей оплаты без возврата денег (коррекция ввода).
-        Клиент остаётся в базе, статус 'new', без группы и оплаты.
+        Клиент остаётся в базе, статус 'new' (или 'trial' если is_trial), без группы и оплаты.
         """
         from apps.clients.bonus_service import BonusService
 
@@ -234,9 +246,10 @@ class ClientService(BaseService):
                 ip.payments.all().delete()
                 ip.delete()
 
-        # Сбрасываем состояние клиента: группа, статус, тип оплаты
+        # Статус: пробный остаётся пробным, остальные → new
+        new_status = 'trial' if client.is_trial else 'new'
         client.group = None
-        client.status = 'new'
+        client.status = new_status
         client.save(update_fields=['group', 'status', 'bonus_balance'])
 
         self.logger.info(
@@ -248,6 +261,63 @@ class ClientService(BaseService):
             'detail': 'Оплата отменена. Теперь выберите новый тип оплаты и введите данные.',
             'voided_bonus': str(voided),
         }
+
+    @transaction.atomic
+    def enter_payment_for_client(self, client_id: str, data: dict, user=None) -> 'Client':
+        """
+        Ввод/повторный ввод оплаты для клиента со статусом «Новый» или «Пробный»,
+        у которого нет активной оплаты (например, после отмены).
+        """
+        client = self.get_client_or_raise(client_id)
+
+        if client.status not in ('new', 'trial'):
+            raise ValidationError('Ввод оплаты доступен только для клиентов со статусом «Новый» или «Пробный».')
+
+        existing_fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
+        existing_ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
+        if existing_fp or existing_ip:
+            raise ValidationError('У клиента уже есть активная оплата. Сначала отмените её.')
+
+        payment_type = data.get('payment_type')
+        payment_data = data.get('payment_data', {})
+        bonus_percent_raw = data.get('bonus_percent')
+
+        if bonus_percent_raw is not None and bonus_percent_raw != '':
+            try:
+                bp = int(bonus_percent_raw)
+            except (TypeError, ValueError):
+                raise ValidationError('Процент бонуса должен быть целым числом.')
+            if bp < 0 or bp > 100:
+                raise ValidationError('Процент бонуса должен быть от 0 до 100.')
+            client.bonus_percent = bp
+
+        if payment_type == 'full':
+            amount = Decimal(str(payment_data.get('amount', 0)))
+            if amount <= 0:
+                raise ValidationError('Сумма оплаты должна быть положительной.')
+            FullPayment.objects.create(client=client, amount=amount)
+            client.payment_type = 'full'
+
+        elif payment_type == 'installment':
+            total_cost = Decimal(str(payment_data.get('total_cost', 0)))
+            deadline = payment_data.get('deadline')
+            if not total_cost or not deadline:
+                raise ValidationError('Для рассрочки нужны total_cost и deadline.')
+            if total_cost <= 0:
+                raise ValidationError('Сумма рассрочки должна быть положительной.')
+            InstallmentPlan.objects.create(client=client, total_cost=total_cost, deadline=deadline)
+            client.payment_type = 'installment'
+
+        else:
+            raise ValidationError('payment_type должен быть «full» или «installment».')
+
+        client.save(update_fields=['payment_type', 'bonus_percent'])
+        client.refresh_from_db()
+
+        self.logger.info(
+            f'Payment entered for client {client_id}: type={payment_type}'
+        )
+        return client
 
     def reset_cabinet_password(self, client_id: str) -> str:
         client = self.get_client_or_raise(client_id)
@@ -267,6 +337,9 @@ class ClientService(BaseService):
 
         client = self.get_client_or_raise(client_id)
 
+        if client.is_trial:
+            raise ValidationError('Пробный клиент не может быть записан в группу.')
+
         if client.status == 'new':
             raise ValidationError(
                 'Клиент со статусом «Новый» записывается через «Добавить в поток» без новой оплаты.'
@@ -278,8 +351,6 @@ class ClientService(BaseService):
                 'Сначала сделайте возврат или закройте поток.'
             )
 
-        # Проверяем закрыта ли предыдущая оплата.
-        # Если записи нет вообще — считаем что оплата «закрыта» (нечего закрывать).
         if client.payment_type == 'full':
             fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
             if fp and not fp.is_paid:
@@ -323,8 +394,6 @@ class ClientService(BaseService):
         if group.status == 'completed':
             raise ValidationError('Нельзя записать в завершённый поток')
 
-        # «Повторный» только если уже есть завершённый поток в истории.
-        # После возврата до первой записи в группу — истории нет, is_repeat остаётся False.
         if (
             not client.is_repeat
             and ClientGroupHistory.objects.filter(client=client).exists()
@@ -376,14 +445,6 @@ class ClientService(BaseService):
 
     @transaction.atomic
     def refund_client(self, client_id: str, user=None, retention_amount: Optional[Decimal] = None) -> dict:
-        """
-        Возврат средств (полный или частичный по деньгам клиенту).
-
-        - Удаляем последний план оплаты (FullPayment или InstallmentPlan).
-        - Сумма возврата клиенту = оплачено − удержание; удержание вручную (посещённые дни).
-        - Все бонусы, начисленные с этой оплаты, аннулируются (баланс может стать отрицательным).
-        - Клиент остаётся в базе: статус «Заморозка», от потока открепляем.
-        """
         from apps.clients.bonus_service import BonusService
         from apps.payments.models import RefundLog
 

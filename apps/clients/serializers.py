@@ -48,7 +48,8 @@ class ClientReadSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'full_name',
             'phone', 'telegram_link',
             'training_format', 'group_type', 'group', 'trainer',
-            'status', 'is_repeat', 'discount', 'bonus_balance', 'bonus_percent', 'payment_type',
+            'status', 'is_repeat', 'is_trial', 'discount',
+            'bonus_balance', 'bonus_percent', 'payment_type',
             'registered_at', 'registered_by_name',
             'full_payment', 'installment_plan',
             'cabinet_username', 'cabinet_password', 'created_at'
@@ -56,7 +57,6 @@ class ClientReadSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
     def get_full_payment(self, obj):
-        # Согласовано с PaymentService: последняя запись (повторные клиенты имеют несколько FP)
         fp = obj.full_payments.order_by('-created_at').first()
         if fp:
             return FullPaymentReadSerializer(fp).data
@@ -113,6 +113,7 @@ class ClientCreateSerializer(serializers.Serializer):
     )
 
     is_repeat = serializers.BooleanField(default=False)
+    is_trial  = serializers.BooleanField(default=False)
     discount = serializers.DecimalField(max_digits=5, decimal_places=2, default=0)
     registered_at = serializers.DateField(required=False)
 
@@ -135,6 +136,12 @@ class ClientCreateSerializer(serializers.Serializer):
             data['group_type'] = gt
         else:
             data['group_type'] = ''
+
+        # Пробный клиент не может быть добавлен в группу при регистрации
+        if data.get('is_trial') and data.get('group'):
+            raise serializers.ValidationError(
+                {'group': 'Пробный клиент не добавляется в группу при регистрации.'}
+            )
 
         payment_type = data.get('payment_type')
         payment_data = data.get('payment_data', {})
@@ -160,7 +167,7 @@ class ClientListMinimalSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Client
-        fields = ('id', 'full_name', 'phone', 'registered_at', 'status')
+        fields = ('id', 'full_name', 'phone', 'registered_at', 'status', 'is_trial')
 
 
 class ClientUpdateSerializer(serializers.ModelSerializer):
@@ -169,5 +176,6 @@ class ClientUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'first_name', 'last_name', 'phone', 'telegram_link',
             'training_format', 'group_type', 'group', 'trainer',
-            'status', 'is_repeat', 'discount', 'bonus_balance', 'bonus_percent',
+            'status', 'is_repeat', 'is_trial', 'discount',
+            'bonus_balance', 'bonus_percent',
         ]

@@ -10,13 +10,12 @@ from apps.payments.models import InstallmentPlan
 class ClientFilter(django_filters.FilterSet):
     group = django_filters.UUIDFilter(field_name='group__id')
     trainer = django_filters.UUIDFilter(field_name='trainer__id')
-    # UUID пользователя менеджера: по FK + по снимку ФИО (как при create_client:
-    # у части клиентов registered_by может указывать на общий аккаунт, а ФИО — в registered_by_name)
     registered_by = django_filters.CharFilter(method='filter_registered_by')
     status = django_filters.ChoiceFilter(choices=Client.STATUS_CHOICES)
     training_format = django_filters.ChoiceFilter(choices=Client.TRAINING_FORMAT_CHOICES)
     group_type = django_filters.ChoiceFilter(choices=Client.GROUP_TYPE_CHOICES)
     is_repeat = django_filters.BooleanFilter()
+    is_trial = django_filters.BooleanFilter()
     registered_from = django_filters.DateFilter(field_name='registered_at', lookup_expr='gte')
     registered_to = django_filters.DateFilter(field_name='registered_at', lookup_expr='lte')
     payment_status = django_filters.ChoiceFilter(
@@ -30,8 +29,7 @@ class ClientFilter(django_filters.FilterSet):
 
     class Meta:
         model = Client
-        # registered_by задан вручную (filter_registered_by), не дублировать в fields
-        fields = ['group', 'trainer', 'status', 'training_format', 'group_type', 'is_repeat']
+        fields = ['group', 'trainer', 'status', 'training_format', 'group_type', 'is_repeat', 'is_trial']
 
     def filter_from_telegram(self, queryset, name, value):
         if not value:
@@ -43,10 +41,6 @@ class ClientFilter(django_filters.FilterSet):
         return queryset
 
     def filter_registered_by(self, queryset, name, value):
-        """
-        Параметр registered_by — PK пользователя-менеджера (int или UUID, не только UUID).
-        Совпадение: FK registered_by ИЛИ снимок ФИО «Фамилия Имя» как в create_client.
-        """
         if value is None or str(value).strip() == '':
             return queryset
         raw = str(value).strip()

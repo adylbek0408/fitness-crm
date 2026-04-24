@@ -3,7 +3,7 @@ import { Link, useOutletContext } from 'react-router-dom'
 import {
   CheckCircle, Clock, Globe, Dumbbell, RotateCcw,
   ChevronDown, Search, SlidersHorizontal, X, ChevronLeft, ChevronRight,
-  Download, Loader,
+  Download, Loader, FlaskConical,
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import api from '../../api/axios'
@@ -37,10 +37,12 @@ function StatusDropdown({ clientId, currentStatus, onChanged }) {
     if (error) { const t = setTimeout(() => setError(''), 3000); return () => clearTimeout(t) }
   }, [error])
 
-  if (currentStatus === 'new') {
+  // Статусы new и trial — только отображение, без смены
+  if (currentStatus === 'new' || currentStatus === 'trial') {
     return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE.new}`}>
-        {STATUS_LABEL.new}
+      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[currentStatus] || 'bg-slate-100 text-slate-600'}`}>
+        {currentStatus === 'trial' && <FlaskConical size={10} />}
+        {STATUS_LABEL[currentStatus] || currentStatus}
       </span>
     )
   }
@@ -102,49 +104,40 @@ function PayBadge({ c }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF GENERATION — чистый jsPDF, без html2canvas
+// PDF GENERATION
 // ─────────────────────────────────────────────────────────────────────────────
 const PDF_STATUS_RGB = {
   new:       [109, 40, 217],
+  trial:     [234, 88,  12],
   active:    [5,   150, 105],
   frozen:    [2,   132, 199],
   completed: [71,  85,  105],
   expelled:  [220, 38,  38 ],
 }
 
-/**
- * Генерирует PDF-отчёт по клиентам с помощью чистого jsPDF (векторный текст).
- * Roboto + Identity-H — корректная кириллица (не Helvetica).
- * Каждый клиент — отдельный блок с авто-переносом страниц.
- */
 async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
   const pdf   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   await attachRobotoFontsToPdf(pdf)
-  const PW    = pdf.internal.pageSize.getWidth()   // 210
-  const PH    = pdf.internal.pageSize.getHeight()  // 297
-  const ML    = 14   // margin left
-  const MR    = 14   // margin right
+  const PW    = pdf.internal.pageSize.getWidth()
+  const PH    = pdf.internal.pageSize.getHeight()
+  const ML    = 14
+  const MR    = 14
   const CW    = PW - ML - MR
-  const MT    = 14   // margin top first page
-  const MB    = 18   // margin bottom (чуть больше для подвала)
+  const MT    = 14
+  const MB    = 18
 
   let y    = MT
   let page = 1
 
-  /** Ширина текста в блоке клиента */
   const textW = CW - 4
-  /** Макс. строк истории в одном PDF (защита от десятков страниц на одного клиента) */
   const PDF_HISTORY_MAX_ROWS = 15
 
-  /** Единый ритм строк (мм) и сетка «подпись — значение» */
   const LINE = 5
   const LABEL_W = 38
   const GAP_AFTER_TITLE = 5
 
-  // Цвет линий
   const setGray = (v = 200) => pdf.setDrawColor(v, v, v)
 
-  // ── добавить страницу с мини-шапкой ──────────────────────────────────────
   const addContinuationPage = () => {
     pdf.addPage()
     page++
@@ -159,20 +152,17 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
     y = 22
   }
 
-  // ── Проверка переноса ─────────────────────────────────────────────────────
   const checkBreak = (need) => {
     if (y + need > PH - MB) { addContinuationPage(); return true }
     return false
   }
 
-  // ── Вспомогательные функции текста ───────────────────────────────────────
   const bold   = () => pdf.setFont(PDF_BODY_FONT, 'bold')
   const normal = () => pdf.setFont(PDF_BODY_FONT, 'normal')
   const rgb    = (r, g, b) => pdf.setTextColor(r, g, b)
   const gray   = (v) => pdf.setTextColor(v, v, v)
   const sz     = (n) => pdf.setFontSize(n)
 
-  /** Многострочный текст; `\n` — новый абзац. Возвращает занятую высоту (мм). */
   const wrapText = (text, x, startY, maxW, lineH = LINE) => {
     let yy = startY
     const paragraphs = String(text || '').split(/\n+/)
@@ -186,10 +176,6 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
     return yy - startY
   }
 
-  /**
-   * Строка: подпись слева (фикс. ширина), значение справа с переносами.
-   * Возвращает прибавку к y (мм).
-   */
   const rowKeyVal = (baseX, yRef, label, value, {
     labelGray = 100,
     valueRgb = [55, 55, 62],
@@ -211,7 +197,6 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
     return Math.max(lines.length, 1) * LINE
   }
 
-  // ── ШАПКА ОТЧЁТА (первая страница) ────────────────────────────────────────
   sz(18); bold(); rgb(30, 20, 40)
   pdf.text('FITNESS CRM — База клиентов', ML, y)
   y += 7
@@ -222,7 +207,6 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
   })
   pdf.text(`Дата отчёта: ${dateStr}`, ML, y)
 
-  // Кол-во клиентов справа
   sz(9); bold(); rgb(190, 24, 93)
   pdf.text(`${summary?.total ?? allClients.length} клиентов`, PW - MR, y, { align: 'right' })
   y += 5
@@ -234,13 +218,11 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
     y += lh + 1
   }
 
-  // Цветная линия под шапкой
   pdf.setDrawColor(190, 24, 93)
   pdf.setLineWidth(0.6)
   pdf.line(ML, y, ML + CW, y)
   y += 5
 
-  // Сводка по статусам
   if (summary?.by_status) {
     const entries = Object.entries(summary.by_status)
     if (entries.length > 0) {
@@ -263,7 +245,6 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
   const lx = ML + 3
   const cardInnerW = textW - 4
 
-  // ── КАЖДЫЙ КЛИЕНТ — сетка подпись / значение ──────────────────────────────
   allClients.forEach((c, idx) => {
     const fp      = c.full_payment
     const ip      = c.installment_plan
@@ -273,7 +254,8 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
     checkBreak(85)
 
     sz(13); bold(); rgb(28, 24, 42)
-    pdf.text(`${idx + 1}. ${c.full_name}${c.is_repeat ? '  (повторно)' : ''}`, lx, y)
+    const trialMark = c.is_trial ? '  [Пробный]' : ''
+    pdf.text(`${idx + 1}. ${c.full_name}${c.is_repeat ? '  (повторно)' : ''}${trialMark}`, lx, y)
     y += GAP_AFTER_TITLE + 3
 
     y += rowKeyVal(lx, y, 'Статус', STATUS_LABEL[c.status] || c.status, {
@@ -298,9 +280,7 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
     if (c.group) {
       const g = c.group
       y += rowKeyVal(
-        lx,
-        y,
-        'Текущий поток',
+        lx, y, 'Текущий поток',
         `№${g.number}${g.group_type ? ` (${g.group_type === '1.5h' ? '1.5 ч' : '2.5 ч'})` : ''}`
       )
     }
@@ -326,14 +306,12 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
       y += rowKeyVal(lx, y, 'Статус оплаты', stText, {
         valueRgb: paid ? [18, 125, 72] : [195, 55, 55],
       })
-
     } else if (c.payment_type === 'installment' && ip) {
       y += rowKeyVal(lx, y, 'Тип', 'Рассрочка')
       y += rowKeyVal(lx, y, 'По договору', `${fmtMoney(ip.total_cost)} сом`)
       y += rowKeyVal(lx, y, 'Оплачено', `${fmtMoney(ip.total_paid)} сом`)
       y += rowKeyVal(lx, y, 'Остаток', `${fmtMoney(ip.remaining)} сом`)
       y += rowKeyVal(lx, y, 'Дедлайн', String(ip.deadline))
-
       if (ip.payments?.length > 0) {
         y += 3
         checkBreak(10 + ip.payments.length * LINE)
@@ -342,16 +320,12 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
         y += 6
         ip.payments.forEach((p, pi) => {
           const note = p.note ? ` · ${p.note}` : ''
-          y += rowKeyVal(
-            lx + 2,
-            y,
-            `${pi + 1}.`,
+          y += rowKeyVal(lx + 2, y, `${pi + 1}.`,
             `${p.paid_at} · ${fmtMoney(p.amount)} сом${note}`,
             { labelW: 16, blockTextW: textW - 4 }
           )
         })
       }
-
     } else {
       sz(8.5); normal(); gray(130)
       pdf.text('Нет данных об оплате', lx, y)
@@ -373,11 +347,8 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
       if (!showAll) {
         sz(8); normal(); gray(125)
         y += wrapText(
-          `В отчёте: первые ${PDF_HISTORY_MAX_ROWS} из ${totalH} записей архива. Полный список — в карточке клиента.`,
-          lx,
-          y,
-          textW,
-          LINE * 0.92
+          `В отчёте: первые ${PDF_HISTORY_MAX_ROWS} из ${totalH} записей архива.`,
+          lx, y, textW, LINE * 0.92
         )
         y += 4
       }
@@ -404,29 +375,16 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
 
         y += rowKeyVal(ix, y, 'Поток', gShort, { blockTextW: iw, labelW: 34 })
         y += rowKeyVal(ix, y, 'Тренер', h.trainer_name || '—', { blockTextW: iw, labelW: 34 })
-        y += rowKeyVal(
-          ix,
-          y,
-          'Период',
-          `${h.start_date || '—'} — ${h.ended_at || '—'}`,
-          { blockTextW: iw, labelW: 34 }
-        )
+        y += rowKeyVal(ix, y, 'Период',
+          `${h.start_date || '—'} — ${h.ended_at || '—'}`, { blockTextW: iw, labelW: 34 })
         const payKind = h.payment_type === 'full' ? 'Полная' : 'Рассрочка'
         y += rowKeyVal(ix, y, 'Вид оплаты', payKind, { blockTextW: iw, labelW: 34 })
-        y += rowKeyVal(
-          ix,
-          y,
-          'Архив сумм',
+        y += rowKeyVal(ix, y, 'Архив сумм',
           `${fmtMoney(h.payment_paid)} / ${fmtMoney(h.payment_amount)} сом`,
-          { blockTextW: iw, labelW: 34 }
-        )
-        y += rowKeyVal(
-          ix,
-          y,
-          'Закрытие',
+          { blockTextW: iw, labelW: 34 })
+        y += rowKeyVal(ix, y, 'Закрытие',
           closed ? 'Да, задолженность по потоку закрыта' : 'Возможен остаток (по архиву)',
-          { valueRgb: closed ? [18, 115, 68] : [175, 90, 25], blockTextW: iw, labelW: 34 }
-        )
+          { valueRgb: closed ? [18, 115, 68] : [175, 90, 25], blockTextW: iw, labelW: 34 })
 
         const cardH = y - cardTop + 4
         pdf.setDrawColor(215, 219, 228)
@@ -442,7 +400,6 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
     y += 10
   })
 
-  // ── Подвал последней страницы ─────────────────────────────────────────────
   sz(7.5); normal(); gray(170)
   pdf.text(
     `Сформировано: ${dateStr}   ·   Всего клиентов: ${allClients.length}   ·   FITNESS CRM`,
@@ -467,6 +424,7 @@ export default function Clients() {
   const [group,        setGroup]        = useState('')
   const [groupType,    setGroupType]    = useState('')
   const [isRepeat,     setIsRepeat]     = useState(false)
+  const [isTrial,      setIsTrial]      = useState(false)
   const [paymentStatus,setPaymentStatus]= useState('')
   const [registeredFrom,setRegisteredFrom]= useState('')
   const [registeredTo,  setRegisteredTo]  = useState('')
@@ -486,13 +444,11 @@ export default function Clients() {
   const loadAbortRef   = useRef(null)
   const loadGenRef     = useRef(0)
 
-  // debounce поиска
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
     return () => clearTimeout(t)
   }, [search])
 
-  // ── buildFilterParams ──────────────────────────────────────────────────────
   const buildFilterParams = (pageNum) => {
     const p = new URLSearchParams()
     if (pageNum != null)     p.set('page', String(pageNum))
@@ -502,6 +458,7 @@ export default function Clients() {
     if (group)               p.append('group',           group)
     if (groupType)           p.append('group_type',      groupType)
     if (isRepeat)            p.append('is_repeat',       'true')
+    if (isTrial)             p.append('is_trial',        'true')
     if (paymentStatus)       p.append('payment_status',  paymentStatus)
     if (registeredFrom)      p.append('registered_from', registeredFrom)
     if (registeredTo)        p.append('registered_to',   registeredTo)
@@ -511,7 +468,6 @@ export default function Clients() {
     return p
   }
 
-  // ── load clients + summary ─────────────────────────────────────────────────
   const load = async (p = page) => {
     loadAbortRef.current?.abort()
     const ac  = new AbortController()
@@ -557,7 +513,7 @@ export default function Clients() {
 
   useEffect(() => {
     setPage(1); load(1)
-  }, [debouncedSearch, status, format, group, groupType, isRepeat, paymentStatus,
+  }, [debouncedSearch, status, format, group, groupType, isRepeat, isTrial, paymentStatus,
       registeredFrom, registeredTo, registeredBy, trainerFilter, onlineTagFilter, fromTelegram])
 
   useEffect(() => { load() }, [page])
@@ -565,9 +521,9 @@ export default function Clients() {
 
   const resetFilters = () => {
     setSearch(''); setDebouncedSearch(''); setStatus(''); setFormat(''); setGroup('')
-    setGroupType(''); setIsRepeat(false); setPaymentStatus(''); setRegisteredFrom('')
-    setRegisteredTo(''); setRegisteredBy(''); setTrainerFilter(''); setOnlineTagFilter('')
-    setFromTelegram('')
+    setGroupType(''); setIsRepeat(false); setIsTrial(false); setPaymentStatus('')
+    setRegisteredFrom(''); setRegisteredTo(''); setRegisteredBy('')
+    setTrainerFilter(''); setOnlineTagFilter(''); setFromTelegram('')
     setPage(1); setTimeout(() => load(1), 0)
   }
 
@@ -575,10 +531,9 @@ export default function Clients() {
     setClients(prev => prev.map(c => c.id === id ? { ...c, status: newSt } : c))
 
   const hasFilters = search || debouncedSearch || status || format || group || groupType ||
-    isRepeat || paymentStatus || registeredFrom || registeredTo || registeredBy ||
+    isRepeat || isTrial || paymentStatus || registeredFrom || registeredTo || registeredBy ||
     trainerFilter || onlineTagFilter || fromTelegram
 
-  // ── Лейблы фильтров для PDF ────────────────────────────────────────────────
   const buildFilterLabels = () => {
     const labels = []
     if (status)          labels.push(`Статус: ${STATUS_LABEL[status] || status}`)
@@ -587,6 +542,7 @@ export default function Clients() {
     if (onlineTagFilter) labels.push(`Подписка: ${onlineTagFilter}`)
     if (paymentStatus)   labels.push(`Оплата: ${paymentStatus === 'paid' ? 'Оплачено' : 'Есть остаток'}`)
     if (isRepeat)        labels.push('Повторные')
+    if (isTrial)         labels.push('Пробные')
     if (group) {
       const g = groups.find(x => x.id === group)
       if (g) labels.push(`Группа: №${g.number}`)
@@ -606,17 +562,14 @@ export default function Clients() {
     return labels
   }
 
-  // ── СКАЧАТЬ PDF ────────────────────────────────────────────────────────────
   const generatePDF = async () => {
     setPdfLoading(true)
     try {
-      // 1. Все клиенты по фильтрам (max 500)
       const fp = buildFilterParams(null)
       fp.set('page_size', '500')
       const r = await api.get(`/clients/?${fp}`)
       const allClients = r.data.results || []
 
-      // 2. История групп — параллельно
       const historyMap = {}
       await Promise.all(
         allClients.map(async c => {
@@ -629,25 +582,18 @@ export default function Clients() {
         })
       )
 
-      // 3. Генерируем PDF
       const pdf = await buildClientsPDF(allClients, historyMap, summary, buildFilterLabels())
       const dateLabel = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')
       pdf.save(`Клиенты_${dateLabel}.pdf`)
 
     } catch (e) {
       console.error('PDF error:', e)
-      const msg = e?.message || ''
-      alert(
-        msg.includes('Roboto') || msg.includes('шрифт')
-          ? 'Не удалось загрузить шрифты для PDF. Проверьте, что файлы fonts/Roboto-*.ttf доступны.'
-          : 'Ошибка при формировании PDF. Попробуйте ещё раз.'
-      )
+      alert('Ошибка при формировании PDF. Попробуйте ещё раз.')
     } finally {
       setPdfLoading(false)
     }
   }
 
-  // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
     <AdminLayout user={user}>
       {/* Заголовок */}
@@ -671,7 +617,7 @@ export default function Clients() {
         </button>
       </div>
 
-      {/* Сводка по фильтрам */}
+      {/* Сводка */}
       {summary && (summary.total > 0 || hasFilters) && (
         <div className="crm-card p-3.5 mb-4 flex flex-wrap gap-2 items-center">
           <span className="text-slate-400 text-xs font-medium">По фильтрам:</span>
@@ -686,10 +632,9 @@ export default function Clients() {
         </div>
       )}
 
-      {/* Блок фильтров */}
+      {/* Фильтры */}
       <div className="crm-card p-4 mb-5">
         <div className="flex flex-wrap gap-2 items-center">
-          {/* Поиск */}
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -709,6 +654,7 @@ export default function Clients() {
             <select value={status} onChange={e => setStatus(e.target.value)} className="crm-input w-36">
               <option value="">Все</option>
               <option value="new">Новые</option>
+              <option value="trial">Пробные</option>
               <option value="active">Активные</option>
               <option value="frozen">Заморозка</option>
               <option value="completed">Завершили</option>
@@ -815,6 +761,13 @@ export default function Clients() {
               />
               Повторные
             </label>
+            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none pb-1">
+              <input
+                type="checkbox" checked={isTrial} onChange={e => setIsTrial(e.target.checked)}
+                className="rounded border-slate-300 text-orange-500 focus:ring-orange-400/30"
+              />
+              <FlaskConical size={13} className="text-orange-400" /> Пробные
+            </label>
             <div className="flex items-end gap-2 flex-wrap">
               <div className="crm-filter-group">
                 <span className="crm-filter-label">Рег. с</span>
@@ -831,7 +784,7 @@ export default function Clients() {
 
       {/* Таблица клиентов */}
       <div className="crm-card overflow-hidden">
-        {/* Мобильный вид */}
+        {/* Мобильный */}
         <div className="md:hidden divide-y divide-slate-100">
           {loading && (
             <div className="p-8 text-center">
@@ -860,6 +813,7 @@ export default function Clients() {
                 </span>
                 {c.group && <span className="text-slate-400">· Группа {c.group.number}</span>}
                 {c.is_repeat && <span className="flex items-center gap-0.5 text-indigo-500"><RotateCcw size={11} /> Повторный</span>}
+                {c.is_trial && <span className="flex items-center gap-0.5 text-orange-500"><FlaskConical size={11} /> Пробный</span>}
                 <span className="ml-auto"><PayBadge c={c} /></span>
               </div>
               <Link to={`/admin/clients/${c.id}`} className="text-xs text-indigo-600 font-medium hover:text-indigo-800 transition">
@@ -898,6 +852,11 @@ export default function Clients() {
                         {c.is_repeat && (
                           <p className="text-xs text-indigo-500 flex items-center gap-1 mt-0.5">
                             <RotateCcw size={11} /> Повторный
+                          </p>
+                        )}
+                        {c.is_trial && (
+                          <p className="text-xs text-orange-500 flex items-center gap-1 mt-0.5">
+                            <FlaskConical size={11} /> Пробный
                           </p>
                         )}
                       </td>

@@ -214,6 +214,22 @@ class ClientViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(ClientReadSerializer(client).data)
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='enter-payment')
+    def enter_payment(self, request, pk=None):
+        """
+        POST /api/clients/{id}/enter-payment/
+        Повторный ввод оплаты для клиента со статусом «Новый» без активной оплаты.
+        Используется после отмены оплаты для повторного ввода данных.
+        Body: { payment_type, payment_data: {amount} | {total_cost, deadline}, bonus_percent?: 0–100 }
+        """
+        try:
+            client = self.service.enter_payment_for_client(pk, request.data, user=request.user)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(ClientReadSerializer(client).data)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='cancel-payment')
     def cancel_payment(self, request, pk=None):
         """

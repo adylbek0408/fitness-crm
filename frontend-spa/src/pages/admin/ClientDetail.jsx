@@ -8,7 +8,7 @@ import {
   RotateCcw, User, Phone, Calendar, Layers, UserCircle, Gift,
   TrendingUp, TrendingDown, History, ChevronDown, ChevronUp, ChevronRight,
   Undo2, XCircle, GraduationCap, ShieldOff, AlertTriangle, UserPlus, Percent,
-  Pencil, X, Ban, Send
+  Pencil, X, Ban, Send, FlaskConical
 } from 'lucide-react'
 import {
   STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
@@ -22,7 +22,6 @@ import RefundModal from '../../components/RefundModal'
 
 const GROUP_TYPE_SHORT = { '1.5h': '1.5 ч', '2.5h': '2.5 ч' }
 
-/** Для отображения: null/undefined → 10%; 0 остаётся 0 (в БД явно задано). В отличие от ??, ноль не подменяется. */
 function bonusPercentDisplay(bp) {
   return bp === null || bp === undefined ? 10 : bp
 }
@@ -204,7 +203,6 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
   const [err,        setErr]        = useState('')
   const [ok,         setOk]         = useState('')
 
-  // При открытии формы — сбрасываем значения и загружаем группы
   const handleOpen = async () => {
     setFirstName(client.first_name)
     setLastName(client.last_name)
@@ -218,7 +216,6 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
         const r = await api.get('/groups/', { params: { page_size: 200, status: 'recruitment' } })
         const r2 = await api.get('/groups/', { params: { page_size: 200, status: 'active' } })
         const all = [...(r.data.results || []), ...(r2.data.results || [])]
-        // Убираем дубликаты
         const seen = new Set()
         setGroups(all.filter(g => { if (seen.has(g.id)) return false; seen.add(g.id); return true }))
       } catch { setGroups([]) }
@@ -302,28 +299,31 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
               <p className="text-xs text-slate-400 mt-1">Если заполнено — клиент отмечается в фильтрах как «Из Telegram»</p>
             </div>
           )}
-          <div>
-            <label className="crm-label">Группа ({'оставить пустым — без группы'})</label>
-            {gLoading ? (
-              <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
-                <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                Загрузка...
-              </div>
-            ) : (
-              <select value={groupId} onChange={e => setGroupId(e.target.value)}
-                className="crm-input w-full">
-                <option value="">— Без группы —</option>
-                {groups.map(g => (
-                  <option key={g.id} value={g.id}>
-                    Группа #{g.number}
-                    {g.group_type ? ` (${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
-                    {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
-                    {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+          {/* Для пробных клиентов не показываем смену группы */}
+          {!client.is_trial && (
+            <div>
+              <label className="crm-label">Группа ({'оставить пустым — без группы'})</label>
+              {gLoading ? (
+                <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                  <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  Загрузка...
+                </div>
+              ) : (
+                <select value={groupId} onChange={e => setGroupId(e.target.value)}
+                  className="crm-input w-full">
+                  <option value="">— Без группы —</option>
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id}>
+                      Группа #{g.number}
+                      {g.group_type ? ` (${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
+                      {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
+                      {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
           {err && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
               <AlertTriangle size={14} /> {err}
@@ -355,7 +355,6 @@ function CancelPaymentPanel({ client, clientId, onSuccess }) {
   const [loading, setLoading] = useState(false)
   const [err,     setErr]     = useState('')
 
-  // Показываем только если есть оплата
   const fp = client.full_payment
   const ip = client.installment_plan
   const hasPayment = !!(fp || ip)
@@ -407,8 +406,7 @@ function CancelPaymentPanel({ client, clientId, onSuccess }) {
           <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
             <p className="text-sm font-semibold text-red-700 mb-1">Уверены?</p>
             <p className="text-xs text-red-600">
-              Оплата будет полностью удалена. Клиент перейдёт в статус «Новый» без группы.
-              После этого можно заново выбрать тип оплаты и ввести данные.
+              Оплата будет полностью удалена. После этого можно заново выбрать тип оплаты и ввести данные.
             </p>
           </div>
           {err && <p className="text-sm text-red-600">{err}</p>}
@@ -433,6 +431,149 @@ function CancelPaymentPanel({ client, clientId, onSuccess }) {
   )
 }
 
+// ── Ввод оплаты после отмены ─────────────────────────────────────────────────
+function EnterPaymentPanel({ client, clientId, onSuccess }) {
+  const [open,          setOpen]          = useState(false)
+  const [payType,       setPayType]       = useState('full')
+  const [payAmount,     setPayAmount]     = useState('')
+  const [totalCost,     setTotalCost]     = useState('')
+  const [deadline,      setDeadline]      = useState('')
+  const [bonusPercent,  setBonusPercent]  = useState(String(bonusPercentDisplay(client.bonus_percent)))
+  const [loading,       setLoading]       = useState(false)
+  const [err,           setErr]           = useState('')
+  const [ok,            setOk]            = useState('')
+
+  const hasPayment = !!(client.full_payment || client.installment_plan)
+  if (!['new', 'trial'].includes(client.status) || hasPayment) return null
+
+  const handleSubmit = async () => {
+    if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) {
+      setErr('Укажите сумму оплаты'); return
+    }
+    if (payType === 'installment' && (!totalCost || !deadline)) {
+      setErr('Укажите стоимость и дедлайн'); return
+    }
+    const bp = parseInt(String(bonusPercent).trim(), 10)
+    if (Number.isNaN(bp) || bp < 0 || bp > 100) {
+      setErr('Процент бонуса: от 0 до 100'); return
+    }
+    setLoading(true); setErr(''); setOk('')
+    try {
+      await api.post(`/clients/${clientId}/enter-payment/`, {
+        payment_type: payType,
+        payment_data: payType === 'full'
+          ? { amount: payAmount }
+          : { total_cost: totalCost, deadline },
+        bonus_percent: bp,
+      })
+      setOk(client.is_trial
+        ? 'Оплата введена!'
+        : 'Оплата введена! Теперь добавьте клиента в группу.')
+      setOpen(false)
+      onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="crm-card p-5 mb-5 border-2 border-indigo-200">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+          <CreditCard size={14} className="text-indigo-600" />
+        </div>
+        <h3 className="font-bold text-slate-800">Ввести оплату</h3>
+        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Требуется</span>
+      </div>
+      <p className="text-xs text-slate-400 mb-3">
+        {client.is_trial
+          ? 'Оплата была отменена. Выберите тип оплаты и введите данные заново.'
+          : 'Оплата была отменена. Выберите тип оплаты и введите данные заново — затем добавьте клиента в группу.'}
+      </p>
+
+      {ok && !open && (
+        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-2">
+          <Check size={14} /> {ok}
+        </div>
+      )}
+
+      <button type="button" onClick={() => { setOpen(v => !v); setErr(''); setOk('') }}
+        className="crm-btn-primary w-full justify-center gap-2">
+        <CreditCard size={14} />{open ? 'Скрыть' : 'Ввести оплату'}
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-4 pt-4 border-t border-slate-100">
+          <div>
+            <p className="text-xs text-slate-400 font-medium mb-2">Шаг 1 — Тип оплаты</p>
+            <div className="flex gap-2">
+              {[{ v: 'full', l: 'Полная оплата' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+                <button key={v} type="button" onClick={() => setPayType(v)}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition-all ${
+                    payType === v ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-600'
+                  }`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {payType === 'full' && (
+            <div>
+              <p className="text-xs text-slate-400 font-medium mb-2">Шаг 2 — Сумма курса</p>
+              <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                className="crm-input w-full" />
+            </div>
+          )}
+          {payType === 'installment' && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-400 font-medium mb-2">Шаг 2 — Детали рассрочки</p>
+              <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+                value={totalCost} onChange={e => setTotalCost(e.target.value)}
+                className="crm-input w-full" />
+              <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
+                className="crm-input w-full" />
+            </div>
+          )}
+
+          <div>
+            <p className="text-xs text-slate-400 font-medium mb-2">Шаг 3 — Бонус с оплаты (%)</p>
+            <input type="number" min={0} max={100} step={1}
+              value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
+              className="crm-input w-full"
+              placeholder="Например 10" />
+            <p className="text-xs text-slate-400 mt-1">Начислится клиенту после подтверждения оплаты</p>
+          </div>
+
+          {err && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+              <AlertTriangle size={14} /> {err}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={handleSubmit} disabled={loading}
+              className="crm-btn-primary flex-1 justify-center disabled:opacity-60">
+              {loading
+                ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                : <Check size={14} />
+              }
+              Сохранить оплату
+            </button>
+            <button type="button" onClick={() => { setOpen(false); setErr('') }}
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-sm font-medium hover:bg-slate-50 transition">
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Клиент «Новый»: добавить в группу (без проверки оплаты) ───────
 function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
   const [open, setOpen] = useState(false)
@@ -443,7 +584,9 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
 
+  // Пробных клиентов НЕ добавляем в группу
   const canUseNewClientFlow =
+    !client.is_trial &&
     (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat))
     && !client.group
 
@@ -676,8 +819,8 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
     return p[0].split(',').map(d => DAY_LABELS[d] || d).join(', ') + (p[1] ? ' · ' + p[1] : '') + (p[2] ? ' — ' + p[2] : '')
   }
 
-  // ── Показываем панель только если клиент не в группе и статус позволяет ──
-  const statusAllowsReEnroll = !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
+  // Пробных не показываем + обычные условия
+  const statusAllowsReEnroll = !client.is_trial && !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
   if (!statusAllowsReEnroll) return null
 
   const fp = client.full_payment
@@ -687,7 +830,6 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
     (client.payment_type === 'installment' && ip && !ip.is_closed)
   const isPaymentClosed = !hasOpenPaymentObligation
 
-  // Если оплата не закрыта — показываем блокирующее предупреждение
   if (!isPaymentClosed) {
     const remainingDebt =
       client.payment_type === 'installment' && ip
@@ -717,7 +859,6 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
     )
   }
 
-  // ── Всё ок — показываем форму записи ──
   return (
     <div className="crm-card p-5 mb-5">
       <div className="flex items-center gap-2 mb-3">
@@ -1095,16 +1236,16 @@ export default function ClientDetail() {
     ? Math.min(plan.total_cost > 0 ? (Number(plan.total_paid) / Number(plan.total_cost)) * 100 : 0, 100)
     : null
 
-  // Подсчитываем доминирующий цвет статуса для верхней полоски карточки
   const STATUS_GRADIENT = {
     new:       'linear-gradient(135deg,#ede9fe,#fdf4ff)',
+    trial:     'linear-gradient(135deg,#fff7ed,#ffedd5)',
     active:    'linear-gradient(135deg,#d1fae5,#ecfdf5)',
     frozen:    'linear-gradient(135deg,#e0f2fe,#f0f9ff)',
     completed: 'linear-gradient(135deg,#f1f5f9,#f8fafc)',
     expelled:  'linear-gradient(135deg,#ffe4e6,#fff1f2)',
   }
   const STATUS_LINE_COLOR = {
-    new: '#7c3aed', active: '#059669', frozen: '#0284c7', completed: '#94a3b8', expelled: '#e11d48',
+    new: '#7c3aed', trial: '#ea580c', active: '#059669', frozen: '#0284c7', completed: '#94a3b8', expelled: '#e11d48',
   }
 
   return (
@@ -1112,7 +1253,6 @@ export default function ClientDetail() {
       {/* ── Hero ── */}
       <div className="rounded-2xl overflow-hidden mb-5 border border-slate-100"
         style={{ background: STATUS_GRADIENT[client.status] || '#f8fafc' }}>
-        {/* Цветная полоска соответствующего статуса */}
         <div className="h-1.5 w-full" style={{ background: STATUS_LINE_COLOR[client.status] || '#94a3b8' }} />
         <div className="p-5">
           <div className="flex items-start gap-3 flex-wrap">
@@ -1128,12 +1268,18 @@ export default function ClientDetail() {
                     <RotateCcw size={10} /> Повторный
                   </span>
                 )}
+                {client.is_trial && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 flex items-center gap-1 shrink-0">
+                    <FlaskConical size={10} /> Пробный
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-sm text-slate-500">{client.phone}</span>
                 <span className="text-slate-300">·</span>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[client.status] || 'bg-slate-100 text-slate-600'}`}>
                   {client.status === 'frozen' && <Snowflake size={10} className="inline mr-1" />}
+                  {client.status === 'trial' && <FlaskConical size={10} className="inline mr-1" />}
                   {STATUS_LABEL[client.status]}
                 </span>
                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -1151,7 +1297,7 @@ export default function ClientDetail() {
             </div>
           </div>
 
-          {/* Кабинет — компактно в hero */}
+          {/* Кабинет */}
           {client.cabinet_username && (
             <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
               <div className="flex items-center gap-2">
@@ -1186,6 +1332,22 @@ export default function ClientDetail() {
           {resetError && <p className="text-red-500 text-xs mt-1">{resetError}</p>}
         </div>
       </div>
+
+      {/* ── Пробный клиент — информационный блок ── */}
+      {client.is_trial && (
+        <div className="crm-card p-4 mb-5 border-l-4 border-orange-400 bg-orange-50">
+          <div className="flex items-start gap-3">
+            <FlaskConical size={18} className="text-orange-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-orange-800 text-sm">Пробный клиент</p>
+              <p className="text-xs text-orange-700 mt-0.5">
+                Этот клиент зарегистрирован как пробный — он посещает пробное занятие.
+                Добавление в группу недоступно. После пробного занятия клиент может быть переведён в обычные.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Инфо + Оплата ── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
@@ -1224,6 +1386,15 @@ export default function ClientDetail() {
             <InfoRow icon={Calendar} label="Дата регистрации" value={client.registered_at} />
             <InfoRow icon={Gift} label="Бонусный баланс" value={fmtMoney(client.bonus_balance ?? 0)} color={Number(client.bonus_balance) < 0 ? 'text-red-600' : 'text-amber-600'} />
             <InfoRow icon={Percent} label="Бонус с оплаты (%)" value={`${bonusPercentDisplay(client.bonus_percent)}% — начислится после подтверждения оплаты`} color="text-slate-700" />
+            {client.is_trial && (
+              <div className="flex items-center gap-3 py-3 border-b border-slate-50">
+                <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center shrink-0">
+                  <FlaskConical size={14} className="text-orange-400" />
+                </div>
+                <span className="text-sm text-slate-500 flex-1">Статус клиента</span>
+                <span className="text-sm font-semibold text-orange-600">Пробный</span>
+              </div>
+            )}
             <div className="flex items-center gap-3 py-3">
               <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0">
                 <User size={14} className="text-slate-400" />
@@ -1384,16 +1555,21 @@ export default function ClientDetail() {
       {/* ── Отменить оплату ── */}
       <CancelPaymentPanel client={client} clientId={id} onSuccess={load} />
 
-      {/* ── Новый клиент: в группу без новой оплаты ── */}
+      {/* ── Ввод оплаты (после отмены) ── */}
+      <EnterPaymentPanel client={client} clientId={id} onSuccess={load} />
+
+      {/* ── Новый клиент: в группу без новой оплаты (пробных пропускаем) ── */}
       <NewClientAddToGroupPanel client={client} clientId={id} onSuccess={load} />
 
       {/* ── Изменить статус ── */}
       <div className="crm-card p-5 mb-5">
         <h3 className="font-bold text-slate-800 mb-1">Изменить статус</h3>
-        {client.status === 'new' ? (
+        {(client.status === 'new' || client.status === 'trial') ? (
           <p className="text-sm text-slate-600">
-            Статус <strong>«Новый»</strong> сменится на <strong>«Активный»</strong> после добавления клиента в группу.
-            Вручную выставить «Активный» без группы нельзя. Для отмены регистрации используйте возврат средств.
+            {client.is_trial
+              ? 'Клиент помечен как «Пробный». Добавление в группу недоступно. Статус изменится вручную после пробного занятия.'
+              : 'Статус «Новый» сменится на «Активный» после добавления клиента в группу. Вручную выставить «Активный» без группы нельзя.'
+            }
           </p>
         ) : (
           <>
@@ -1432,7 +1608,7 @@ export default function ClientDetail() {
       </div>
 
       {/* ── Возврат средств ── */}
-      {(client.group || (full && !full.is_paid) || (plan && !plan.is_closed) || client.status === 'new') && (
+      {(client.group || (full && !full.is_paid) || (plan && !plan.is_closed) || client.status === 'new' || client.status === 'trial') && (
         <div className="crm-card p-5 mb-5">
           <div className="flex items-center justify-between">
             <div>
@@ -1475,7 +1651,7 @@ export default function ClientDetail() {
         }}
       />
 
-      {/* ── Повторный клиент ── */}
+      {/* ── Повторный клиент (пробных пропускаем) ── */}
       <RepeatClientPanel client={client} clientId={id} onSuccess={load} />
 
       {/* ── Бонусная система ── */}

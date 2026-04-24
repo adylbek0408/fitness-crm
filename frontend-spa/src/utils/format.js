@@ -26,6 +26,7 @@ export const fmtDateTime = dt => {
 
 export const STATUS_BADGE = {
   new:         'bg-violet-50 text-violet-700 border border-violet-200',
+  trial:       'bg-orange-50 text-orange-700 border border-orange-200',
   active:      'bg-emerald-50 text-emerald-700 border border-emerald-200',
   completed:   'bg-slate-100 text-slate-600 border border-slate-200',
   expelled:    'bg-red-50 text-red-600 border border-red-200',
@@ -35,6 +36,7 @@ export const STATUS_BADGE = {
 
 export const STATUS_LABEL = {
   new:         'Новый',
+  trial:       'Пробный',
   active:      'Активный',
   completed:   'Завершил',
   expelled:    'Отчислен',
@@ -48,20 +50,15 @@ export const GROUP_TYPE_LABEL = {
 }
 
 // ── URL бэкенда Django (из .env) ─────────────────────────────────────────
-// Нужен для прямого открытия медиафайлов (чеки, изображения).
-// Без него /media/... попадает в React Router → редирект на /login.
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || ''
 
 export const toAbsoluteUrl = (url) => {
   if (!url) return ''
-  // Уже абсолютный URL — возвращаем как есть
   if (/^https?:\/\//i.test(url)) return url
   if (url.startsWith('//')) return `${window.location.protocol}${url}`
 
   const normalized = url.startsWith('/') ? url : `/${url}`
 
-  // ✅ Медиафайлы открываем НАПРЯМУЮ через Django, а не через React SPA.
-  // Иначе React Router / Service Worker перехватывают /media/... и редиректят на /login.
   if (normalized.startsWith('/media/')) {
     if (BACKEND_ORIGIN) return `${BACKEND_ORIGIN}${normalized}`
     return `${window.location.origin}${normalized}`
@@ -70,11 +67,8 @@ export const toAbsoluteUrl = (url) => {
   return `${window.location.origin}${normalized}`
 }
 
-// ── Безопасное открытие чека/медиафайла в новой вкладке ──────────────────
-// Используем window.open с обходом Service Worker — SW не должен перехватить запрос.
 export const openReceiptUrl = (url) => {
   const abs = toAbsoluteUrl(url)
   if (!abs) return
-  // noopener — безопасность; noreferrer — не передавать Referer на backend
   window.open(abs, '_blank', 'noopener,noreferrer')
 }

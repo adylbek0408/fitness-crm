@@ -36,6 +36,7 @@ class Client(UUIDTimestampedModel):
     GROUP_TYPE_CHOICES = [('1.5h', '1.5 hours'), ('2.5h', '2.5 hours')]
     STATUS_CHOICES = [
         ('new', 'New'),
+        ('trial', 'Trial'),
         ('active', 'Active'), ('completed', 'Completed'),
         ('expelled', 'Expelled'), ('frozen', 'Frozen'),
     ]
@@ -65,6 +66,10 @@ class Client(UUIDTimestampedModel):
 
     status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
     is_repeat = models.BooleanField(default=False)
+    is_trial  = models.BooleanField(
+        default=False,
+        help_text='Пробный клиент — посещает пробное занятие; не добавляется в группу',
+    )
     discount  = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     bonus_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     bonus_percent = models.PositiveSmallIntegerField(
@@ -95,6 +100,7 @@ class Client(UUIDTimestampedModel):
             models.Index(fields=['group']),
             models.Index(fields=['trainer']),
             models.Index(fields=['is_repeat']),
+            models.Index(fields=['is_trial']),
             models.Index(fields=['phone']),
         ]
 
