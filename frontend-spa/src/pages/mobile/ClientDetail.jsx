@@ -7,7 +7,7 @@ import {
   Globe, Dumbbell, CreditCard, CheckCircle, Clock, Receipt,
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp, ChevronRight,
   RotateCcw, Gift, Check, Layers, X, UserPlus, Percent,
-  Pencil, Ban, AlertTriangle, Send
+  Pencil, Ban, AlertTriangle, Send, FlaskConical
 } from 'lucide-react'
 import {
   STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
@@ -33,7 +33,7 @@ const fmtSchedule = s => {
     + (p[2] ? ' — ' + p[2] : '')
 }
 
-// ── Новый клиент: добавить в группу (оплата закрыта) ───────────────────────────
+// ── Редактировать данные ───────────────────────────────────────────────────────
 function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const [open, setOpen] = useState(false)
   const [firstName, setFirstName] = useState(client.first_name)
@@ -91,7 +91,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
           </div>
           <div className="text-left">
             <p className="font-semibold text-gray-800 text-sm">Редактировать данные</p>
-            <p className="text-xs text-gray-400">ФИО, телефон, группа{client.training_format === 'online' ? ', Telegram' : ''}</p>
+            <p className="text-xs text-gray-400">ФИО, телефон, группа</p>
           </div>
         </div>
         <ChevronRight size={18} className={`text-gray-400 transition ${open ? 'rotate-90' : ''}`} />
@@ -118,26 +118,28 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
               <input value={telegramLink} onChange={e => setTelegramLink(e.target.value)} className="crm-mobile-input w-full" placeholder="https://t.me/username или @username" />
             </div>
           )}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-1">Группа</p>
-            {gLoading ? (
-              <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
-                <span className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#be185d' }} />
-                Загрузка...
-              </div>
-            ) : (
-              <select value={groupId} onChange={e => setGroupId(e.target.value)} className="crm-mobile-input w-full">
-                <option value="">— Без группы —</option>
-                {groups.map(g => (
-                  <option key={g.id} value={g.id}>
-                    #{g.number} {g.group_type ? `(${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
-                    {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
-                    {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+          {!client.is_trial && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-1">Группа</p>
+              {gLoading ? (
+                <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
+                  <span className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#be185d' }} />
+                  Загрузка...
+                </div>
+              ) : (
+                <select value={groupId} onChange={e => setGroupId(e.target.value)} className="crm-mobile-input w-full">
+                  <option value="">— Без группы —</option>
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id}>
+                      #{g.number} {g.group_type ? `(${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
+                      {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
+                      {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
           {err && (
             <div className="flex items-center gap-2 p-3 rounded-xl text-xs" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
               <AlertTriangle size={13} /> {err}
@@ -161,6 +163,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   )
 }
 
+// ── Отменить оплату ────────────────────────────────────────────────────────────
 function MobileCancelPaymentPanel({ client, clientId, onSuccess }) {
   const [open, setOpen] = useState(false)
   const [confirm, setConfirm] = useState(false)
@@ -206,7 +209,7 @@ function MobileCancelPaymentPanel({ client, clientId, onSuccess }) {
             <p className="font-semibold text-orange-800 text-xs">Текущая оплата:</p>
             <p className="text-orange-700 text-xs mt-0.5">{payLabel}</p>
           </div>
-          <p className="text-xs text-gray-500">Деньги не возвращаются. Используйте это только если менеджер сделал ошибку при вводе.</p>
+          <p className="text-xs text-gray-500">Деньги не возвращаются. Только для исправления ошибки ввода.</p>
           {!confirm ? (
             <button type="button" onClick={() => setConfirm(true)}
               className="w-full py-3 rounded-2xl text-sm font-semibold touch-manipulation"
@@ -217,7 +220,7 @@ function MobileCancelPaymentPanel({ client, clientId, onSuccess }) {
             <div className="space-y-2">
               <div className="p-3 rounded-xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
                 <p className="text-xs font-semibold text-red-700">Уверены? Оплата будет удалена полностью.</p>
-                <p className="text-xs text-red-600 mt-0.5">Клиент станет «Новый» без группы. Затем введите оплату заново.</p>
+                <p className="text-xs text-red-600 mt-0.5">После этого введите оплату заново ниже.</p>
               </div>
               {err && <p className="text-xs text-red-600">{err}</p>}
               <div className="flex gap-2">
@@ -240,6 +243,173 @@ function MobileCancelPaymentPanel({ client, clientId, onSuccess }) {
   )
 }
 
+// ── Ввод оплаты заново (после отмены) ─────────────────────────────────────────
+function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
+  const [open,         setOpen]         = useState(false)
+  const [payType,      setPayType]      = useState('full')
+  const [payAmount,    setPayAmount]    = useState('')
+  const [totalCost,    setTotalCost]    = useState('')
+  const [deadline,     setDeadline]     = useState('')
+  const [bonusPercent, setBonusPercent] = useState(String(bonusPercentDisplay(client.bonus_percent)))
+  const [loading,      setLoading]      = useState(false)
+  const [err,          setErr]          = useState('')
+  const [ok,           setOk]           = useState('')
+
+  // Показываем только если статус new/trial и нет оплаты
+  const hasPayment = !!(client.full_payment || client.installment_plan)
+  if (!['new', 'trial'].includes(client.status) || hasPayment) return null
+
+  const handleSubmit = async () => {
+    if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) {
+      setErr('Укажите сумму оплаты'); return
+    }
+    if (payType === 'installment' && (!totalCost || !deadline)) {
+      setErr('Укажите стоимость и дедлайн'); return
+    }
+    const bp = parseInt(String(bonusPercent).trim(), 10)
+    if (Number.isNaN(bp) || bp < 0 || bp > 100) {
+      setErr('Процент бонуса: от 0 до 100'); return
+    }
+    setLoading(true); setErr(''); setOk('')
+    try {
+      await api.post(`/clients/${clientId}/enter-payment/`, {
+        payment_type: payType,
+        payment_data: payType === 'full'
+          ? { amount: payAmount }
+          : { total_cost: totalCost, deadline },
+        bonus_percent: bp,
+      })
+      setOk('Оплата введена!')
+      setOpen(false)
+      onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden"
+         style={{ borderColor: '#c7d2fe', borderWidth: 2 }}>
+      <button type="button" onClick={() => { setOpen(v => !v); setErr(''); setOk('') }}
+        className="w-full flex items-center justify-between p-4 touch-manipulation">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+               style={{ background: '#eef2ff' }}>
+            <CreditCard size={18} style={{ color: '#4f46e5' }} />
+          </div>
+          <div className="text-left">
+            <p className="font-semibold text-gray-800 text-sm">Ввести оплату</p>
+            <p className="text-xs font-semibold" style={{ color: '#d97706' }}>
+              ⚠ Требуется — оплата отменена
+            </p>
+          </div>
+        </div>
+        <ChevronRight size={18} className={`text-gray-400 transition ${open ? 'rotate-90' : ''}`} />
+      </button>
+
+      {ok && !open && (
+        <div className="px-4 pb-3">
+          <div className="p-3 rounded-xl text-sm flex items-center gap-2"
+               style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }}>
+            <Check size={14} /> {ok}
+          </div>
+        </div>
+      )}
+
+      {open && (
+        <div className="px-4 pb-5 border-t border-gray-100 space-y-4 pt-4">
+
+          {/* Тип оплаты */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+              Шаг 1 — Тип оплаты
+            </p>
+            <div className="flex gap-2">
+              {[
+                { v: 'full', l: 'Полная оплата' },
+                { v: 'installment', l: 'Рассрочка' },
+              ].map(({ v, l }) => (
+                <button key={v} type="button" onClick={() => setPayType(v)}
+                  className="flex-1 py-3 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
+                  style={payType === v
+                    ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                    : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                  }>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Сумма */}
+          {payType === 'full' && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+                Шаг 2 — Сумма курса
+              </p>
+              <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                className="crm-mobile-input w-full" />
+            </div>
+          )}
+          {payType === 'installment' && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+                Шаг 2 — Детали рассрочки
+              </p>
+              <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+                value={totalCost} onChange={e => setTotalCost(e.target.value)}
+                className="crm-mobile-input w-full" />
+              <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
+                className="crm-mobile-input w-full" />
+            </div>
+          )}
+
+          {/* Процент бонуса */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+              Шаг 3 — Бонус с оплаты (%)
+            </p>
+            <input type="number" min={0} max={100} step={1}
+              placeholder="Например: 10"
+              value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
+              className="crm-mobile-input w-full" />
+            <p className="text-xs text-gray-400 mt-1">
+              Начислится клиенту после подтверждения оплаты
+            </p>
+          </div>
+
+          {err && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+                 style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+              <AlertTriangle size={13} /> {err}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={handleSubmit} disabled={loading}
+              className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+              style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
+              {loading
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <Check size={16} />
+              }
+              Сохранить оплату
+            </button>
+            <button type="button" onClick={() => { setOpen(false); setErr('') }}
+              className="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-medium touch-manipulation">
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Добавить в группу (новый клиент) ──────────────────────────────────────────
 function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const [open, setOpen] = useState(false)
   const [groups, setGroups] = useState([])
@@ -249,6 +419,7 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const [err, setErr] = useState('')
 
   const canUseNewClientFlow =
+    !client.is_trial &&
     (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat))
     && !client.group
 
@@ -259,8 +430,7 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
     try {
       const r = await api.get('/groups/', {
         params: {
-          status: st,
-          page_size: 100,
+          status: st, page_size: 100,
           training_format: client.training_format,
           ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}),
         },
@@ -268,42 +438,28 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
       const list = r.data.results || []
       const tf = client.training_format
       const gt = (client.group_type || '').trim()
-      setGroups(
-        list.filter(g => {
-          if (g.training_format !== tf) return false
-          if (tf === 'online' && !gt) return true
-          return g.group_type === gt
-        })
-      )
-    } catch {
-      setGroups([])
-    } finally {
-      setGroupsLoading(false)
-    }
+      setGroups(list.filter(g => {
+        if (g.training_format !== tf) return false
+        if (tf === 'online' && !gt) return true
+        return g.group_type === gt
+      }))
+    } catch { setGroups([]) }
+    finally { setGroupsLoading(false) }
   }
 
   const handleToggle = () => {
-    const next = !open
-    setOpen(next)
+    const next = !open; setOpen(next)
     if (next) loadGroups(statusFilter)
   }
-
-  const switchFilter = (st) => {
-    setStatusFilter(st)
-    loadGroups(st)
-  }
-
+  const switchFilter = (st) => { setStatusFilter(st); loadGroups(st) }
   const addToGroup = async (groupId) => {
     setLoadingId(groupId); setErr('')
     try {
       await api.post(`/clients/${clientId}/add-to-group/`, { group_id: groupId })
-      setOpen(false)
-      onSuccess()
+      setOpen(false); onSuccess()
     } catch (e) {
       setErr(e.response?.data?.detail || 'Ошибка')
-    } finally {
-      setLoadingId(null)
-    }
+    } finally { setLoadingId(null) }
   }
 
   return (
@@ -322,20 +478,11 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
       {open && (
         <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
           <div className="flex gap-2">
-            {[
-              { val: 'recruitment', label: 'Набор' },
-              { val: 'active', label: 'Активный' },
-            ].map(({ val, label }) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => switchFilter(val)}
+            {[{ val: 'recruitment', label: 'Набор' }, { val: 'active', label: 'Активный' }].map(({ val, label }) => (
+              <button key={val} type="button" onClick={() => switchFilter(val)}
                 className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 transition ${
-                  statusFilter === val
-                    ? 'border-pink-600 bg-pink-50 text-pink-700'
-                    : 'border-gray-200 text-gray-500'
-                }`}
-              >
+                  statusFilter === val ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500'
+                }`}>
                 {label}
               </button>
             ))}
@@ -360,13 +507,9 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
                     </p>
                     <p className="text-xs text-gray-400 truncate">{g.trainer?.full_name || '—'}</p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!!loadingId}
-                    onClick={() => addToGroup(g.id)}
+                  <button type="button" disabled={!!loadingId} onClick={() => addToGroup(g.id)}
                     className="shrink-0 px-3 py-2 rounded-xl text-xs font-semibold text-white touch-manipulation disabled:opacity-60"
-                    style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}
-                  >
+                    style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
                     {loadingId === g.id ? '...' : 'В группу'}
                   </button>
                 </div>
@@ -380,7 +523,7 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   )
 }
 
-// ── Мобильная повторная запись ────────────────────────────────────────────────
+// ── Повторная запись ───────────────────────────────────────────────────────────
 function MobileRepeatPanel({ client, clientId, onSuccess }) {
   const [open,          setOpen]          = useState(false)
   const [groups,        setGroups]        = useState([])
@@ -406,8 +549,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
     try {
       const r = await api.get('/groups/', {
         params: {
-          status,
-          page_size: 100,
+          status, page_size: 100,
           training_format: client.training_format,
           ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}),
         },
@@ -415,17 +557,13 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
       const list = r.data.results || []
       const tf = client.training_format
       const gt = (client.group_type || '').trim()
-      const filtered = list.filter(g => {
+      setGroups(list.filter(g => {
         if (g.training_format !== tf) return false
         if (tf === 'online' && !gt) return true
         return g.group_type === gt
-      })
-      setGroups(filtered)
-    } catch {
-      setGroups([])
-    } finally {
-      setGroupsLoading(false)
-    }
+      }))
+    } catch { setGroups([]) }
+    finally { setGroupsLoading(false) }
   }
 
   const handleOpen = () => {
@@ -442,10 +580,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
     if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) { setError('Введите сумму'); return }
     if (payType === 'installment' && (!totalCost || !deadline)) { setError('Укажите стоимость и дедлайн'); return }
     const bp = parseInt(String(bonusPercent).trim(), 10)
-    if (Number.isNaN(bp) || bp < 0 || bp > 100) {
-      setError('Укажите процент бонуса от 0 до 100')
-      return
-    }
+    if (Number.isNaN(bp) || bp < 0 || bp > 100) { setError('Укажите процент бонуса 0–100'); return }
     setLoading(true); setError('')
     try {
       await api.post(`/clients/${clientId}/re-enroll/`, {
@@ -460,38 +595,29 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
     } finally { setLoading(false) }
   }
 
-  // ── Показываем панель только если клиент не в группе и статус позволяет ──
-  const statusAllowsReEnroll = !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
+  // Пробных клиентов не показываем + обычные условия
+  const statusAllowsReEnroll = !client.is_trial && !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
   if (!statusAllowsReEnroll) return null
 
-  // ── Проверяем что оплата ПОЛНОСТЬЮ закрыта ──
-  // Если записи нет (после возврата) — считаем «закрыто».
   const fpCheck = client.full_payment
   const ipCheck = client.installment_plan
-  // Можно оформить новую оплату, если нет «висящей» старой оплаты (в т.ч. после возврата — записей нет).
   const hasOpenPaymentObligation =
     (client.payment_type === 'full' && fpCheck && !fpCheck.is_paid) ||
     (client.payment_type === 'installment' && ipCheck && !ipCheck.is_closed)
   const isPaymentClosed = !hasOpenPaymentObligation
 
-  // Если оплата не закрыта — блокируем и показываем предупреждение
   if (!isPaymentClosed) {
-    const remainingDebt =
-      client.payment_type === 'installment' && ipCheck
-        ? ` Остаток: ${fmtMoney(ipCheck.remaining)}.`
-        : ' Оплата не подтверждена.'
-    const enrollTitle = !client.is_repeat && client.status === 'frozen'
-      ? 'Оплата и запись в группу'
-      : 'Повторная запись'
+    const remainingDebt = client.payment_type === 'installment' && ipCheck
+      ? ` Остаток: ${fmtMoney(ipCheck.remaining)}.`
+      : ' Оплата не подтверждена.'
     return (
       <div className="bg-white rounded-2xl shadow-sm border p-4">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: '#fef3c7' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#fef3c7' }}>
             <Gift size={18} style={{ color: '#d97706' }} />
           </div>
           <div>
-            <p className="font-semibold text-gray-800 text-sm">{enrollTitle}</p>
+            <p className="font-semibold text-gray-800 text-sm">Повторная запись</p>
             <p className="text-xs mt-1" style={{ color: '#92400e' }}>
               Недоступно — сначала закройте оплату.{remainingDebt}
             </p>
@@ -501,11 +627,6 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
     )
   }
 
-  const enrollHeading = !client.is_repeat && client.status === 'frozen'
-    ? { title: 'Оплата и запись в группу', sub: 'Новая оплата и группа после возврата' }
-    : { title: 'Повторная запись', sub: 'Записать в новую группу' }
-
-  // ── Оплата закрыта — показываем форму ──
   return (
     <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
       {!open ? (
@@ -516,8 +637,8 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
               <RotateCcw size={18} style={{ color: '#7c3aed' }} />
             </div>
             <div>
-              <p className="font-semibold text-gray-800 text-sm">{enrollHeading.title}</p>
-              <p className="text-xs text-gray-400">{enrollHeading.sub}</p>
+              <p className="font-semibold text-gray-800 text-sm">Повторная запись</p>
+              <p className="text-xs text-gray-400">Новая оплата + группа</p>
             </div>
           </div>
           <ChevronRight size={18} className="text-gray-400" />
@@ -528,27 +649,19 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
             <h3 className="font-semibold text-gray-800">
               {step === 1 ? 'Выберите группу' : `Оплата — Группа #${enrollGroup?.number}`}
             </h3>
-            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400">
               <X size={18} />
             </button>
           </div>
 
-          <div className="rounded-2xl p-4 mb-3 space-y-2" style={{ background: '#fff', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-xs)' }}>Бонус с оплаты</p>
-            <p className="text-xs" style={{ color: 'var(--text-xs)' }}>
-              Укажите процент начисления при подтверждении оплаты (от суммы группы), например 3, 5 или 10.
-            </p>
+          {/* Бонус % */}
+          <div className="rounded-2xl p-4 mb-3" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+            <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-xs)' }}>Бонус с оплаты</p>
             <label className="block">
-              <span className="text-xs font-medium" style={{ color: 'var(--text-soft)' }}>Процент бонуса (0–100) *</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={1}
-                value={bonusPercent}
-                onChange={e => setBonusPercent(e.target.value)}
-                className="crm-mobile-input w-full mt-1"
-              />
+              <span className="text-xs" style={{ color: 'var(--text-soft)' }}>Процент (0–100) *</span>
+              <input type="number" min={0} max={100} step={1}
+                value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
+                className="crm-mobile-input w-full mt-1" />
             </label>
           </div>
 
@@ -558,9 +671,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                 <div className="flex items-center gap-2 p-3 rounded-xl mb-3 text-sm"
                   style={{ background: '#fefce8', border: '1px solid #fde68a' }}>
                   <Gift size={14} style={{ color: '#d97706' }} />
-                  <span style={{ color: '#92400e' }}>
-                    Бонус <strong>{fmtMoney(client.bonus_balance)}</strong> — спишется при оплате
-                  </span>
+                  <span style={{ color: '#92400e' }}>Бонус <strong>{fmtMoney(client.bonus_balance)}</strong> — спишется при оплате</span>
                 </div>
               )}
               <div className="flex gap-2 mb-3">
@@ -577,13 +688,10 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
               </div>
               {groupsLoading ? (
                 <div className="flex justify-center py-8">
-                  <span className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
-                    style={{ borderColor: '#be185d' }} />
+                  <span className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#be185d' }} />
                 </div>
               ) : groups.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">
-                  Нет групп со статусом «{statusFilter === 'recruitment' ? 'Набор' : 'Активный'}»
-                </p>
+                <p className="text-sm text-gray-400 text-center py-6">Нет подходящих групп</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {groups.map(g => (
@@ -594,13 +702,9 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                         <div>
                           <p className="font-semibold text-gray-800 text-sm">
                             Группа #{g.number}
-                            <span className="ml-2 text-xs font-normal text-gray-400">
-                              {GROUP_TYPE_LABEL[g.group_type] || g.group_type}
-                            </span>
+                            <span className="ml-2 text-xs font-normal text-gray-400">{GROUP_TYPE_LABEL[g.group_type] || g.group_type}</span>
                           </p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {g.trainer?.full_name || '—'} · {fmtSchedule(g.schedule)}
-                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">{g.trainer?.full_name || '—'} · {fmtSchedule(g.schedule)}</p>
                         </div>
                         <ChevronRight size={16} className="text-gray-300 shrink-0" />
                       </div>
@@ -613,9 +717,8 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
 
           {step === 2 && enrollGroup && (
             <div className="space-y-4">
-              <button type="button" onClick={() => setStep(1)}
-                className="flex items-center gap-1.5 text-sm text-gray-400 touch-manipulation">
-                <ArrowLeft size={15} /> Выбрать другую группу
+              <button type="button" onClick={() => setStep(1)} className="flex items-center gap-1.5 text-sm text-gray-400 touch-manipulation">
+                <ArrowLeft size={15} /> Другая группа
               </button>
               <div className="p-3 rounded-xl text-sm" style={{ background: '#fce7f3' }}>
                 <span className="font-semibold" style={{ color: '#be185d' }}>Группа #{enrollGroup.number}</span>
@@ -661,17 +764,10 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                 if (!price || price <= 0) return null
                 const bonus = Math.min(Number(client.bonus_balance), price)
                 return (
-                  <div className="p-3 rounded-xl text-sm space-y-1.5"
-                    style={{ background: '#fefce8', border: '1px solid #fde68a' }}>
+                  <div className="p-3 rounded-xl text-sm space-y-1.5" style={{ background: '#fefce8', border: '1px solid #fde68a' }}>
                     <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#92400e' }}>Расчёт бонуса</p>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Полная цена</span>
-                      <span className="font-semibold crm-money">{fmtMoney(price)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Бонус</span>
-                      <span className="font-semibold text-red-500 crm-money">- {fmtMoney(bonus)}</span>
-                    </div>
+                    <div className="flex justify-between"><span className="text-gray-500">Цена</span><span className="font-semibold crm-money">{fmtMoney(price)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Бонус</span><span className="font-semibold text-red-500 crm-money">- {fmtMoney(bonus)}</span></div>
                     <div className="border-t border-yellow-200 pt-1.5 flex justify-between font-bold">
                       <span className="text-gray-700">К оплате</span>
                       <span className="text-green-600 crm-money">{fmtMoney(price - bonus)}</span>
@@ -683,10 +779,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
               <button type="button" onClick={handleEnroll} disabled={loading}
                 className="w-full py-4 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
                 style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
-                {loading
-                  ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  : <Check size={16} />
-                }
+                {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
                 Записать в группу #{enrollGroup.number}
               </button>
             </div>
@@ -706,7 +799,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
   )
 }
 
-// ── Мобильная история групп ───────────────────────────────────────────────────
+// ── История групп ─────────────────────────────────────────────────────────────
 function MobileStreamsHistory({ client, clientId }) {
   const [open,     setOpen]     = useState(false)
   const [history,  setHistory]  = useState([])
@@ -716,10 +809,8 @@ function MobileStreamsHistory({ client, clientId }) {
   const load = async () => {
     if (history.length > 0) return
     setLoading(true)
-    try {
-      const r = await api.get(`/clients/${clientId}/group-history/`)
-      setHistory(r.data)
-    } catch { } finally { setLoading(false) }
+    try { const r = await api.get(`/clients/${clientId}/group-history/`); setHistory(r.data) }
+    catch { } finally { setLoading(false) }
   }
 
   const toggle = () => { if (!open) load(); setOpen(v => !v) }
@@ -739,24 +830,19 @@ function MobileStreamsHistory({ client, clientId }) {
             </p>
           </div>
         </div>
-        {open
-          ? <ChevronUp size={18} className="text-gray-400" />
-          : <ChevronDown size={18} className="text-gray-400" />
-        }
+        {open ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
       </button>
 
       {open && (
         <div className="px-4 pb-4 space-y-2">
           {loading ? (
             <div className="flex justify-center py-4">
-              <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
-                style={{ borderColor: '#be185d' }} />
+              <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#be185d' }} />
             </div>
           ) : (
             <>
               {client.group && (
-                <div className="flex items-center justify-between p-3 rounded-xl"
-                  style={{ background: '#fce7f3' }}>
+                <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#fce7f3' }}>
                   <span className="font-semibold text-sm" style={{ color: '#be185d' }}>
                     Группа #{client.group.number}
                     <span className="ml-1.5 font-normal text-xs" style={{ color: '#9d174d' }}>
@@ -764,9 +850,7 @@ function MobileStreamsHistory({ client, clientId }) {
                     </span>
                   </span>
                   <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                    style={{ background: '#fce7f3', color: '#be185d', border: '1px solid #fca5a5' }}>
-                    Текущий
-                  </span>
+                    style={{ background: '#fce7f3', color: '#be185d', border: '1px solid #fca5a5' }}>Текущий</span>
                 </div>
               )}
               {history.length === 0 ? (
@@ -774,8 +858,7 @@ function MobileStreamsHistory({ client, clientId }) {
               ) : history.map(h => (
                 <div key={h.id} className="rounded-xl border border-gray-100 overflow-hidden">
                   <button type="button" onClick={() => setSelected(s => s?.id === h.id ? null : h)}
-                    className="w-full flex items-center justify-between p-3 touch-manipulation"
-                    style={{ background: '#f9fafb' }}>
+                    className="w-full flex items-center justify-between p-3 touch-manipulation" style={{ background: '#f9fafb' }}>
                     <div className="text-left">
                       <span className="font-semibold text-gray-700 text-sm">Группа #{h.group_number}</span>
                       <span className="ml-2 text-xs text-gray-400">{GROUP_TYPE_SHORT[h.group_type]}</span>
@@ -786,10 +869,7 @@ function MobileStreamsHistory({ client, clientId }) {
                       <span className={`text-xs font-semibold ${h.payment_is_closed ? 'text-green-600' : 'text-red-500'}`}>
                         {h.payment_is_closed ? '✓' : '!'}
                       </span>
-                      {selected?.id === h.id
-                        ? <ChevronUp size={14} className="text-gray-400" />
-                        : <ChevronDown size={14} className="text-gray-400" />
-                      }
+                      {selected?.id === h.id ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                     </div>
                   </button>
                   {selected?.id === h.id && (
@@ -806,7 +886,7 @@ function MobileStreamsHistory({ client, clientId }) {
                           <span className="font-medium text-gray-700">{val}</span>
                         </div>
                       ))}
-                      {h.receipts && h.receipts.length > 0 && (
+                      {h.receipts?.length > 0 && (
                         <div className="pt-2 border-t border-gray-100 space-y-1.5">
                           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Чеки</p>
                           {h.receipts.map((rec, i) => (
@@ -818,8 +898,7 @@ function MobileStreamsHistory({ client, clientId }) {
                               <div className="flex items-center gap-2">
                                 <span className="font-medium text-gray-700">{fmtMoney(rec.amount)}</span>
                                 {rec.url
-                                  ? <a href={toAbsoluteUrl(rec.url)} target="_blank" rel="noreferrer"
-                                      className="flex items-center gap-1 text-blue-600 font-semibold">
+                                  ? <a href={toAbsoluteUrl(rec.url)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold">
                                       <Receipt size={11} /> Чек
                                     </a>
                                   : <span className="text-gray-300">Без чека</span>
@@ -974,9 +1053,10 @@ export default function MobileClientDetail() {
               <h2 className="text-xl font-bold text-gray-800">{client.full_name}</h2>
               <p className="text-sm text-gray-500 mt-1">{client.phone}</p>
               <div className="relative mt-2" style={{ zIndex: 10 }}>
-                {client.status === 'new' ? (
-                  <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold border ${STATUS_BADGE.new}`}>
-                    {STATUS_LABEL.new}
+                {(client.status === 'new' || client.status === 'trial') ? (
+                  <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border ${STATUS_BADGE[client.status] || 'border-gray-200'}`}>
+                    {client.status === 'trial' && <FlaskConical size={10} />}
+                    {STATUS_LABEL[client.status]}
                   </span>
                 ) : (
                   <>
@@ -1012,11 +1092,17 @@ export default function MobileClientDetail() {
                 <p className="text-xs mt-1 flex items-center gap-1 break-all">
                   <Send size={12} style={{ color: '#0ea5e9' }} />
                   <a href={client.telegram_link.startsWith('http') ? client.telegram_link : `https://t.me/${client.telegram_link.replace(/^@/, '')}`}
-                     target="_blank" rel="noreferrer"
-                     style={{ color: '#0284c7' }} className="underline">
+                     target="_blank" rel="noreferrer" style={{ color: '#0284c7' }} className="underline">
                     {client.telegram_link}
                   </a>
                 </p>
+              )}
+              {/* Бейдж пробного */}
+              {client.is_trial && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold mt-1"
+                      style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa' }}>
+                  <FlaskConical size={10} /> Пробный клиент
+                </span>
               )}
               {client.bonus_balance != null && Number(client.bonus_balance) !== 0 && (
                 <p className={`text-sm mt-1 flex items-center gap-1 ${Number(client.bonus_balance) < 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -1056,6 +1142,17 @@ export default function MobileClientDetail() {
             </span>
           </div>
         </div>
+
+        {/* Пробный — инфо-блок */}
+        {client.is_trial && (
+          <div className="rounded-2xl px-4 py-3 flex items-start gap-3"
+               style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+            <FlaskConical size={16} style={{ color: '#ea580c', marginTop: 1, flexShrink: 0 }} />
+            <p className="text-xs" style={{ color: '#c2410c' }}>
+              Пробный клиент — добавление в группу недоступно. После пробного занятия можно изменить тип клиента через редактирование.
+            </p>
+          </div>
+        )}
 
         {/* Оплата */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border">
@@ -1122,10 +1219,8 @@ export default function MobileClientDetail() {
                 </div>
                 <div>
                   <div className="w-full bg-gray-100 rounded-full h-1.5">
-                    <div
-                      className={`h-1.5 rounded-full transition-all ${isOverpaid ? 'bg-amber-400' : isDone ? 'bg-green-500' : 'bg-blue-500'}`}
-                      style={{ width: `${pct}%` }}
-                    />
+                    <div className={`h-1.5 rounded-full transition-all ${isOverpaid ? 'bg-amber-400' : isDone ? 'bg-green-500' : 'bg-blue-500'}`}
+                      style={{ width: `${pct}%` }} />
                   </div>
                   <div className="flex justify-between mt-1">
                     <span className="text-xs text-gray-400">{pct}% оплачено</span>
@@ -1141,8 +1236,7 @@ export default function MobileClientDetail() {
                     <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-2">История платежей</p>
                     <div className="space-y-1">
                       {plan.payments.map((p, i) => (
-                        <div key={p.id}
-                          className="flex justify-between items-center text-xs py-1.5 px-2 rounded-lg hover:bg-gray-50 gap-3">
+                        <div key={p.id} className="flex justify-between items-center text-xs py-1.5 px-2 rounded-lg hover:bg-gray-50 gap-3">
                           <span className="text-gray-400 shrink-0">{p.paid_at}</span>
                           <span className="crm-money text-gray-700 flex-1 text-right">{fmtMoney(p.amount)}</span>
                           {p.receipt
@@ -1160,14 +1254,26 @@ export default function MobileClientDetail() {
               </div>
             )
           })()}
+
+          {/* Нет оплаты */}
+          {!full && !plan && (
+            <p className="text-sm text-gray-400 text-center py-4">Оплата не введена</p>
+          )}
         </div>
 
+        {/* Редактировать */}
         <MobileEditInfoPanel client={client} clientId={id} onSuccess={load} />
+
+        {/* Отменить оплату */}
         <MobileCancelPaymentPanel client={client} clientId={id} onSuccess={load} />
 
+        {/* !! ВВЕСТИ ОПЛАТУ ЗАНОВО (после отмены) !! */}
+        <MobileEnterPaymentPanel client={client} clientId={id} onSuccess={load} />
+
+        {/* Добавить в группу */}
         <MobileNewClientAddPanel client={client} clientId={id} onSuccess={load} />
 
-        {/* Группы — после записи в группу, перед историей чеков */}
+        {/* История групп */}
         <MobileStreamsHistory client={client} clientId={id} />
 
         {/* Чеки */}
@@ -1195,7 +1301,7 @@ export default function MobileClientDetail() {
           </div>
         )}
 
-        {/* Добавить платёж рассрочка */}
+        {/* Добавить платёж (рассрочка) */}
         {client.payment_type === 'installment' && plan && Number(plan.remaining) > 0 && (
           <div className="bg-white rounded-2xl p-5 shadow-sm border">
             <h3 className="font-medium text-gray-700 mb-3">Добавить платёж</h3>
@@ -1207,12 +1313,12 @@ export default function MobileClientDetail() {
         <MobileRepeatPanel client={client} clientId={id} onSuccess={load} />
 
         {/* Возврат средств */}
-        {(client.group || client.status === 'active' || client.status === 'new') && (
+        {(client.group || client.status === 'active' || client.status === 'new' || client.status === 'trial') && (
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-semibold text-gray-800 text-sm">Возврат средств</p>
-                <p className="text-xs text-gray-400">Удержание за занятия; остаток — клиенту. Бонусы с оплаты аннулируются.</p>
+                <p className="text-xs text-gray-400">Удержание за занятия; остаток — клиенту.</p>
               </div>
               <button type="button" onClick={() => setRefundOpen(true)}
                 className="px-3 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 touch-manipulation">
