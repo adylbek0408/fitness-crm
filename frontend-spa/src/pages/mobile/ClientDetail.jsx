@@ -1326,6 +1326,14 @@ export default function MobileClientDetail() {
           {!full && !plan && <p className="text-sm text-gray-400 text-center py-4">Оплата не введена</p>}
         </div>
 
+        {/* Добавить платёж (рассрочка) — сразу после блока Оплаты */}
+        {client.payment_type === 'installment' && plan && Number(plan.remaining) > 0 && (
+          <div className="bg-white rounded-2xl p-5 shadow-sm border">
+            <h3 className="font-medium text-gray-700 mb-3">Добавить платёж</h3>
+            <AddPaymentForm planId={planId} onSuccess={load} />
+          </div>
+        )}
+
         {/* Редактировать (с переключателем Пробный/Обычный) */}
         <MobileEditInfoPanel client={client} clientId={id} onSuccess={load} />
 
@@ -1359,14 +1367,6 @@ export default function MobileClientDetail() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Добавить платёж (рассрочка) */}
-        {client.payment_type === 'installment' && plan && Number(plan.remaining) > 0 && (
-          <div className="bg-white rounded-2xl p-5 shadow-sm border">
-            <h3 className="font-medium text-gray-700 mb-3">Добавить платёж</h3>
-            <AddPaymentForm planId={planId} onSuccess={load} />
           </div>
         )}
 
