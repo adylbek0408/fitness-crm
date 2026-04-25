@@ -139,6 +139,7 @@ export default function ClientList() {
                 <select value={status} onChange={e => setStatus(e.target.value)} className="crm-mobile-input crm-mobile-select">
                   <option value="">Все</option>
                   <option value="new">Новые</option>
+                  <option value="trial">Пробные</option>
                   <option value="active">Активные</option>
                   <option value="frozen">Заморозка</option>
                   <option value="completed">Завершили</option>

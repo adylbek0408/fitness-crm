@@ -191,7 +191,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
             {client.is_trial && !isTrial && (
               <div className="mt-2 px-3 py-2 rounded-xl text-xs"
                    style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }}>
-                ✓ Статус изменится с «Пробный» на «Новый». Можно будет добавить в группу.
+                ✓ Статус изменится с «Пробный» на «Новый». Пробный платёж будет удалён — после сохранения введите новую оплату.
               </div>
             )}
             {!client.is_trial && isTrial && (
@@ -927,6 +927,105 @@ function MobileStreamsHistory({ client, clientId }) {
   )
 }
 
+// ── История статусов ─────────────────────────────────────────────────────────
+const STATUS_DOT = {
+  new:       'bg-violet-400',
+  trial:     'bg-orange-400',
+  active:    'bg-emerald-400',
+  completed: 'bg-slate-400',
+  expelled:  'bg-red-400',
+  frozen:    'bg-sky-400',
+}
+
+function MobileStatusHistory({ clientId }) {
+  const [open, setOpen]       = useState(false)
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const load = async () => {
+    if (history.length > 0) return
+    setLoading(true)
+    try {
+      const r = await api.get(`/clients/${clientId}/status-history/`)
+      setHistory(r.data)
+    } catch { }
+    finally { setLoading(false) }
+  }
+
+  const toggle = () => { if (!open) load(); setOpen(v => !v) }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+      <button type="button" onClick={toggle}
+        className="w-full flex items-center justify-between p-4 touch-manipulation">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#f3e8ff' }}>
+            <Clock size={18} style={{ color: '#7c3aed' }} />
+          </div>
+          <div className="text-left">
+            <p className="font-semibold text-gray-800 text-sm">История статусов</p>
+            <p className="text-xs text-gray-400">Журнал всех смен статуса</p>
+          </div>
+        </div>
+        {open ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-2">
+          {loading ? (
+            <div className="flex justify-center py-4">
+              <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
+                    style={{ borderColor: '#7c3aed' }} />
+            </div>
+          ) : history.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-3">История пуста</p>
+          ) : (
+            <div className="relative">
+              <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-gray-100" />
+              <div className="space-y-3">
+                {history.map(r => (
+                  <div key={r.id} className="flex items-start gap-3 pl-1">
+                    <div className={`w-5 h-5 rounded-full border-2 border-white shadow shrink-0 mt-0.5 z-10 ${
+                      STATUS_DOT[r.new_status] || 'bg-gray-300'
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {r.old_status ? (
+                          <>
+                            <span className="text-xs font-semibold text-gray-400">{r.old_status_label}</span>
+                            <span className="text-gray-300 text-xs">→</span>
+                          </>
+                        ) : null}
+                        <span className={`text-xs font-bold ${
+                          r.new_status === 'active'    ? 'text-emerald-600' :
+                          r.new_status === 'trial'     ? 'text-orange-600' :
+                          r.new_status === 'frozen'    ? 'text-sky-600' :
+                          r.new_status === 'expelled'  ? 'text-red-600' :
+                          r.new_status === 'completed' ? 'text-slate-500' :
+                          'text-violet-600'
+                        }`}>{r.new_status_label}</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(r.created_at).toLocaleString('ru-RU', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                        {r.changed_by_name ? ` · ${r.changed_by_name}` : ''}
+                      </p>
+                      {r.note && (
+                        <p className="text-xs text-gray-400 italic mt-0.5">{r.note}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Главный компонент ─────────────────────────────────────────────────────────
 export default function MobileClientDetail() {
   const { id } = useParams()
@@ -1241,6 +1340,9 @@ export default function MobileClientDetail() {
 
         {/* История групп */}
         <MobileStreamsHistory client={client} clientId={id} />
+
+        {/* История статусов */}
+        <MobileStatusHistory clientId={id} />
 
         {/* Чеки */}
         {allReceipts.length > 0 && (

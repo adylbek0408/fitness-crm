@@ -153,6 +153,36 @@ class ClientGroupHistory(UUIDTimestampedModel):
         return f"{self.client} | Поток #{self.group_number} | {self.ended_at}"
 
 
+class ClientStatusHistory(UUIDTimestampedModel):
+    """Лог изменений статуса клиента."""
+
+    client = models.ForeignKey(
+        'Client', on_delete=models.CASCADE, related_name='status_history'
+    )
+    old_status = models.CharField(max_length=20, blank=True, default='')
+    new_status = models.CharField(max_length=20)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='client_status_changes'
+    )
+    changed_by_name = models.CharField(
+        max_length=200, blank=True, default='',
+        help_text='ФИО изменившего статус (снимок на момент изменения)',
+    )
+    note = models.CharField(max_length=300, blank=True, default='')
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'История статуса'
+        verbose_name_plural = 'История статусов'
+        indexes = [
+            models.Index(fields=['client', '-created_at'], name='clients_statushistory_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.client} | {self.old_status} → {self.new_status} | {self.created_at:%Y-%m-%d}"
+
+
 class BonusTransaction(UUIDTimestampedModel):
     """История бонусных операций клиента."""
 

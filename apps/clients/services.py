@@ -6,7 +6,7 @@ from django.db import transaction
 from core.services import BaseService
 from core.exceptions import NotFoundError, ValidationError
 
-from .models import Client, ClientAccount
+from .models import Client, ClientAccount, ClientStatusHistory
 from apps.payments.models import FullPayment, InstallmentPlan
 
 
@@ -25,6 +25,50 @@ def _generate_cabinet_password():
 
 
 class ClientService(BaseService):
+
+    # ── вспомогательные ────────────────────────────────────────────────────
+    @staticmethod
+    def _get_user_snap(user) -> str:
+        """Возвращает ФИО пользователя для лога (снимок)."""
+        if not user:
+            return ''
+        try:
+            from apps.accounts.models import ManagerProfile
+            mp = ManagerProfile.objects.get(user_id=user.pk)
+            snap = f'{mp.last_name} {mp.first_name}'.strip()
+            return snap or user.username
+        except Exception:
+            return (user.get_full_name() or '').strip() or user.username
+
+    @staticmethod
+    def _record_status_change(
+        client: 'Client',
+        old_status: str,
+        new_status: str,
+        user=None,
+        note: str = '',
+    ) -> None:
+        """Записывает запись в ClientStatusHistory."""
+        if old_status == new_status:
+            return
+        snap = ''
+        if user:
+            try:
+                from apps.accounts.models import ManagerProfile
+                mp = ManagerProfile.objects.get(user_id=user.pk)
+                snap = f'{mp.last_name} {mp.first_name}'.strip() or user.username
+            except Exception:
+                snap = (user.get_full_name() or '').strip() or user.username
+        ClientStatusHistory.objects.create(
+            client=client,
+            old_status=old_status,
+            new_status=new_status,
+            changed_by=user,
+            changed_by_name=snap,
+            note=note,
+        )
+
+    # ── CRUD ───────────────────────────────────────────────────────────────
 
     def get_client_or_raise(self, client_id: str) -> Client:
         try:
@@ -78,6 +122,12 @@ class ClientService(BaseService):
             data['registered_by_name'] = snap
 
         client = Client.objects.create(**data, registered_by=registered_by)
+
+        # Логируем начальный статус
+        self._record_status_change(
+            client, old_status='', new_status=client.status,
+            user=registered_by, note='Регистрация клиента',
+        )
 
         plain_password = _generate_cabinet_password()
         username = _generate_cabinet_username(client)
@@ -140,19 +190,21 @@ class ClientService(BaseService):
         client.save()
         return client
 
-    def change_status(self, client_id: str, new_status: str) -> Client:
+    def change_status(self, client_id: str, new_status: str, user=None) -> Client:
         valid_statuses = ['active', 'completed', 'expelled', 'frozen']
         if new_status not in valid_statuses:
             raise ValidationError(f"Invalid status: {new_status}")
         client = self.get_client_or_raise(client_id)
         if new_status == 'active' and not client.group_id:
             raise ValidationError('Статус «Активный» доступен только у клиента, записанного в поток.')
+        old_status = client.status
         client.status = new_status
         client.save(update_fields=['status'])
+        self._record_status_change(client, old_status, new_status, user=user)
         return client
 
     @transaction.atomic
-    def assign_to_group(self, client_id: str, group_id: str) -> Client:
+    def assign_to_group(self, client_id: str, group_id: str, user=None) -> Client:
         from apps.groups.models import Group
         client = self.get_client_or_raise(client_id)
         if client.is_trial:
@@ -165,6 +217,7 @@ class ClientService(BaseService):
             raise NotFoundError(f"Group {group_id} not found")
         if group.status == 'completed':
             raise ValidationError('Нельзя добавить в завершённый поток')
+        old_status = client.status
         client.group = group
         fields = ['group']
         if group.trainer_id:
@@ -174,6 +227,11 @@ class ClientService(BaseService):
             client.status = 'active'
             fields.append('status')
         client.save(update_fields=fields)
+        if old_status != client.status:
+            self._record_status_change(
+                client, old_status, client.status, user=user,
+                note=f'Добавлен в поток #{group.number}',
+            )
         return client
 
     @transaction.atomic
@@ -345,6 +403,8 @@ class ClientService(BaseService):
                 'Клиент со статусом «Новый» записывается через «Добавить в поток» без новой оплаты.'
             )
 
+        client_status_before = client.status
+
         if client.group:
             raise ValidationError(
                 f'Клиент уже в Потоке #{client.group.number}. '
@@ -440,6 +500,10 @@ class ClientService(BaseService):
         if bonus_percent_updated:
             save_fields.append('bonus_percent')
         client.save(update_fields=save_fields)
+        self._record_status_change(
+            client, old_status=client_status_before, new_status='active',
+            user=user, note=f'Повторная запись в поток #{group.number}',
+        )
         client.refresh_from_db()
         return client
 
@@ -456,6 +520,7 @@ class ClientService(BaseService):
 
         client = self.get_client_or_raise(client_id)
         refunded_pay_type = client.payment_type
+        client_status_before_refund = client.status
 
         total_paid = Decimal('0')
         refund_to_client = Decimal('0')
@@ -526,6 +591,11 @@ class ClientService(BaseService):
         client.group = None
         client.status = 'frozen'
         client.save(update_fields=['group', 'status', 'payment_type', 'bonus_balance'])
+
+        self._record_status_change(
+            client, old_status=client_status_before_refund,
+            new_status='frozen', user=user, note='Возврат средств',
+        )
 
         self.logger.info(
             f'Client {client_id} refunded → frozen. '

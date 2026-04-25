@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from core.permissions import IsAdmin, IsAdminOrRegistrar
 from core.exceptions import ValidationError, NotFoundError
-from .models import Client, ClientGroupHistory
+from .models import Client, ClientGroupHistory, ClientStatusHistory
 from .serializers import ClientReadSerializer, ClientCreateSerializer, ClientUpdateSerializer
 from .services import ClientService
 from .filters import ClientFilter
@@ -122,7 +122,7 @@ class ClientViewSet(viewsets.ModelViewSet):
     def change_status(self, request, pk=None):
         new_status = request.data.get('status')
         try:
-            client = self.service.change_status(pk, new_status)
+            client = self.service.change_status(pk, new_status, user=request.user)
         except ValidationError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except NotFoundError as e:
@@ -143,6 +143,32 @@ class ClientViewSet(viewsets.ModelViewSet):
             return Response({'password': plain})
         except ValidationError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], url_path='status-history')
+    def status_history(self, request, pk=None):
+        """История смен статусов клиента."""
+        records = ClientStatusHistory.objects.filter(client_id=pk).order_by('-created_at')
+        STATUS_LABEL = {
+            '': '—', 'new': 'Новый', 'trial': 'Пробный',
+            'active': 'Активный', 'completed': 'Завершил',
+            'expelled': 'Отчислен', 'frozen': 'Заморозка',
+        }
+        data = [
+            {
+                'id':              str(r.id),
+                'old_status':      r.old_status,
+                'old_status_label': STATUS_LABEL.get(r.old_status, r.old_status),
+                'new_status':      r.new_status,
+                'new_status_label': STATUS_LABEL.get(r.new_status, r.new_status),
+                'changed_by_name': r.changed_by_name or (
+                    r.changed_by.username if r.changed_by_id else ''
+                ),
+                'note':            r.note,
+                'created_at':      r.created_at.isoformat(),
+            }
+            for r in records
+        ]
+        return Response(data)
 
     @action(detail=True, methods=['get'], url_path='group-history')
     def group_history(self, request, pk=None):
@@ -205,12 +231,24 @@ class ClientViewSet(viewsets.ModelViewSet):
 
             if not is_trial_val and instance.is_trial and instance.status == 'trial':
                 # Снимаем флаг пробного — переводим статус в 'new'
+                # И УДАЛЯЕМ пробный платёж — пользователь должен ввести новую оплату
+                FullPayment.objects.filter(client=instance).delete()
+                for ip in InstallmentPlan.objects.filter(client=instance):
+                    ip.payments.all().delete()
+                    ip.delete()
+
+                old_status = instance.status
                 instance.is_trial = False
                 instance.status = 'new'
                 instance.save(update_fields=['is_trial', 'status'])
-                # Убираем is_trial из data чтобы не обрабатывался повторно
+
+                # Логируем смену статуса
+                self.service._record_status_change(
+                    instance, old_status=old_status, new_status='new',
+                    user=request.user, note='Конвертация: Пробный → Новый',
+                )
+
                 data.pop('is_trial', None)
-                # Убираем group из data (пробному нельзя было назначить группу)
                 data.pop('group', None)
                 data.pop('trainer', None)
 
