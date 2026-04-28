@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Check, CheckCircle2, XCircle, LogOut, Gift, User } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { Check, CheckCircle2, XCircle, LogOut, Gift, User, Play, Radio } from 'lucide-react'
 import api from '../../api/axios'
 import { fmtMoney, fmtDate, STATUS_LABEL, GROUP_TYPE_LABEL } from '../../utils/format'
 
@@ -185,6 +185,34 @@ export default function CabinetProfile() {
         </div>
 
         <div className="px-4 space-y-3 pt-4">
+
+          {/* ── Обучение ── */}
+          <div className="grid grid-cols-2 gap-3">
+            <Link to="/cabinet/lessons"
+              className="rounded-2xl p-4 flex flex-col gap-2 transition hover:-translate-y-0.5 hover:shadow-md"
+              style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', border: '1px solid #f9a8d4' }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style={{ background: 'linear-gradient(135deg,#be185d,#ec4899)' }}>
+                <Play size={18} className="text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">Мои уроки</p>
+                <p className="text-xs text-gray-500">Видео и аудио</p>
+              </div>
+            </Link>
+            <Link to="/cabinet/stream"
+              className="rounded-2xl p-4 flex flex-col gap-2 transition hover:-translate-y-0.5 hover:shadow-md"
+              style={{ background: 'linear-gradient(135deg,#ede9fe,#fce7f3)', border: '1px solid #c4b5fd' }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style={{ background: 'linear-gradient(135deg,#7c3aed,#ec4899)' }}>
+                <Radio size={18} className="text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">Прямой эфир</p>
+                <p className="text-xs text-gray-500">Подключиться к трансляции</p>
+              </div>
+            </Link>
+          </div>
 
           {/* ── Бонусы ── */}
           <div className="rounded-2xl p-5 flex items-center justify-between"

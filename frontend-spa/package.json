@@ -12,13 +12,15 @@
     "@fontsource/noto-sans": "^5.2.5",
     "axios": "^1.7.0",
     "date-fns": "^4.1.0",
+    "hls.js": "^1.6.16",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.0",
     "lucide-react": "^0.576.0",
     "react": "^18.3.0",
     "react-day-picker": "^9.14.0",
     "react-dom": "^18.3.0",
-    "react-router-dom": "^6.23.0"
+    "react-router-dom": "^6.23.0",
+    "wavesurfer.js": "^7.12.6"
   },
   "devDependencies": {
     "@fontsource/dejavu-sans": "^5.2.5",

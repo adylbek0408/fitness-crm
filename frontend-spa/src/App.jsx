@@ -18,6 +18,13 @@ import ClientList from './pages/mobile/ClientList'
 import MobileClientDetail from './pages/mobile/ClientDetail'
 import CabinetLogin from './pages/cabinet/CabinetLogin'
 import CabinetProfile from './pages/cabinet/CabinetProfile'
+import LessonsList from './pages/cabinet/education/LessonsList'
+import LessonView from './pages/cabinet/education/LessonView'
+import StreamLive from './pages/cabinet/education/StreamLive'
+import LessonsAdmin from './pages/admin/education/LessonsAdmin'
+import StreamsAdmin from './pages/admin/education/StreamsAdmin'
+import ConsultationsAdmin from './pages/admin/education/ConsultationsAdmin'
+import ConsultationRoom from './pages/public/ConsultationRoom'
 import { RefreshProvider } from './contexts/RefreshContext'
 import { AuthProvider } from './contexts/AuthContext'
 
@@ -29,6 +36,10 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/cabinet" element={<CabinetLogin />} />
         <Route path="/cabinet/profile" element={<CabinetProfile />} />
+        <Route path="/cabinet/lessons" element={<LessonsList />} />
+        <Route path="/cabinet/lessons/:id" element={<LessonView />} />
+        <Route path="/cabinet/stream" element={<StreamLive />} />
+        <Route path="/room/:uuid" element={<ConsultationRoom />} />
         <Route path="/admin" element={<ProtectedRoute role="admin" />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
@@ -44,6 +55,9 @@ export default function App() {
           <Route path="statistics" element={<Statistics />} />
           <Route path="managers" element={<Managers />} />
           <Route path="trash" element={<Trash />} />
+          <Route path="education/lessons" element={<LessonsAdmin />} />
+          <Route path="education/streams" element={<StreamsAdmin />} />
+          <Route path="education/consultations" element={<ConsultationsAdmin />} />
         </Route>
         <Route path="/mobile" element={<RefreshProvider><ProtectedRoute role="any" /></RefreshProvider>}>
           <Route index element={<MobileDashboard />} />

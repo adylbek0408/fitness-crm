@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Layers2, UserCircle, Users,
   BarChart2, UserCog, LogOut, Trash2,
+  Play, Radio, Video,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -12,6 +13,9 @@ const links = [
   { to: '/admin/clients',    icon: Users,            label: 'Клиенты'    },
   { to: '/admin/statistics', icon: BarChart2,        label: 'Статистика' },
   { to: '/admin/managers',   icon: UserCog,          label: 'Менеджеры'  },
+  { to: '/admin/education/lessons',       icon: Play,  label: 'Уроки'         },
+  { to: '/admin/education/streams',       icon: Radio, label: 'Эфиры'         },
+  { to: '/admin/education/consultations', icon: Video, label: 'Консультации'  },
   { to: '/admin/trash',      icon: Trash2,           label: 'Корзина',   danger: true },
 ]
 

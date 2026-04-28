@@ -31,8 +31,33 @@ INSTALLED_APPS = [
     'apps.attendance',
     'apps.trainers',
     'apps.statistics',
+    'apps.education',
     'rest_framework_simplejwt.token_blacklist',
 ]
+
+
+# ---------------------------------------------------------------------------
+# Education module — external services
+# Cloudflare R2 (audio storage), Cloudflare Stream (video + live), Jitsi.
+# Empty defaults are safe: services raise NotImplementedError until wired up.
+# ---------------------------------------------------------------------------
+
+R2_ACCOUNT_ID = config('R2_ACCOUNT_ID', default='')
+R2_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID', default='')
+R2_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY', default='')
+R2_BUCKET = config('R2_BUCKET', default='asylzada-education')
+R2_PUBLIC_URL = config('R2_PUBLIC_URL', default='')
+
+CF_STREAM_ACCOUNT_ID = config('CF_STREAM_ACCOUNT_ID', default='')
+CF_STREAM_API_TOKEN = config('CF_STREAM_API_TOKEN', default='')
+CF_STREAM_CUSTOMER = config('CF_STREAM_CUSTOMER', default='')
+CF_STREAM_WEBHOOK_SECRET = config('CF_STREAM_WEBHOOK_SECRET', default='')
+CF_STREAM_SIGNING_KEY_ID = config('CF_STREAM_SIGNING_KEY_ID', default='')
+CF_STREAM_SIGNING_JWK = config('CF_STREAM_SIGNING_JWK', default='')
+
+JITSI_DOMAIN = config('JITSI_DOMAIN', default='')
+JITSI_APP_ID = config('JITSI_APP_ID', default='asylzada')
+JITSI_APP_SECRET = config('JITSI_APP_SECRET', default='')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
