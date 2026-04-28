@@ -109,7 +109,8 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='stats-summary')
     def stats_summary(self, request):
-        simple_qs = Client.objects.filter(deleted_at__isnull=True)
+        # Используем get_queryset() чтобы применить ролевую фильтрацию (менеджер видит только своих)
+        simple_qs = self.get_queryset()
         qs = self.filter_queryset(simple_qs)
         total = qs.count()
         by_status = {

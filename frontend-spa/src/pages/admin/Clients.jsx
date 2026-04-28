@@ -465,6 +465,7 @@ export default function Clients() {
     if (registeredBy)        p.append('registered_by',   registeredBy)
     if (trainerFilter)       p.append('trainer',         trainerFilter)
     if (fromTelegram)        p.append('from_telegram',   fromTelegram)
+    if (onlineTagFilter)     p.append('online_subscription', onlineTagFilter)
     return p
   }
 
@@ -495,17 +496,16 @@ export default function Clients() {
     }
   }
 
+  // Фиксированный список подписок (как в GroupForm.jsx)
+  const FIXED_SUBSCRIPTION_TAGS = ['Вип', 'Про', 'Интенсив', 'Марафон']
+
   useEffect(() => {
     api.get('/groups/?page_size=100').then(r => {
       const gs = r.data.results || []
       setGroups(gs)
-      const allTags = []
-      gs.forEach(g => {
-        if (Array.isArray(g.online_subscription_tags)) {
-          g.online_subscription_tags.forEach(t => { if (t && !allTags.includes(t)) allTags.push(t) })
-        }
-      })
-      setOnlineTags(allTags)
+      // Используем фиксированный список вместо динамического —
+      // чтобы все 4 подписки всегда были в фильтре
+      setOnlineTags(FIXED_SUBSCRIPTION_TAGS)
     })
     api.get('/accounts/managers/?page_size=200').then(r => setManagersList(r.data.results || r.data || []))
     api.get('/trainers/?page_size=200').then(r => setTrainersList(r.data.results || []))
