@@ -7,6 +7,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CFStreamWebhookView,
     ConsultationAdminViewSet,
+    EducationStatsView,
     LessonAdminViewSet,
     LiveStreamAdminViewSet,
 )
@@ -19,5 +20,6 @@ router.register(r'consultations', ConsultationAdminViewSet, basename='education-
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('stats/', EducationStatsView.as_view(), name='education-stats'),
     path('webhooks/cf-stream/', CFStreamWebhookView.as_view(), name='cf-stream-webhook'),
 ]

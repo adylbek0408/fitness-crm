@@ -21,9 +21,11 @@ import CabinetProfile from './pages/cabinet/CabinetProfile'
 import LessonsList from './pages/cabinet/education/LessonsList'
 import LessonView from './pages/cabinet/education/LessonView'
 import StreamLive from './pages/cabinet/education/StreamLive'
+import StreamArchive from './pages/cabinet/education/StreamArchive'
 import LessonsAdmin from './pages/admin/education/LessonsAdmin'
 import StreamsAdmin from './pages/admin/education/StreamsAdmin'
 import ConsultationsAdmin from './pages/admin/education/ConsultationsAdmin'
+import EducationStats from './pages/admin/education/EducationStats'
 import ConsultationRoom from './pages/public/ConsultationRoom'
 import { RefreshProvider } from './contexts/RefreshContext'
 import { AuthProvider } from './contexts/AuthContext'
@@ -39,6 +41,7 @@ export default function App() {
         <Route path="/cabinet/lessons" element={<LessonsList />} />
         <Route path="/cabinet/lessons/:id" element={<LessonView />} />
         <Route path="/cabinet/stream" element={<StreamLive />} />
+        <Route path="/cabinet/archive" element={<StreamArchive />} />
         <Route path="/room/:uuid" element={<ConsultationRoom />} />
         <Route path="/admin" element={<ProtectedRoute role="admin" />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -58,6 +61,7 @@ export default function App() {
           <Route path="education/lessons" element={<LessonsAdmin />} />
           <Route path="education/streams" element={<StreamsAdmin />} />
           <Route path="education/consultations" element={<ConsultationsAdmin />} />
+          <Route path="education/stats" element={<EducationStats />} />
         </Route>
         <Route path="/mobile" element={<RefreshProvider><ProtectedRoute role="any" /></RefreshProvider>}>
           <Route index element={<MobileDashboard />} />

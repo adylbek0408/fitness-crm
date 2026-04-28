@@ -11,7 +11,7 @@
 - [x] **1.0b** requirements + .env.example
 - [x] **1.0c** Роуты в config/urls.py
 - [ ] **1.2** R2 bucket DNS *(на пользователе)*
-- [ ] **1.3** CF Stream webhook secret *(после деплоя)*
+- [ ] **1.3** CF Stream webhook secret *(после деплоя — см. `.claude/WEBHOOK_SETUP.md`)*
 - [ ] **1.4–1.5** Jitsi self-host *(на пользователе)*
 - [x] **1.7** `services.py` — CF Stream + R2 + Jitsi JWT
 - [x] **1.8** Jitsi JWT генерация
@@ -37,8 +37,8 @@
 - [x] **3.3** Webhook `live_input.recording.ready` → авто-Lesson
 - [x] **3.4** `StreamsAdmin.jsx` (RTMP+Key reveal)
 - [x] **3.5** `StreamLive.jsx` + viewers polling
-- [ ] **3.6** `StreamArchive.jsx` *(записи показываются в общем LessonsList — отдельная страница не критична)*
-- [ ] **3.7** E2E тест *(требует деплоя CF webhook)*
+- [x] **3.6** `StreamArchive.jsx` (`source=stream` фильтр + плитка в CabinetProfile)
+- [ ] **3.7** E2E тест *(требует деплоя CF webhook — см. `.claude/E2E_CHECKLIST.md`)*
 
 ## Спринт 4 — Консультации
 - [x] **4.1** consultations API + public GET
@@ -47,12 +47,14 @@
 - [x] **4.4** expires/max_uses через `is_consumable`
 
 ## Спринт 5 — Полировка
-- [ ] **5.1** EducationStats
-- [x] **5.2** Тайлы в `CabinetProfile`
-- [x] **5.3** Меню в `AdminLayout`
+- [x] **5.1** EducationStats — API `/api/education/stats/` + `EducationStats.jsx`
+       (карточки, фильтр по группе, drill-down модалка с прогрессом по студентам,
+       список неактивных)
+- [x] **5.2** Тайлы в `CabinetProfile` (Уроки + Эфир + Архив)
+- [x] **5.3** Меню в `AdminLayout` (Уроки + Эфиры + Консультации + Аналитика)
 - [x] **5.4** GetCourse-стиль (rose/pink, gradients, скелетоны)
-- [ ] **5.5** E2E чек-лист
-- [ ] **5.6** Инструкция тренеру
+- [x] **5.5** E2E чек-лист (`.claude/E2E_CHECKLIST.md`)
+- [x] **5.6** Инструкция тренеру (`.claude/TRAINER_GUIDE.md`)
 
 ---
 
@@ -62,11 +64,18 @@
 - **2026-04-28** Watermark — главный слой защиты, не DRM.
 - **2026-04-28** Trainer без User → стримит admin/registrar через staff JWT.
 - **2026-04-28** Все cabinet endpoints под `/api/cabinet/education/...`.
+- **2026-04-29** Stream archive выделен в отдельную страницу
+  `/cabinet/archive` через query-param `?source=stream` на уже существующем
+  CabinetLessonViewSet (без новой модели).
+- **2026-04-29** EducationStats считается на лету из LessonProgress
+  (без отдельной materialized view) — для текущего масштаба этого хватает.
 
 ## Что осталось пользователю
-1. R2 bucket `r2bucket` + custom domain.
-2. CF Stream API token + signing key + webhook secret → `.env`.
+1. R2 bucket `r2bucket` + custom domain → `R2_PUBLIC_URL`.
+2. CF Stream API token + signing key (id+JWK) → `.env`.
 3. Jitsi self-host + JWT secret → `.env`.
-4. Зарегистрировать webhook CF Stream на
-   `https://crm.aiym-syry.kg/api/education/webhooks/cf-stream/`.
-5. E2E прогон: видео → урок, эфир → запись → авто-урок, ссылка → Jitsi.
+4. Зарегистрировать webhook CF Stream → см. `.claude/WEBHOOK_SETUP.md`.
+5. E2E прогон по `.claude/E2E_CHECKLIST.md`.
+6. **После прогона:** ротировать секреты, которыми мы пользовались
+   (R2 access key, CF Stream API token), если они засветились где-то
+   в чате/логах.

@@ -84,6 +84,15 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         ltype = self.request.query_params.get('type')
         if ltype in ('video', 'audio'):
             qs = qs.filter(lesson_type=ltype)
+
+        # Sprint 3.6 — separate the live-stream archives from regular lessons.
+        # `source=stream` → only lessons that were auto-created from recordings;
+        # `source=lesson` → only manually uploaded lessons.
+        source = self.request.query_params.get('source')
+        if source == 'stream':
+            qs = qs.filter(source_streams__isnull=False).distinct()
+        elif source == 'lesson':
+            qs = qs.filter(source_streams__isnull=True).distinct()
         return qs.order_by('-published_at', '-created_at')
 
     def list(self, request, *args, **kwargs):

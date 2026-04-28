@@ -8,12 +8,15 @@ Endpoints exposed at /api/education/...
 - ConsultationAdminViewSet — CRUD, cancel. Creates produce a public room link.
 - CFStreamWebhookView — receives Cloudflare Stream events; auto-archives finished
   live recordings into Lesson rows.
+- EducationStatsView — aggregated analytics: who watched, % completion,
+  inactive students.
 """
 import logging
 import uuid as _uuid
+from datetime import timedelta
 
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import Q
+from django.db.models import Avg, Count, Max, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -21,7 +24,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Consultation, Lesson, LiveStream
+from apps.clients.models import Client
+
+from .models import Consultation, Lesson, LessonProgress, LiveStream
 from .permissions import IsTeacherOrAdmin
 from .serializers import (
     ConsultationSerializer,
@@ -368,3 +373,168 @@ class CFStreamWebhookView(APIView):
         logger.info('CF webhook unhandled: event=%s payload_keys=%s',
                     event_type, list(payload.keys()))
         return Response({'ok': True, 'unhandled': True})
+
+
+# ---------------------------------------------------------------------------
+# Education analytics (Sprint 5.1)
+# ---------------------------------------------------------------------------
+
+class EducationStatsView(APIView):
+    """Aggregated analytics for admins.
+
+    GET /api/education/stats/
+
+    Query params (optional):
+      - group: UUID — restrict to one group
+      - inactive_days: int (default 7) — threshold for "inactive" tab
+      - lesson: UUID — drill into one lesson (returns viewers list with progress)
+
+    Response shape:
+      {
+        "summary": {
+          "total_lessons": int,
+          "total_clients_eligible": int,
+          "avg_completion_percent": float,
+          "active_last_7_days": int,
+          "inactive": int,
+        },
+        "lessons": [
+          { "id", "title", "lesson_type", "groups": [str],
+            "viewers_count": int, "avg_percent": float,
+            "completed_count": int }
+        ],
+        "inactive_clients": [
+          { "id", "first_name", "last_name", "phone",
+            "group_name", "last_watched_at": iso|null }
+        ],
+        "lesson_detail"?: {
+          "id", "title",
+          "viewers": [
+            { "client_id", "first_name", "last_name", "phone",
+              "percent_watched", "last_position_sec",
+              "is_completed", "last_watched_at" }
+          ]
+        }
+      }
+    """
+    permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
+
+    def get(self, request):
+        group_id = request.query_params.get('group') or None
+        try:
+            inactive_days = int(request.query_params.get('inactive_days') or 7)
+        except (TypeError, ValueError):
+            inactive_days = 7
+        lesson_id = request.query_params.get('lesson') or None
+
+        # Lessons in scope
+        lessons_qs = Lesson.objects.filter(
+            is_published=True, deleted_at__isnull=True,
+        )
+        if group_id:
+            lessons_qs = lessons_qs.filter(groups__id=group_id).distinct()
+
+        # Per-lesson stats
+        lessons_data = []
+        for l in lessons_qs.prefetch_related('groups').order_by('-published_at', '-created_at'):
+            agg = LessonProgress.objects.filter(lesson=l).aggregate(
+                viewers_count=Count('id'),
+                avg_percent=Avg('percent_watched'),
+                completed_count=Count('id', filter=Q(is_completed=True)),
+            )
+            lessons_data.append({
+                'id': str(l.id),
+                'title': l.title,
+                'lesson_type': l.lesson_type,
+                'duration_sec': l.duration_sec,
+                'groups': [g.name for g in l.groups.all()],
+                'viewers_count': agg['viewers_count'] or 0,
+                'avg_percent': round(agg['avg_percent'] or 0.0, 1),
+                'completed_count': agg['completed_count'] or 0,
+            })
+
+        # Eligible clients (those whose group has at least one lesson)
+        clients_qs = Client.objects.filter(
+            deleted_at__isnull=True, group__isnull=False,
+        )
+        if group_id:
+            clients_qs = clients_qs.filter(group_id=group_id)
+
+        # Last activity per client
+        cutoff = timezone.now() - timedelta(days=inactive_days)
+        active_count = LessonProgress.objects.filter(
+            client__in=clients_qs, last_watched_at__gte=cutoff,
+        ).values('client').distinct().count()
+
+        # Inactive: clients with no activity in last N days (or never watched)
+        last_activity = dict(
+            LessonProgress.objects.filter(client__in=clients_qs)
+            .values('client')
+            .annotate(last=Max('last_watched_at'))
+            .values_list('client', 'last')
+        )
+        inactive = []
+        for client in clients_qs.select_related('group'):
+            last = last_activity.get(client.id)
+            if not last or last < cutoff:
+                inactive.append({
+                    'id': str(client.id),
+                    'first_name': client.first_name,
+                    'last_name': client.last_name,
+                    'phone': getattr(client, 'phone', '') or '',
+                    'group_name': getattr(client.group, 'name', '') if client.group_id else '',
+                    'last_watched_at': last.isoformat() if last else None,
+                })
+
+        # Drill-down for one lesson
+        lesson_detail = None
+        if lesson_id:
+            try:
+                lesson = Lesson.objects.get(pk=lesson_id, deleted_at__isnull=True)
+            except Lesson.DoesNotExist:
+                return Response({'detail': 'Lesson not found.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            progress_qs = LessonProgress.objects.filter(
+                lesson=lesson,
+            ).select_related('client').order_by('-percent_watched', '-last_watched_at')
+            lesson_detail = {
+                'id': str(lesson.id),
+                'title': lesson.title,
+                'viewers': [
+                    {
+                        'client_id': str(p.client_id),
+                        'first_name': p.client.first_name,
+                        'last_name': p.client.last_name,
+                        'phone': getattr(p.client, 'phone', '') or '',
+                        'percent_watched': p.percent_watched,
+                        'last_position_sec': p.last_position_sec,
+                        'is_completed': p.is_completed,
+                        'last_watched_at': p.last_watched_at.isoformat(),
+                    }
+                    for p in progress_qs
+                ],
+            }
+
+        avg_completion = (
+            sum(l['avg_percent'] for l in lessons_data) / len(lessons_data)
+            if lessons_data else 0.0
+        )
+
+        response = {
+            'summary': {
+                'total_lessons': len(lessons_data),
+                'total_clients_eligible': clients_qs.count(),
+                'avg_completion_percent': round(avg_completion, 1),
+                'active_last_7_days': active_count,
+                'inactive': len(inactive),
+                'inactive_days': inactive_days,
+            },
+            'lessons': lessons_data,
+            'inactive_clients': sorted(
+                inactive,
+                key=lambda x: (x['last_watched_at'] or '', x['last_name']),
+            ),
+        }
+        if lesson_detail:
+            response['lesson_detail'] = lesson_detail
+        return Response(response)
