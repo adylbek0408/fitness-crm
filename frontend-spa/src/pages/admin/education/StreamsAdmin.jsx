@@ -82,7 +82,11 @@ export default function StreamsAdmin() {
             })}
             className="md:col-span-2 px-3 py-2 border rounded-lg h-32"
           >
-            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+            {groups.map(g => (
+              <option key={g.id} value={g.id}>
+                Группа {g.number}{g.trainer ? ` — ${g.trainer.first_name} ${g.trainer.last_name}` : ''}
+              </option>
+            ))}
           </select>
         </div>
         <button

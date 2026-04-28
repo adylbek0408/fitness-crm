@@ -129,11 +129,19 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Build a signed playback URL bound to this viewer.
         playback_url = None
+        video_kind = None  # 'hls' | 'r2' | None
         try:
             if lesson.lesson_type == 'video' and lesson.stream_uid:
                 playback_url = CloudflareStreamService.create_signed_playback_url(
                     video_uid=lesson.stream_uid, client_id=str(client.id),
                 )
+                video_kind = 'hls'
+            elif lesson.lesson_type == 'video' and lesson.r2_key:
+                # Video stored in R2 (CF Stream quota not available)
+                playback_url = R2StorageService.create_download_presigned_url(
+                    key=lesson.r2_key,
+                )
+                video_kind = 'r2'
             elif lesson.lesson_type == 'audio' and lesson.r2_key:
                 playback_url = R2StorageService.create_download_presigned_url(
                     key=lesson.r2_key,
@@ -145,6 +153,7 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
 
         progress = LessonProgress.objects.filter(client=client, lesson=lesson).first()
         data['playback_url'] = playback_url
+        data['video_kind'] = video_kind
         data['watermark'] = {
             'text': f"{client.first_name or ''} {client.last_name or ''} • "
                     f"{getattr(client, 'phone', '')}".strip(),
@@ -347,18 +356,22 @@ class PublicConsultationView(APIView):
             'used_count', 'status', 'started_at', 'updated_at',
         ])
 
-        try:
-            token = JitsiService.create_room_token(
-                room=str(consultation.room_uuid),
-                display_name=display_name,
-                is_moderator=False,
-            )
-            from django.conf import settings as dj_settings
-            domain = dj_settings.JITSI_DOMAIN
-        except ImproperlyConfigured:
-            token = None
-            from django.conf import settings as dj_settings
-            domain = dj_settings.JITSI_DOMAIN or None
+        from django.conf import settings as dj_settings
+        domain = (getattr(dj_settings, 'JITSI_DOMAIN', '') or '').strip() or 'meet.jit.si'
+        secret = (getattr(dj_settings, 'JITSI_APP_SECRET', '') or '').strip()
+
+        # JWT only works on self-hosted Jitsi with prosody JWT plugin.
+        # When using the public meet.jit.si or when secret is missing — skip JWT.
+        token = None
+        if secret and domain not in ('meet.jit.si',):
+            try:
+                token = JitsiService.create_room_token(
+                    room=str(consultation.room_uuid),
+                    display_name=display_name,
+                    is_moderator=False,
+                )
+            except ImproperlyConfigured:
+                token = None
 
         return Response({
             'valid': True,

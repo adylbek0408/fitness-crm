@@ -2,10 +2,11 @@ import { useEffect, useRef } from 'react'
 import Hls from 'hls.js'
 
 /**
- * HLS player wrapper.
+ * Video player wrapper — supports HLS streams and plain MP4 from R2.
  *
  * Props:
- *   src               — HLS manifest URL (signed for VOD, plain for live)
+ *   src               — HLS manifest URL or R2 presigned MP4 URL
+ *   kind              — 'hls' (default) | 'r2' (plain MP4, no hls.js)
  *   onTimeUpdate({position, duration, percent}) — fired ~every 1s
  *   onReady(video)    — gives the parent the video element (for pause-on-suspect)
  *   startAt           — optional resume position in seconds
@@ -13,6 +14,7 @@ import Hls from 'hls.js'
  */
 export default function HlsPlayer({
   src,
+  kind = 'hls',
   onTimeUpdate,
   onReady,
   startAt = 0,
@@ -28,7 +30,10 @@ export default function HlsPlayer({
     if (!video) return
 
     let hls
-    if (Hls.isSupported()) {
+    if (kind === 'r2') {
+      // Plain MP4 stored in R2 — native browser video, no hls.js needed
+      video.src = src
+    } else if (Hls.isSupported()) {
       hls = new Hls({ enableWorker: true, lowLatencyMode: false })
       hlsRef.current = hls
       hls.loadSource(src)

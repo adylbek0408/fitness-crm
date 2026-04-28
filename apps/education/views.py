@@ -106,23 +106,58 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         try:
             if lesson_type == 'video':
                 max_dur = int(request.data.get('max_duration_sec') or 14400)
-                payload = CloudflareStreamService.create_direct_upload_url(
-                    max_duration_sec=max_dur, name=title,
-                )
-                lesson.stream_uid = payload['video_uid']
-                lesson.save(update_fields=['stream_uid', 'updated_at'])
-                return Response({
-                    'lesson': LessonAdminSerializer(lesson).data,
-                    'upload': {
-                        'kind': 'tus',
-                        'url': payload['upload_url'],
-                        'video_uid': payload['video_uid'],
-                    },
-                }, status=status.HTTP_201_CREATED)
-            else:
+                file_ext = (request.data.get('file_ext') or 'mp4').lstrip('.')
+
+                # Try CF Stream first; fall back to R2 if quota exceeded.
+                cf_ok = False
+                try:
+                    payload = CloudflareStreamService.create_direct_upload_url(
+                        max_duration_sec=max_dur, name=title,
+                    )
+                    lesson.stream_uid = payload['video_uid']
+                    lesson.save(update_fields=['stream_uid', 'updated_at'])
+                    cf_ok = True
+                    return Response({
+                        'lesson': LessonAdminSerializer(lesson).data,
+                        'upload': {
+                            'kind': 'cf-direct',
+                            'url': payload['upload_url'],
+                            'video_uid': payload['video_uid'],
+                        },
+                    }, status=status.HTTP_201_CREATED)
+                except ImproperlyConfigured:
+                    logger.info('CF Stream not configured — using R2 for video')
+                except Exception as cf_err:
+                    logger.warning('CF Stream upload init failed (%s) — falling back to R2', cf_err)
+
+                if not cf_ok:
+                    # R2 fallback: store video as plain MP4
+                    r2_key = f"video/{lesson.id}.{file_ext}"
+                    content_type = 'video/mp4'
+                    r2_url = R2StorageService.create_upload_presigned_url(
+                        key=r2_key, content_type=content_type,
+                    )
+                    lesson.r2_key = r2_key
+                    lesson.save(update_fields=['r2_key', 'updated_at'])
+                    return Response({
+                        'lesson': LessonAdminSerializer(lesson).data,
+                        'upload': {
+                            'kind': 'r2-presigned-put',
+                            'url': r2_url,
+                            'r2_key': r2_key,
+                            'content_type': content_type,
+                        },
+                    }, status=status.HTTP_201_CREATED)
+
+            else:  # audio
                 ext = (request.data.get('file_ext') or 'mp3').lstrip('.')
                 key = f"audio/{lesson.id}.{ext}"
-                content_type = 'audio/mpeg' if ext == 'mp3' else 'audio/wav'
+                audio_content_types = {
+                    'mp3': 'audio/mpeg', 'wav': 'audio/wav',
+                    'webm': 'audio/webm', 'm4a': 'audio/mp4',
+                    'ogg': 'audio/ogg',
+                }
+                content_type = audio_content_types.get(ext, 'audio/mpeg')
                 url = R2StorageService.create_upload_presigned_url(
                     key=key, content_type=content_type,
                 )
@@ -137,10 +172,11 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
                         'content_type': content_type,
                     },
                 }, status=status.HTTP_201_CREATED)
+
         except ImproperlyConfigured as e:
             lesson.delete()
             return Response(
-                {'detail': f'External service not configured: {e}'},
+                {'detail': f'Внешний сервис не настроен: {e}'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception as e:

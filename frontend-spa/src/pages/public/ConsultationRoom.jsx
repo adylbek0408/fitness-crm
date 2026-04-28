@@ -97,8 +97,25 @@ export default function ConsultationRoom() {
 
   if (info) {
     return (
-      <div className="min-h-screen bg-black flex flex-col">
+      <div className="min-h-screen bg-black flex flex-col relative">
         <div ref={containerRef} className="flex-1 w-full" />
+        {error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white p-8 text-center gap-4">
+            <AlertTriangle size={48} className="text-rose-400" />
+            <p className="text-lg font-semibold">{error}</p>
+            <p className="text-sm text-gray-400">
+              Комната: <span className="font-mono text-white">{info.room_name?.slice(0,8)}…</span>
+            </p>
+            <a
+              href={`https://${info.jitsi_domain}/${info.room_name}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 px-6 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-sm font-semibold transition"
+            >
+              Открыть в браузере Jitsi →
+            </a>
+          </div>
+        )}
       </div>
     )
   }

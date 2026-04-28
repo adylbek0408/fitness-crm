@@ -86,6 +86,7 @@ export default function LessonView() {
                 {lesson.playback_url ? (
                   <HlsPlayer
                     src={lesson.playback_url}
+                    kind={lesson.video_kind || 'hls'}
                     onTimeUpdate={handleProgress}
                     onReady={v => { videoRef.current = v }}
                     startAt={startAt}

@@ -95,52 +95,38 @@ class CloudflareStreamService:
             'Content-Type': 'application/json',
         }
 
-    # --- Recorded videos: TUS direct upload ---
+    # --- Recorded videos: direct upload ---
 
     @classmethod
     def create_direct_upload_url(
         cls, max_duration_sec: int = 14400, name: str = '',
     ) -> dict:
-        """Initiate a TUS direct-creator upload.
+        """Initiate a CF Stream direct creator upload (non-TUS).
 
         Returns {'upload_url': str, 'video_uid': str}.
-        Frontend uses upload_url with TUS protocol to push the file directly
-        to Cloudflare (Django never proxies the bytes).
+        Frontend does a simple POST to upload_url with the video binary as body
+        (Content-Type: video/mp4). Cloudflare handles transcoding.
+
+        Raises HTTPError on quota exceeded (error code 10011) or other CF errors.
         """
         import requests
 
-        url = (
-            f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream"
-            f"?direct_user=true"
-        )
-        headers = {
-            'Authorization': f'Bearer {cls._token()}',
-            'Tus-Resumable': '1.0.0',
-            'Upload-Length': '0',  # length is supplied by browser via TUS
-            'Upload-Metadata': cls._b64_metadata({
-                'name': name or 'lesson',
-                'maxDurationSeconds': str(max_duration_sec),
-            }),
+        url = f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream/direct_upload"
+        body = {
+            'maxDurationSeconds': max_duration_sec,
+            'meta': {'name': name or 'lesson'},
+            'requireSignedURLs': False,
         }
-        resp = requests.post(url, headers=headers, timeout=20)
+        resp = requests.post(url, headers=cls._headers(), json=body, timeout=20)
         resp.raise_for_status()
-        upload_url = resp.headers.get('Location')
-        video_uid = resp.headers.get('stream-media-id')
+        result = resp.json().get('result', {})
+        upload_url = result.get('uploadURL', '')
+        video_uid = result.get('uid', '')
         if not upload_url or not video_uid:
             raise RuntimeError(
-                f'CF Stream did not return upload location: {resp.headers}'
+                f'CF Stream did not return upload URL: {resp.json()}'
             )
         return {'upload_url': upload_url, 'video_uid': video_uid}
-
-    @staticmethod
-    def _b64_metadata(items: dict) -> str:
-        """TUS Upload-Metadata header: 'key base64value, key base64value'."""
-        import base64
-        parts = []
-        for k, v in items.items():
-            b = base64.b64encode(str(v).encode('utf-8')).decode('ascii')
-            parts.append(f'{k} {b}')
-        return ','.join(parts)
 
     # --- Signed HLS playback ---
 
