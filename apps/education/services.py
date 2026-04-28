@@ -151,29 +151,50 @@ class CloudflareStreamService:
         client_id: str,
         ttl_seconds: int = 4 * 3600,
     ) -> str:
-        """Issue a signed token bound to the viewer; return the HLS URL."""
-        import requests
+        """Issue a signed JWT locally using the RSA signing key; return HLS URL.
 
-        url = (
-            f"{cls.BASE_URL}/accounts/{cls._account_id()}"
-            f"/stream/{video_uid}/token"
-        )
-        body = {
-            'exp': int((datetime.now(dt_timezone.utc)
-                        + timedelta(seconds=ttl_seconds)).timestamp()),
+        Uses local RS256 signing (no API call) as documented by Cloudflare:
+        https://developers.cloudflare.com/stream/viewing-videos/securing-your-stream/
+        """
+        import base64
+        import json
+        import jwt  # PyJWT
+        from jwt.algorithms import RSAAlgorithm
+
+        key_id = getattr(settings, 'CF_STREAM_SIGNING_KEY_ID', '') or ''
+        jwk_b64 = getattr(settings, 'CF_STREAM_SIGNING_JWK', '') or ''
+        if not key_id or not jwk_b64:
+            raise ImproperlyConfigured(
+                'CF_STREAM_SIGNING_KEY_ID and CF_STREAM_SIGNING_JWK must be set.'
+            )
+
+        # JWK may be base64-encoded JSON or raw JSON
+        try:
+            jwk_str = base64.b64decode(jwk_b64 + '==').decode('utf-8')
+            json.loads(jwk_str)  # validate it's JSON
+        except Exception:
+            jwk_str = jwk_b64  # treat as raw JSON string
+
+        private_key = RSAAlgorithm.from_jwk(jwk_str)
+
+        now = datetime.now(dt_timezone.utc)
+        payload = {
+            'sub': video_uid,
+            'kid': key_id,
+            'iat': int(now.timestamp()),
+            'nbf': int(now.timestamp()) - 30,
+            'exp': int((now + timedelta(seconds=ttl_seconds)).timestamp()),
+            # Bind token to this viewer (logged for piracy auditing)
+            'id': str(client_id),
             'downloadable': False,
-            'accessRules': [
-                {'type': 'any', 'action': 'allow'},
-            ],
+            'accessRules': [{'type': 'any', 'action': 'allow'}],
         }
-        # Bind to a viewer identity (logged for piracy auditing).
-        body['id'] = str(client_id)
-
-        resp = requests.post(url, headers=cls._headers(), json=body, timeout=10)
-        resp.raise_for_status()
-        token = resp.json().get('result', {}).get('token')
-        if not token:
-            raise RuntimeError(f'CF Stream token missing in response: {resp.text}')
+        token = jwt.encode(
+            payload,
+            private_key,
+            algorithm='RS256',
+            headers={'kid': key_id},
+        )
         return f'https://{cls._customer()}.cloudflarestream.com/{token}/manifest/video.m3u8'
 
     # --- Live inputs ---
