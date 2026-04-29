@@ -24,6 +24,7 @@ import StreamLive from './pages/cabinet/education/StreamLive'
 import StreamArchive from './pages/cabinet/education/StreamArchive'
 import LessonsAdmin from './pages/admin/education/LessonsAdmin'
 import StreamsAdmin from './pages/admin/education/StreamsAdmin'
+import BroadcastPage from './pages/admin/education/BroadcastPage'
 import ConsultationsAdmin from './pages/admin/education/ConsultationsAdmin'
 import EducationStats from './pages/admin/education/EducationStats'
 import ConsultationRoom from './pages/public/ConsultationRoom'
@@ -60,6 +61,7 @@ export default function App() {
           <Route path="trash" element={<Trash />} />
           <Route path="education/lessons" element={<LessonsAdmin />} />
           <Route path="education/streams" element={<StreamsAdmin />} />
+          <Route path="education/broadcast/:id" element={<BroadcastPage />} />
           <Route path="education/consultations" element={<ConsultationsAdmin />} />
           <Route path="education/stats" element={<EducationStats />} />
         </Route>

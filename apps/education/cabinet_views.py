@@ -212,19 +212,36 @@ def _build_stream_playback_url(stream: LiveStream) -> str:
 
 
 class CabinetStreamView(APIView):
-    """GET /api/cabinet/education/streams/active/ — current live stream for client's group."""
+    """GET /api/cabinet/education/streams/active/ — current live stream for client's group.
+    Optional ?id=<uuid> to fetch a specific stream (if the client has access).
+    """
     authentication_classes = [CabinetJWTAuthentication]
     permission_classes = [IsCabinetClient]
 
     def get(self, request):
         client = request.user.client
-        if not client.group_id:
-            return Response({'stream': None})
-        stream = LiveStream.objects.filter(
-            status='live', groups__id=client.group_id,
-        ).order_by('-started_at').first()
-        if not stream:
-            return Response({'stream': None})
+        stream_id = request.query_params.get('id')
+
+        if stream_id:
+            # Fetch specific stream by ID (for shareable links)
+            try:
+                stream = LiveStream.objects.get(pk=stream_id)
+            except LiveStream.DoesNotExist:
+                return Response({'stream': None, 'reason': 'not_found'})
+            # Access check: stream must belong to client's group OR have no groups
+            if stream.groups.exists() and client.group_id:
+                if not stream.groups.filter(id=client.group_id).exists():
+                    return Response({'stream': None, 'reason': 'forbidden'})
+        else:
+            # Auto-detect active stream for client's group
+            if not client.group_id:
+                return Response({'stream': None})
+            stream = LiveStream.objects.filter(
+                status='live', groups__id=client.group_id,
+            ).order_by('-started_at').first()
+            if not stream:
+                return Response({'stream': None})
+
         data = LiveStreamSerializer(stream).data
         data['playback_url'] = _build_stream_playback_url(stream)
         return Response({'stream': data})

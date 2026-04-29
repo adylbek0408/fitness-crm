@@ -1,4 +1,4 @@
-# HANDOFF — 2026-04-29
+# HANDOFF — 2026-04-29 (сессия 2)
 
 ## Что сделано в этой сессии
 
@@ -50,9 +50,29 @@
 Подставлены пустые ключи под все education-переменные с инструкцией
 заполнения. Файл в `.gitignore`.
 
+## Дополнение — сессия 2 (2026-04-29)
+
+### Что сделано
+- `apps/education/services.py` — `create_signed_playback_url` полностью
+  переписан: вместо вызова CF API (`POST .../stream/{uid}/token`) теперь
+  используется **локальная RS256-подпись** с RSA private key из
+  `CF_STREAM_SIGNING_JWK`. Устраняет round-trip к CF при каждом просмотре.
+  - Тест: UID `91ba7948c048b7fc35d3d8ef751b25ac` → 812-символьный HLS URL,
+    `manage.py check` — чисто.
+- Коммит `9681b36`: `education: use local RS256 signing for CF Stream playback URLs`
+
+### Все изменения закомичены
+`git log -4 --oneline`:
+```
+9681b36 education: use local RS256 signing for CF Stream playback URLs
+7f0042d education: complete sprint 5 (stats, archive, docs)
+c0e11b8 clients: add migration RenameIndex for client trial index
+2071f52 education: implement sprints 1-4 + cabinet/admin UI
+```
+`git status` — чистый (uncommitted changes нет).
+
 ## Не закомичено
-Все изменения этой сессии (см. `git status`). Один коммит:
-`education: complete sprint 5 (stats, archive, docs)`.
+Ничего — всё закомичено.
 
 ## Что нужно от пользователя
 1. **R2:** custom domain бакета `r2bucket` (для `R2_PUBLIC_URL` если хотим

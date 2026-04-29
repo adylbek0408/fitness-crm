@@ -129,6 +129,11 @@ class LiveStream(UUIDTimestampedModel):
     # secret — surfaces only to the streaming trainer/admin in admin UI
     cf_stream_key = models.CharField(max_length=512, blank=True)
     cf_playback_id = models.CharField(max_length=64, blank=True)
+    # WebRTC publish URL (browser / mobile streaming — WHIP protocol)
+    cf_webrtc_url = models.CharField(max_length=512, blank=True)
+    # SRT (for Larix Broadcaster or similar mobile apps)
+    cf_srt_url = models.CharField(max_length=256, blank=True)
+    cf_srt_passphrase = models.CharField(max_length=512, blank=True)
     # Recording video UID (set by Cloudflare webhook when recording is ready)
     recording_uid = models.CharField(max_length=64, blank=True)
 
@@ -211,7 +216,9 @@ class StreamViewer(UUIDTimestampedModel):
 # ---------------------------------------------------------------------------
 
 def default_expires_at():
-    return timezone.now() + timedelta(hours=24)
+    # 30 days — admins no longer pick this manually; the link should
+    # stay valid long enough for a session of any length.
+    return timezone.now() + timedelta(days=30)
 
 
 class Consultation(UUIDTimestampedModel):
@@ -248,8 +255,10 @@ class Consultation(UUIDTimestampedModel):
     )
 
     expires_at = models.DateTimeField(default=default_expires_at)
-    # 1 student + 1 trainer = 2 — protects against link leakage.
-    max_uses = models.PositiveSmallIntegerField(default=2)
+    # Trainer + student may bounce in/out (network drops, refreshes,
+    # mobile background pause); 100 is effectively "no limit" for a
+    # single session and still bounds an accidentally leaked link.
+    max_uses = models.PositiveSmallIntegerField(default=100)
     used_count = models.PositiveSmallIntegerField(default=0)
 
     status = models.CharField(

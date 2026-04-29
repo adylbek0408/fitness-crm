@@ -56,10 +56,11 @@ class LiveStreamSerializer(serializers.ModelSerializer):
 
 
 class LiveStreamAdminSerializer(LiveStreamSerializer):
-    """Admin-only — surfaces RTMP URL and stream key for OBS."""
+    """Admin-only — surfaces RTMP, SRT, WebRTC credentials for streaming."""
     class Meta(LiveStreamSerializer.Meta):
         fields = LiveStreamSerializer.Meta.fields + [
             'cf_input_uid', 'cf_rtmp_url', 'cf_stream_key',
+            'cf_webrtc_url', 'cf_srt_url', 'cf_srt_passphrase',
         ]
 
 

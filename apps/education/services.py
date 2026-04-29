@@ -207,12 +207,18 @@ class CloudflareStreamService:
         result = resp.json().get('result', {})
         uid = result.get('uid', '')
         rtmps = result.get('rtmps', {}) or {}
-        playback = result.get('webRTCPlayback') or result.get('webRTC') or {}
+        srt = result.get('srt', {}) or {}
+        webrtc = result.get('webRTC', {}) or {}
         return {
             'uid': uid,
             'rtmp_url': rtmps.get('url', ''),
             'stream_key': rtmps.get('streamKey', ''),
             'playback_id': uid,  # for live, the input UID is the playback id
+            # Browser / mobile streaming (WHIP protocol)
+            'webrtc_url': webrtc.get('url', ''),
+            # SRT (Larix Broadcaster etc.)
+            'srt_url': srt.get('url', ''),
+            'srt_passphrase': srt.get('passphrase', ''),
         }
 
     # --- Webhook signature verification ---

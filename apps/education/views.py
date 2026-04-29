@@ -242,6 +242,9 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             cf_rtmp_url=payload['rtmp_url'],
             cf_stream_key=payload['stream_key'],
             cf_playback_id=payload['playback_id'],
+            cf_webrtc_url=payload.get('webrtc_url', ''),
+            cf_srt_url=payload.get('srt_url', ''),
+            cf_srt_passphrase=payload.get('srt_passphrase', ''),
             created_by=self.request.user if self.request.user.is_authenticated else None,
         )
         return instance
@@ -483,7 +486,7 @@ class EducationStatsView(APIView):
                 'title': l.title,
                 'lesson_type': l.lesson_type,
                 'duration_sec': l.duration_sec,
-                'groups': [g.name for g in l.groups.all()],
+                'groups': [f'Группа {g.number}' for g in l.groups.all()],
                 'viewers_count': agg['viewers_count'] or 0,
                 'avg_percent': round(agg['avg_percent'] or 0.0, 1),
                 'completed_count': agg['completed_count'] or 0,
@@ -518,7 +521,8 @@ class EducationStatsView(APIView):
                     'first_name': client.first_name,
                     'last_name': client.last_name,
                     'phone': getattr(client, 'phone', '') or '',
-                    'group_name': getattr(client.group, 'name', '') if client.group_id else '',
+                    'group_name': (f'Группа {client.group.number}'
+                                   if client.group_id and client.group else ''),
                     'last_watched_at': last.isoformat() if last else None,
                 })
 

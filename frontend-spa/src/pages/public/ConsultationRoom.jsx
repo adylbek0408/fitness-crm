@@ -55,6 +55,8 @@ export default function ConsultationRoom() {
       const options = {
         roomName: info.room_name,
         parentNode: containerRef.current,
+        width: '100%',
+        height: window.innerHeight,
         userInfo: { displayName: info.display_name || 'Гость' },
         configOverwrite: {
           startWithAudioMuted: false,
@@ -65,6 +67,10 @@ export default function ConsultationRoom() {
         interfaceConfigOverwrite: {
           MOBILE_APP_PROMO: false,
           SHOW_JITSI_WATERMARK: false,
+          TOOLBAR_BUTTONS: [
+            'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',
+            'hangup', 'chat', 'raisehand', 'videoquality', 'tileview',
+          ],
         },
       }
       if (info.jitsi_token) options.jwt = info.jitsi_token
@@ -97,8 +103,8 @@ export default function ConsultationRoom() {
 
   if (info) {
     return (
-      <div className="min-h-screen bg-black flex flex-col relative">
-        <div ref={containerRef} className="flex-1 w-full" />
+      <div style={{ height: '100dvh', background: '#000' }} className="flex flex-col relative">
+        <div ref={containerRef} style={{ flex: 1, width: '100%', minHeight: 0 }} />
         {error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white p-8 text-center gap-4">
             <AlertTriangle size={48} className="text-rose-400" />
