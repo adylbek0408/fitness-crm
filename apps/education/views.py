@@ -212,6 +212,71 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         lesson.save(update_fields=update)
         return Response(LessonAdminSerializer(lesson).data)
 
+    @action(detail=True, methods=['get'])
+    def preview(self, request, pk=None):
+        """Return a playback URL for admin preview (no DRM/watermark)."""
+        lesson = self.get_object()
+        playback_url = None
+        video_kind = None
+        try:
+            if lesson.lesson_type == 'video' and lesson.stream_uid:
+                try:
+                    playback_url = CloudflareStreamService.create_signed_playback_url(
+                        video_uid=lesson.stream_uid, client_id=str(request.user.pk),
+                    )
+                except Exception:
+                    # Fallback to public HLS URL when signing not configured
+                    from django.conf import settings as dj_settings
+                    sub = getattr(dj_settings, 'CF_STREAM_CUSTOMER', '')
+                    if sub:
+                        playback_url = (
+                            f'https://{sub}.cloudflarestream.com'
+                            f'/{lesson.stream_uid}/manifest/video.m3u8'
+                        )
+                video_kind = 'hls'
+            elif lesson.lesson_type == 'video' and lesson.r2_key:
+                playback_url = R2StorageService.create_download_presigned_url(
+                    key=lesson.r2_key,
+                )
+                video_kind = 'r2'
+            elif lesson.lesson_type == 'audio' and lesson.r2_key:
+                playback_url = R2StorageService.create_download_presigned_url(
+                    key=lesson.r2_key,
+                )
+        except ImproperlyConfigured:
+            pass
+        except Exception:
+            logger.exception('Admin preview URL generation failed')
+        return Response({'playback_url': playback_url, 'video_kind': video_kind})
+
+    @action(detail=False, methods=['get'])
+    def trash(self, request):
+        """List soft-deleted lessons."""
+        qs = Lesson.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        return Response(LessonAdminSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def restore(self, request, pk=None):
+        """Restore a lesson from trash."""
+        lesson = Lesson.objects.filter(pk=pk, deleted_at__isnull=False).first()
+        if not lesson:
+            return Response({'detail': 'Not found in trash.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        lesson.deleted_at = None
+        lesson.is_published = True
+        lesson.save(update_fields=['deleted_at', 'is_published', 'updated_at'])
+        return Response(LessonAdminSerializer(lesson).data)
+
+    @action(detail=True, methods=['delete'], url_path='permanent')
+    def permanent_destroy(self, request, pk=None):
+        """Permanently delete a lesson from trash."""
+        lesson = Lesson.objects.filter(pk=pk, deleted_at__isnull=False).first()
+        if not lesson:
+            return Response({'detail': 'Not found in trash.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        lesson.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 # ---------------------------------------------------------------------------
 # Live streams
@@ -227,7 +292,11 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
 
     def get_queryset(self):
-        return LiveStream.objects.all().order_by('-created_at')
+        return LiveStream.objects.filter(deleted_at__isnull=True).order_by('-created_at')
+
+    def perform_destroy(self, instance):
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=['deleted_at', 'updated_at'])
 
     def perform_create(self, serializer):
         try:
@@ -287,6 +356,62 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         viewers = stream.viewers.filter(is_active=True).select_related('client')
         return Response(StreamViewerSerializer(viewers, many=True).data)
 
+    @action(detail=True, methods=['post'], url_path='manual-archive')
+    def manual_archive(self, request, pk=None):
+        """Manually create an archive lesson for a completed stream (when CF webhook failed)."""
+        stream = self.get_object()
+        if stream.archived_lesson_id:
+            return Response({'detail': 'Stream already has an archive lesson.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if stream.status not in ('ended', 'archived', 'live'):
+            return Response({'detail': 'Stream must be ended first.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        lesson = Lesson.objects.create(
+            title=f"Эфир: {stream.title}",
+            description=stream.description or '',
+            lesson_type='video',
+            stream_uid=stream.recording_uid or '',
+            duration_sec=0,
+            thumbnail_url='',
+            trainer=stream.trainer,
+            is_published=True,
+            published_at=timezone.now(),
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+        if stream.groups.exists():
+            lesson.groups.set(list(stream.groups.values_list('id', flat=True)))
+        stream.archived_lesson = lesson
+        if stream.status != 'archived':
+            stream.status = 'archived'
+        if not stream.ended_at:
+            stream.ended_at = timezone.now()
+        stream.save(update_fields=['archived_lesson', 'status', 'ended_at', 'updated_at'])
+        return Response(LiveStreamAdminSerializer(stream).data)
+
+    @action(detail=False, methods=['get'])
+    def trash(self, request):
+        qs = LiveStream.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        return Response(LiveStreamAdminSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def restore(self, request, pk=None):
+        stream = LiveStream.objects.filter(pk=pk, deleted_at__isnull=False).first()
+        if not stream:
+            return Response({'detail': 'Not found in trash.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        stream.deleted_at = None
+        stream.save(update_fields=['deleted_at', 'updated_at'])
+        return Response(LiveStreamAdminSerializer(stream).data)
+
+    @action(detail=True, methods=['delete'], url_path='permanent')
+    def permanent_destroy(self, request, pk=None):
+        stream = LiveStream.objects.filter(pk=pk, deleted_at__isnull=False).first()
+        if not stream:
+            return Response({'detail': 'Not found in trash.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        stream.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 # ---------------------------------------------------------------------------
 # Consultations
@@ -294,9 +419,16 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
 
 class ConsultationAdminViewSet(viewsets.ModelViewSet):
     """Admin CRUD for 1-on-1 consultation links."""
-    queryset = Consultation.objects.all()
     serializer_class = ConsultationSerializer
     permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
+
+    def get_queryset(self):
+        return Consultation.objects.filter(deleted_at__isnull=True).order_by('-created_at')
+
+    def perform_destroy(self, instance):
+        instance.deleted_at = timezone.now()
+        instance.status = 'cancelled'
+        instance.save(update_fields=['deleted_at', 'status', 'updated_at'])
 
     def perform_create(self, serializer):
         serializer.save(
@@ -370,6 +502,31 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
             'jitsi_domain': domain,
             'display_name': display_name,
         })
+
+    @action(detail=False, methods=['get'])
+    def trash(self, request):
+        qs = Consultation.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def restore(self, request, pk=None):
+        consultation = Consultation.objects.filter(pk=pk, deleted_at__isnull=False).first()
+        if not consultation:
+            return Response({'detail': 'Not found in trash.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        consultation.deleted_at = None
+        consultation.status = 'active'
+        consultation.save(update_fields=['deleted_at', 'status', 'updated_at'])
+        return Response(self.get_serializer(consultation).data)
+
+    @action(detail=True, methods=['delete'], url_path='permanent')
+    def permanent_destroy(self, request, pk=None):
+        consultation = Consultation.objects.filter(pk=pk, deleted_at__isnull=False).first()
+        if not consultation:
+            return Response({'detail': 'Not found in trash.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        consultation.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Video, Copy, MessageCircle, Plus, Check,
-  ExternalLink, Clock, Users, AlertCircle,
-  StopCircle, LogIn, Calendar,
+  Clock, Users, AlertCircle,
+  StopCircle, LogIn, Calendar, Trash2, Trash, RotateCcw, X,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -13,10 +13,8 @@ import ConfirmModal from '../../../components/ConfirmModal'
 /**
  * Консультации — 1-на-1 видеозвонки (Jitsi iframe, без перехода на другой сайт).
  *
- * Тренер создаёт ссылку → отправляет ученику в WhatsApp.
- * Ученик открывает /room/{uuid} — Jitsi загружается прямо в браузере.
- * Тренер нажимает «Войти» в этом же интерфейсе — тоже открывается /room/{uuid}.
- * Тренер нажимает «Завершить» — комната закрывается у ученика тоже.
+ * Тренер нажимает «Войти» → Jitsi открывается прямо в окне поверх страницы.
+ * Ученик открывает /room/{uuid} — тот же Jitsi в его браузере.
  */
 export default function ConsultationsAdmin() {
   const { user } = useOutletContext()
@@ -29,7 +27,18 @@ export default function ConsultationsAdmin() {
   const [form, setForm] = useState({ title: '', trainer: '', client: '' })
 
   const [alertModal, setAlertModal] = useState(null)
-  const [confirmStop, setConfirmStop] = useState(null) // { id, title }
+  const [confirmStop, setConfirmStop] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  // Inline Jitsi
+  const [jitsiInfo, setJitsiInfo] = useState(null)
+  const [joiningId, setJoiningId] = useState(null)
+
+  // Trash
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashItems, setTrashItems] = useState([])
+  const [trashLoading, setTrashLoading] = useState(false)
+  const [confirmPermanent, setConfirmPermanent] = useState(null)
 
   const reload = () => {
     setLoading(true)
@@ -43,11 +52,23 @@ export default function ConsultationsAdmin() {
       .finally(() => setLoading(false))
   }
 
+  const loadTrash = () => {
+    setTrashLoading(true)
+    api.get('/education/consultations/trash/')
+      .then(r => setTrashItems(r.data || []))
+      .catch(() => {})
+      .finally(() => setTrashLoading(false))
+  }
+
   useEffect(() => {
     reload()
     api.get('/trainers/').then(r => setTrainers(r.data?.results || r.data || [])).catch(() => {})
     api.get('/clients/?limit=200').then(r => setClients(r.data?.results || r.data || [])).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (showTrash) loadTrash()
+  }, [showTrash])
 
   const create = async () => {
     if (!form.title.trim()) {
@@ -79,6 +100,22 @@ export default function ConsultationsAdmin() {
     }
   }
 
+  const joinAsTrainer = async (id) => {
+    setJoiningId(id)
+    try {
+      const r = await api.get(`/education/consultations/${id}/join-as-trainer/`)
+      if (!r.data?.valid) {
+        setAlertModal({ title: 'Не удалось войти', message: r.data?.reason || 'Консультация недоступна.', variant: 'error' })
+        return
+      }
+      setJitsiInfo(r.data)
+    } catch (e) {
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    } finally {
+      setJoiningId(null)
+    }
+  }
+
   const performStop = async () => {
     if (!confirmStop) return
     try {
@@ -92,11 +129,42 @@ export default function ConsultationsAdmin() {
       })
     } catch (e) {
       setConfirmStop(null)
-      setAlertModal({
-        title: 'Ошибка',
-        message: e.response?.data?.detail || e.message,
-        variant: 'error',
-      })
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
+  const performDelete = async () => {
+    if (!confirmDelete) return
+    try {
+      await api.delete(`/education/consultations/${confirmDelete.id}/`)
+      setConfirmDelete(null)
+      reload()
+      if (showTrash) loadTrash()
+    } catch (e) {
+      setConfirmDelete(null)
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
+  const performRestore = async (id) => {
+    try {
+      await api.post(`/education/consultations/${id}/restore/`)
+      loadTrash()
+      reload()
+    } catch (e) {
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
+  const performPermanentDelete = async () => {
+    if (!confirmPermanent) return
+    try {
+      await api.delete(`/education/consultations/${confirmPermanent.id}/permanent/`)
+      setConfirmPermanent(null)
+      loadTrash()
+    } catch (e) {
+      setConfirmPermanent(null)
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
     }
   }
 
@@ -246,13 +314,77 @@ export default function ConsultationsAdmin() {
               waLink={wa(item.room_uuid, item.title || 'Консультация')}
               copied={copied}
               onCopy={copy}
+              onJoinRoom={() => joinAsTrainer(item.id)}
+              joiningId={joiningId}
               onStop={() => setConfirmStop({ id: item.id, title: item.title || 'Консультация' })}
+              onDelete={() => setConfirmDelete({ id: item.id, title: item.title || 'Консультация' })}
               fmtDate={fmtDate}
               fmtDuration={fmtDuration}
             />
           ))}
+
+          {/* Trash */}
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setShowTrash(v => !v)}
+              className="w-full px-5 py-4 flex items-center gap-3 hover:bg-gray-50 transition text-left"
+            >
+              <Trash size={18} className="text-gray-400" />
+              <span className="font-medium text-gray-600">Корзина</span>
+              {trashItems.length > 0 && (
+                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full font-medium">
+                  {trashItems.length}
+                </span>
+              )}
+              <span className="ml-auto text-xs text-gray-400">
+                {showTrash ? '▲ Скрыть' : '▼ Показать'}
+              </span>
+            </button>
+
+            {showTrash && (
+              <div className="border-t border-gray-100">
+                {trashLoading && (
+                  <div className="p-6 text-center text-gray-400 text-sm">Загрузка…</div>
+                )}
+                {!trashLoading && trashItems.length === 0 && (
+                  <div className="p-6 text-center text-gray-400 text-sm">Корзина пуста.</div>
+                )}
+                {!trashLoading && trashItems.map(c => (
+                  <div key={c.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 last:border-0 bg-gray-50/50">
+                    <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 text-gray-400">
+                      <Video size={18} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-700 truncate">{c.title || 'Консультация'}</p>
+                      <p className="text-xs text-gray-400">{c.status}</p>
+                    </div>
+                    <button
+                      onClick={() => performRestore(c.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition"
+                    >
+                      <RotateCcw size={13} /> Восстановить
+                    </button>
+                    <button
+                      onClick={() => setConfirmPermanent({ id: c.id, title: c.title || 'Консультация' })}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition"
+                    >
+                      <Trash2 size={13} /> Удалить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Inline Jitsi room modal */}
+      {jitsiInfo && (
+        <JitsiRoomModal
+          info={jitsiInfo}
+          onClose={() => { setJitsiInfo(null); reload() }}
+        />
+      )}
 
       <AlertModal
         open={!!alertModal}
@@ -272,6 +404,28 @@ export default function ConsultationsAdmin() {
         confirmText="Завершить"
         variant="danger"
       />
+      <ConfirmModal
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={performDelete}
+        title="Удалить консультацию?"
+        message={confirmDelete
+          ? `Консультация «${confirmDelete.title}» переместится в корзину.`
+          : ''}
+        confirmText="В корзину"
+        variant="danger"
+      />
+      <ConfirmModal
+        open={!!confirmPermanent}
+        onClose={() => setConfirmPermanent(null)}
+        onConfirm={performPermanentDelete}
+        title="Удалить навсегда?"
+        message={confirmPermanent
+          ? `Консультация «${confirmPermanent.title}» будет удалена безвозвратно.`
+          : ''}
+        confirmText="Удалить навсегда"
+        variant="danger"
+      />
     </AdminLayout>
   )
 }
@@ -279,7 +433,7 @@ export default function ConsultationsAdmin() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Consultation card
 // ─────────────────────────────────────────────────────────────────────────────
-function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onStop, fmtDate, fmtDuration }) {
+function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onJoinRoom, joiningId, onStop, onDelete, fmtDate, fmtDuration }) {
   const isActive = item.status === 'active'
   const isCancelled = item.status === 'cancelled'
   const isExpired = item.status === 'expired'
@@ -291,6 +445,8 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onStop, fmtDa
     expired:   { label: 'Истекла',   cls: 'bg-amber-100 text-amber-700'     },
     used:      { label: 'Завершена', cls: 'bg-gray-100 text-gray-600'       },
   }[item.status] || { label: item.status, cls: 'bg-gray-100 text-gray-500' }
+
+  const isJoining = joiningId === item.id
 
   return (
     <div className="bg-white rounded-3xl border border-violet-100 shadow-sm overflow-hidden">
@@ -338,16 +494,18 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onStop, fmtDa
         <div className="flex gap-2 flex-wrap">
           {isActive && (
             <>
-              {/* Open room as trainer */}
-              <a
-                href={roomUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500 hover:bg-violet-600 text-white text-sm font-medium shadow"
+              <button
+                onClick={onJoinRoom}
+                disabled={isJoining}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500 hover:bg-violet-600 text-white text-sm font-medium shadow disabled:opacity-60"
               >
-                <LogIn size={14} /> Войти в комнату
-              </a>
-              {/* Stop */}
+                {isJoining ? (
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <LogIn size={14} />
+                )}
+                {isJoining ? 'Подключение…' : 'Войти в комнату'}
+              </button>
               <button
                 onClick={onStop}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-medium border border-rose-100"
@@ -356,17 +514,22 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onStop, fmtDa
               </button>
             </>
           )}
+          <button
+            onClick={onDelete}
+            className="p-2 rounded-xl text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition"
+            title="В корзину"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
       </div>
 
       {/* Link section — only for active */}
       {isActive && (
         <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Info card */}
           <div className="flex flex-col gap-3 p-5 rounded-2xl bg-violet-50/60 border border-violet-100">
-            <div className="flex items-center gap-2 text-violet-700">
-              <ExternalLink size={16} />
-              <div className="font-semibold text-sm">Ссылка для ученика</div>
+            <div className="flex items-center gap-2 text-violet-700 font-semibold text-sm">
+              Ссылка для ученика
             </div>
             <code className="text-xs text-gray-700 bg-white border border-violet-100 rounded-lg px-3 py-2 truncate block">
               {roomUrl}
@@ -388,17 +551,13 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onStop, fmtDa
                 <MessageCircle size={14} /> WhatsApp
               </a>
             </div>
-            <p className="text-xs text-violet-700/80">
-              Ученик откроет ссылку в браузере — видеозвонок запустится прямо на странице.
-            </p>
           </div>
 
-          {/* How it works */}
           <div className="flex flex-col gap-2 p-5 rounded-2xl bg-gray-50 border border-gray-100">
             <div className="font-semibold text-sm text-gray-700 mb-1">Как это работает</div>
             {[
               ['1', 'Скопируйте ссылку и отправьте ученику в WhatsApp'],
-              ['2', 'Нажмите «Войти в комнату» — откроется видеозвонок'],
+              ['2', 'Нажмите «Войти в комнату» — видеозвонок откроется здесь'],
               ['3', 'Ученик открывает ссылку в браузере и входит'],
               ['4', 'Когда закончите — нажмите «Завершить»'],
             ].map(([num, text]) => (
@@ -428,6 +587,82 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onStop, fmtDa
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inline Jitsi modal — trainer joins the room directly in the admin panel
+// ─────────────────────────────────────────────────────────────────────────────
+function JitsiRoomModal({ info, onClose }) {
+  const containerRef = useRef(null)
+  const apiRef = useRef(null)
+
+  useEffect(() => {
+    if (!info?.jitsi_domain || !info?.room_name) return
+    const domain = info.jitsi_domain
+    const scriptId = 'jitsi-external-api'
+
+    const init = () => {
+      if (!window.JitsiMeetExternalAPI || !containerRef.current) return
+      if (apiRef.current) return
+
+      apiRef.current = new window.JitsiMeetExternalAPI(domain, {
+        roomName: info.room_name,
+        parentNode: containerRef.current,
+        width: '100%',
+        height: '100%',
+        userInfo: { displayName: info.display_name || 'Тренер' },
+        ...(info.jitsi_token ? { jwt: info.jitsi_token } : {}),
+        configOverwrite: {
+          startWithAudioMuted: false,
+          startWithVideoMuted: false,
+          prejoinPageEnabled: false,
+          disableDeepLinking: true,
+        },
+        interfaceConfigOverwrite: {
+          MOBILE_APP_PROMO: false,
+          SHOW_JITSI_WATERMARK: false,
+        },
+      })
+
+      apiRef.current.addEventListener('readyToClose', () => {
+        try { apiRef.current.dispose() } catch {}
+        apiRef.current = null
+        onClose()
+      })
+    }
+
+    if (!document.getElementById(scriptId)) {
+      const s = document.createElement('script')
+      s.id = scriptId
+      s.src = `https://${domain}/external_api.js`
+      s.async = true
+      s.onload = init
+      document.body.appendChild(s)
+    } else {
+      init()
+    }
+
+    return () => {
+      if (apiRef.current) {
+        try { apiRef.current.dispose() } catch {}
+        apiRef.current = null
+      }
+    }
+  }, [info, onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      <div className="absolute top-3 right-3 z-10">
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 text-sm font-medium backdrop-blur"
+        >
+          <X size={16} /> Закрыть
+        </button>
+      </div>
+      <div ref={containerRef} style={{ width: '100%', flex: 1 }} />
     </div>
   )
 }

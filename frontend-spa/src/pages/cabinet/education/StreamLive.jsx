@@ -62,8 +62,19 @@ export default function StreamLive() {
     return () => clearInterval(id)
   }, [stream?.id])
 
-  const playback = joined?.playback_url || stream?.playback_url
+  const playback = joined?.playback_url || stream?.playback_url || ''
   const watermarkText = joined?.watermark?.text || ''
+
+  // Re-poll the stream every 5 s when joined but no playback URL yet
+  useEffect(() => {
+    if (!stream?.id || playback) return
+    const id = setInterval(() => {
+      api.get('/cabinet/education/streams/active/')
+        .then(r => { if (r.data?.stream) setStream(r.data.stream) })
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(id)
+  }, [stream?.id, playback])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -110,8 +121,16 @@ export default function StreamLive() {
                     onReady={v => { videoRef.current = v }}
                   />
                 ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">
-                    Подключаемся к эфиру…
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 text-sm gap-3">
+                    <div className="w-8 h-8 border-2 border-white/20 border-t-white/70 rounded-full animate-spin" />
+                    <div className="text-center px-4">
+                      <p>{joined ? 'Ожидаем видеосигнал…' : 'Подключаемся к эфиру…'}</p>
+                      {joined && (
+                        <p className="text-xs text-white/40 mt-1">
+                          Тренер ещё не начал трансляцию. Страница обновится автоматически.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
                 <Watermark text={watermarkText} />

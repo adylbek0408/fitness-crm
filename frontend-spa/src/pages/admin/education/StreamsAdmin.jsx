@@ -2,26 +2,15 @@ import { useEffect, useState } from 'react'
 import {
   Radio, Copy, Play, Square, Plus, Link2, Check,
   Users, MessageCircle, ExternalLink, AlertCircle, Trash2,
+  Eye, X, RotateCcw, Trash, BookMarked,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
+import HlsPlayer from '../../../components/education/HlsPlayer'
 
-/**
- * Admin page for managing live streams.
- *
- * Browser-only streaming:
- *  - Trainer creates a stream (gets the auto-generated student link).
- *  - Click "Начать с браузера" → opens BroadcastPage which streams
- *    via WebRTC (WHIP) to Cloudflare Stream — no OBS, no extra apps.
- *  - Students open the link on phone/PWA and watch in `/cabinet/stream?id=…`.
- *
- * The OBS / SRT credentials live in the model (kept for future use) but
- * are intentionally hidden from this UI — the user wants every flow
- * to work through the website.
- */
 export default function StreamsAdmin() {
   const { user } = useOutletContext()
   const [streams, setStreams] = useState([])
@@ -31,7 +20,18 @@ export default function StreamsAdmin() {
   const [creating, setCreating] = useState(false)
   const [copied, setCopied] = useState('')
   const [alertModal, setAlertModal] = useState(null)
-  const [confirmEnd, setConfirmEnd] = useState(null) // { id, title }
+  const [confirmEnd, setConfirmEnd] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  // Preview
+  const [previewInfo, setPreviewInfo] = useState(null)
+  const [previewTitle, setPreviewTitle] = useState('')
+
+  // Trash
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashItems, setTrashItems] = useState([])
+  const [trashLoading, setTrashLoading] = useState(false)
+  const [confirmPermanent, setConfirmPermanent] = useState(null)
 
   const reload = () => {
     setLoading(true)
@@ -45,12 +45,24 @@ export default function StreamsAdmin() {
       .finally(() => setLoading(false))
   }
 
+  const loadTrash = () => {
+    setTrashLoading(true)
+    api.get('/education/streams/trash/')
+      .then(r => setTrashItems(r.data || []))
+      .catch(() => {})
+      .finally(() => setTrashLoading(false))
+  }
+
   useEffect(() => {
     reload()
     api.get('/groups/')
       .then(r => setGroups(r.data?.results || r.data || []))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (showTrash) loadTrash()
+  }, [showTrash])
 
   const create = async () => {
     if (!form.title.trim()) {
@@ -105,6 +117,65 @@ export default function StreamsAdmin() {
     }
   }
 
+  const performDelete = async () => {
+    if (!confirmDelete) return
+    try {
+      await api.delete(`/education/streams/${confirmDelete.id}/`)
+      setConfirmDelete(null)
+      reload()
+      if (showTrash) loadTrash()
+    } catch (e) {
+      setConfirmDelete(null)
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
+  const performManualArchive = async (id) => {
+    try {
+      await api.post(`/education/streams/${id}/manual-archive/`)
+      reload()
+      setAlertModal({
+        title: 'Архив создан',
+        message: 'Урок-запись добавлен в кабинет ученика.',
+        variant: 'success',
+      })
+    } catch (e) {
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
+  const openRecordingPreview = async (lessonId, title) => {
+    try {
+      const r = await api.get(`/education/lessons/${lessonId}/preview/`)
+      setPreviewInfo(r.data)
+      setPreviewTitle(title)
+    } catch (e) {
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
+  const performRestore = async (id) => {
+    try {
+      await api.post(`/education/streams/${id}/restore/`)
+      loadTrash()
+      reload()
+    } catch (e) {
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
+  const performPermanentDelete = async () => {
+    if (!confirmPermanent) return
+    try {
+      await api.delete(`/education/streams/${confirmPermanent.id}/permanent/`)
+      setConfirmPermanent(null)
+      loadTrash()
+    } catch (e) {
+      setConfirmPermanent(null)
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
   const copy = (text, key) => {
     navigator.clipboard?.writeText(text).then(() => {
       setCopied(key)
@@ -112,7 +183,6 @@ export default function StreamsAdmin() {
     })
   }
 
-  // Cabinet link the student sees on their phone (works in browser + PWA)
   const studentLink = (id) => `${window.location.origin}/cabinet/stream?id=${id}`
 
   const summary = {
@@ -242,9 +312,7 @@ export default function StreamsAdmin() {
             <div className="bg-white rounded-3xl border border-rose-100 shadow-sm py-16 text-center">
               <Radio size={48} className="mx-auto text-rose-200 mb-3" />
               <p className="text-gray-500 font-medium">Эфиров ещё нет</p>
-              <p className="text-xs text-gray-400 mt-1">
-                Создайте первый — заполните форму выше.
-              </p>
+              <p className="text-xs text-gray-400 mt-1">Создайте первый — заполните форму выше.</p>
             </div>
           )}
 
@@ -254,13 +322,108 @@ export default function StreamsAdmin() {
               stream={s}
               onStart={() => start(s.id)}
               onEnd={() => setConfirmEnd({ id: s.id, title: s.title })}
+              onDelete={() => setConfirmDelete({ id: s.id, title: s.title })}
+              onManualArchive={() => performManualArchive(s.id)}
+              onPreviewRecording={() => openRecordingPreview(s.archived_lesson, s.title)}
               onCopy={copy}
               copied={copied}
               studentLink={studentLink(s.id)}
             />
           ))}
+
+          {/* Trash */}
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setShowTrash(v => !v)}
+              className="w-full px-5 py-4 flex items-center gap-3 hover:bg-gray-50 transition text-left"
+            >
+              <Trash size={18} className="text-gray-400" />
+              <span className="font-medium text-gray-600">Корзина</span>
+              {trashItems.length > 0 && (
+                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full font-medium">
+                  {trashItems.length}
+                </span>
+              )}
+              <span className="ml-auto text-xs text-gray-400">
+                {showTrash ? '▲ Скрыть' : '▼ Показать'}
+              </span>
+            </button>
+
+            {showTrash && (
+              <div className="border-t border-gray-100">
+                {trashLoading && (
+                  <div className="p-6 text-center text-gray-400 text-sm">Загрузка…</div>
+                )}
+                {!trashLoading && trashItems.length === 0 && (
+                  <div className="p-6 text-center text-gray-400 text-sm">Корзина пуста.</div>
+                )}
+                {!trashLoading && trashItems.map(s => (
+                  <div key={s.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 last:border-0 bg-gray-50/50">
+                    <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 text-gray-400">
+                      <Radio size={18} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-700 truncate">{s.title}</p>
+                      <p className="text-xs text-gray-400">{s.status}</p>
+                    </div>
+                    <button
+                      onClick={() => performRestore(s.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition"
+                    >
+                      <RotateCcw size={13} /> Восстановить
+                    </button>
+                    <button
+                      onClick={() => setConfirmPermanent({ id: s.id, title: s.title })}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition"
+                    >
+                      <Trash2 size={13} /> Удалить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Recording preview modal */}
+      {previewInfo && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setPreviewInfo(null)}>
+          <div
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-rose-100">
+              <div>
+                <h3 className="font-semibold text-lg">{previewTitle}</h3>
+                <p className="text-sm text-gray-500">Запись эфира</p>
+              </div>
+              <button onClick={() => setPreviewInfo(null)} className="p-2 rounded-xl hover:bg-rose-50">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6">
+              {!previewInfo.playback_url ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-500 gap-3">
+                  <AlertCircle size={40} className="text-rose-300" />
+                  <p className="text-sm text-center">
+                    Запись ещё обрабатывается Cloudflare Stream.<br />
+                    <span className="text-xs text-gray-400">Обычно это занимает несколько минут после завершения эфира.</span>
+                  </p>
+                </div>
+              ) : (
+                <div className="aspect-video bg-black rounded-2xl overflow-hidden">
+                  <HlsPlayer
+                    src={previewInfo.playback_url}
+                    kind={previewInfo.video_kind || 'hls'}
+                    autoPlay
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <AlertModal
         open={!!alertModal}
@@ -278,6 +441,24 @@ export default function StreamsAdmin() {
         confirmText="Завершить"
         variant="danger"
       />
+      <ConfirmModal
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={performDelete}
+        title="Удалить эфир?"
+        message={confirmDelete ? `Эфир «${confirmDelete.title}» переместится в корзину.` : ''}
+        confirmText="В корзину"
+        variant="danger"
+      />
+      <ConfirmModal
+        open={!!confirmPermanent}
+        onClose={() => setConfirmPermanent(null)}
+        onConfirm={performPermanentDelete}
+        title="Удалить навсегда?"
+        message={confirmPermanent ? `Эфир «${confirmPermanent.title}» будет удалён безвозвратно.` : ''}
+        confirmText="Удалить навсегда"
+        variant="danger"
+      />
     </AdminLayout>
   )
 }
@@ -285,10 +466,9 @@ export default function StreamsAdmin() {
 // ───────────────────────────────────────────────────────────────────────────
 // Stream card
 // ───────────────────────────────────────────────────────────────────────────
-function StreamCard({ stream: s, onStart, onEnd, onCopy, copied, studentLink }) {
+function StreamCard({ stream: s, onStart, onEnd, onDelete, onManualArchive, onPreviewRecording, onCopy, copied, studentLink }) {
   const [viewers, setViewers] = useState([])
 
-  // Live viewer polling — only when stream is actually live
   useEffect(() => {
     if (s.status !== 'live') return
     let stopped = false
@@ -302,10 +482,10 @@ function StreamCard({ stream: s, onStart, onEnd, onCopy, copied, studentLink }) 
     return () => { stopped = true; clearInterval(id) }
   }, [s.id, s.status])
 
-  const status = s.status
-  const isLive = status === 'live'
-  const isScheduled = status === 'scheduled'
-  const isArchived = ['ended', 'archived'].includes(status)
+  const isLive = s.status === 'live'
+  const isScheduled = s.status === 'scheduled'
+  const isArchived = ['ended', 'archived'].includes(s.status)
+  const hasRecording = isArchived && s.archived_lesson
 
   const wa = encodeURIComponent(`Прямой эфир «${s.title}» — заходи по ссылке: ${studentLink}`)
 
@@ -337,7 +517,12 @@ function StreamCard({ stream: s, onStart, onEnd, onCopy, copied, studentLink }) 
             )}
             {isArchived && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-semibold">
-                {status === 'archived' ? 'Архив' : 'Завершён'}
+                {s.status === 'archived' ? 'Архив' : 'Завершён'}
+              </span>
+            )}
+            {hasRecording && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 font-semibold flex items-center gap-1">
+                <BookMarked size={11} /> Запись есть
               </span>
             )}
           </div>
@@ -345,11 +530,6 @@ function StreamCard({ stream: s, onStart, onEnd, onCopy, copied, studentLink }) 
             <div className="flex items-center gap-1 text-xs text-emerald-700 mt-1">
               <Users size={11} /> {viewers.length} {viewers.length === 1 ? 'зритель' : 'зрителей'} в эфире
             </div>
-          )}
-          {!isLive && !isArchived && (
-            <p className="text-xs text-gray-400 mt-1">
-              Скопируйте ссылку и отправьте ученикам, потом нажмите «Начать с браузера».
-            </p>
           )}
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -369,13 +549,35 @@ function StreamCard({ stream: s, onStart, onEnd, onCopy, copied, studentLink }) 
               <Square size={14} /> Завершить
             </button>
           )}
+          {hasRecording && (
+            <button
+              onClick={onPreviewRecording}
+              className="px-3 py-2 rounded-xl bg-violet-100 hover:bg-violet-200 text-violet-700 text-sm flex items-center gap-1.5 font-medium"
+            >
+              <Eye size={14} /> Смотреть запись
+            </button>
+          )}
+          {isArchived && !hasRecording && (
+            <button
+              onClick={onManualArchive}
+              className="px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm flex items-center gap-1.5 font-medium border border-amber-200"
+            >
+              <BookMarked size={14} /> Создать архив
+            </button>
+          )}
+          <button
+            onClick={onDelete}
+            className="p-2 rounded-xl text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition"
+            title="В корзину"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
       </div>
 
       {/* Body — only for active streams */}
       {!isArchived && (
         <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Streaming launcher (BIG button) */}
           <a
             href={`/admin/education/broadcast/${s.id}`}
             target="_blank"
@@ -394,7 +596,6 @@ function StreamCard({ stream: s, onStart, onEnd, onCopy, copied, studentLink }) 
             </div>
           </a>
 
-          {/* Student link card */}
           <div className="flex flex-col gap-3 p-5 rounded-2xl bg-emerald-50/60 border border-emerald-100">
             <div className="flex items-center gap-2 text-emerald-700">
               <Link2 size={16} />
@@ -420,9 +621,6 @@ function StreamCard({ stream: s, onStart, onEnd, onCopy, copied, studentLink }) 
                 <MessageCircle size={14} /> WhatsApp
               </a>
             </div>
-            <p className="text-xs text-emerald-700/80">
-              Ученики откроют ссылку с телефона прямо в браузере.
-            </p>
           </div>
         </div>
       )}
@@ -460,9 +658,9 @@ function StreamCard({ stream: s, onStart, onEnd, onCopy, copied, studentLink }) 
           <div className="flex items-start gap-3 p-4 rounded-2xl bg-gray-50 border border-gray-100">
             <AlertCircle size={18} className="text-gray-400 shrink-0 mt-0.5" />
             <div className="text-sm text-gray-600">
-              Эфир завершён. {s.archived_lesson
+              {hasRecording
                 ? 'Запись добавлена в архив — ученики могут пересмотреть её в кабинете.'
-                : 'Запись появится автоматически после обработки Cloudflare Stream.'}
+                : 'Запись появится автоматически после обработки Cloudflare Stream. Или нажмите «Создать архив» чтобы добавить вручную.'}
             </div>
           </div>
         </div>

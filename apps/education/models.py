@@ -155,6 +155,8 @@ class LiveStream(UUIDTimestampedModel):
         max_length=15, choices=STATUS_CHOICES, default='scheduled',
     )
 
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
     # Filled by webhook: Lesson auto-created from the recording.
     archived_lesson = models.ForeignKey(
         Lesson,
@@ -267,6 +269,8 @@ class Consultation(UUIDTimestampedModel):
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     duration_sec = models.PositiveIntegerField(default=0)
+
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

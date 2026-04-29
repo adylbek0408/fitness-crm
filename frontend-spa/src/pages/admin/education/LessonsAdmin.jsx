@@ -2,30 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Upload, Trash2, Plus, CheckCircle2, Headphones, Play,
   Mic, Square, Video, FileAudio, Search, Users,
+  Eye, X, AlertCircle, RotateCcw, Trash,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
+import HlsPlayer from '../../../components/education/HlsPlayer'
 
-/**
- * Admin: list / create / delete / publish lessons.
- *
- * GetCourse-style layout:
- *  - Top hero card with quick action (upload).
- *  - Two-column grid: form on left, list on right (mobile = stacked).
- *  - Lesson cards with thumbnail, type badge, duration, group chips.
- *  - Site-wide AlertModal/ConfirmModal — no native confirm()/alert().
- *
- * Upload flow:
- *   1) POST /api/education/lessons/upload-init/  → returns { lesson, upload }
- *   2a) upload.kind === 'cf-direct'           → POST to upload.url with video
- *   2b) upload.kind === 'r2-presigned-put'    → PUT to upload.url with file
- *   3) POST /api/education/lessons/{id}/finalize/  → publishes
- *
- * Audio can also be recorded directly in the browser (MediaRecorder).
- */
 export default function LessonsAdmin() {
   const { user } = useOutletContext()
   const [lessons, setLessons]   = useState([])
@@ -34,13 +19,20 @@ export default function LessonsAdmin() {
   const [progress, setProgress] = useState(0)
   const [groups, setGroups]     = useState([])
   const [search, setSearch]     = useState('')
-  const [typeFilter, setTypeFilter] = useState('all') // all | video | audio
+  const [typeFilter, setTypeFilter] = useState('all')
 
-  // Modals
-  const [alertModal, setAlertModal] = useState(null) // { title, message, variant }
-  const [confirmDelete, setConfirmDelete] = useState(null) // { id, title }
+  const [alertModal, setAlertModal] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
 
-  // Recording state
+  // Preview
+  const [previewLesson, setPreviewLesson] = useState(null)
+
+  // Trash
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashItems, setTrashItems] = useState([])
+  const [trashLoading, setTrashLoading] = useState(false)
+  const [confirmPermanent, setConfirmPermanent] = useState(null)
+
   const [recording, setRecording]   = useState(false)
   const [recSeconds, setRecSeconds] = useState(0)
   const recorderRef  = useRef(null)
@@ -63,12 +55,24 @@ export default function LessonsAdmin() {
       .finally(() => setLoading(false))
   }
 
+  const loadTrash = () => {
+    setTrashLoading(true)
+    api.get('/education/lessons/trash/')
+      .then(r => setTrashItems(r.data || []))
+      .catch(() => {})
+      .finally(() => setTrashLoading(false))
+  }
+
   useEffect(() => {
     reload()
     api.get('/groups/')
       .then(r => setGroups(r.data?.results || r.data || []))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (showTrash) loadTrash()
+  }, [showTrash])
 
   // ── Audio recording ──────────────────────────────────────────────────────
   const startRecording = async () => {
@@ -186,6 +190,7 @@ export default function LessonsAdmin() {
       await api.delete(`/education/lessons/${confirmDelete.id}/`)
       setConfirmDelete(null)
       reload()
+      if (showTrash) loadTrash()
     } catch (e) {
       setConfirmDelete(null)
       setAlertModal({
@@ -196,6 +201,28 @@ export default function LessonsAdmin() {
     }
   }
 
+  const performRestore = async (id) => {
+    try {
+      await api.post(`/education/lessons/${id}/restore/`)
+      loadTrash()
+      reload()
+    } catch (e) {
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
+  const performPermanentDelete = async () => {
+    if (!confirmPermanent) return
+    try {
+      await api.delete(`/education/lessons/${confirmPermanent.id}/permanent/`)
+      setConfirmPermanent(null)
+      loadTrash()
+    } catch (e) {
+      setConfirmPermanent(null)
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
   // ── Filtering ────────────────────────────────────────────────────────────
   const filtered = lessons.filter(l => {
     if (typeFilter !== 'all' && l.lesson_type !== typeFilter) return false
@@ -203,7 +230,6 @@ export default function LessonsAdmin() {
     return true
   })
 
-  // Group lookup for chips on lesson cards
   const groupById = Object.fromEntries(groups.map(g => [g.id, g]))
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -246,7 +272,6 @@ export default function LessonsAdmin() {
               </div>
 
               <div className="p-5 space-y-4">
-                {/* Type tabs */}
                 <div className="grid grid-cols-2 gap-1 p-1 bg-gray-100 rounded-xl">
                   {[
                     { key: 'video', label: 'Видео', Icon: Video },
@@ -266,7 +291,6 @@ export default function LessonsAdmin() {
                   ))}
                 </div>
 
-                {/* Title */}
                 <div>
                   <label className="block text-xs text-gray-500 font-medium mb-1">Название</label>
                   <input
@@ -278,7 +302,6 @@ export default function LessonsAdmin() {
                   />
                 </div>
 
-                {/* Groups */}
                 <div>
                   <label className="block text-xs text-gray-500 font-medium mb-1 flex items-center gap-1">
                     <Users size={12} /> Доступ для групп
@@ -324,7 +347,6 @@ export default function LessonsAdmin() {
                   )}
                 </div>
 
-                {/* File picker */}
                 <div>
                   <label className="block text-xs text-gray-500 font-medium mb-1">
                     Файл ({form.lesson_type === 'video' ? 'MP4 / MOV / WebM' : 'MP3 / WAV / M4A'})
@@ -354,15 +376,12 @@ export default function LessonsAdmin() {
                       <>
                         <Upload size={24} className="text-rose-400 mb-1" />
                         <p className="text-sm font-medium text-rose-600">Выберите файл</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          или перетащите сюда
-                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">или перетащите сюда</p>
                       </>
                     )}
                   </label>
                 </div>
 
-                {/* Audio recorder */}
                 {form.lesson_type === 'audio' && (
                   <div className="flex items-center gap-3 p-3 bg-rose-50 rounded-2xl border border-rose-100">
                     {!recording ? (
@@ -387,13 +406,10 @@ export default function LessonsAdmin() {
                         </span>
                       </>
                     )}
-                    <span className="text-xs text-gray-500 ml-auto">
-                      Прямо с микрофона
-                    </span>
+                    <span className="text-xs text-gray-500 ml-auto">Прямо с микрофона</span>
                   </div>
                 )}
 
-                {/* Progress bar */}
                 {progress > 0 && (
                   <div className="space-y-1">
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -408,7 +424,6 @@ export default function LessonsAdmin() {
                   </div>
                 )}
 
-                {/* Submit */}
                 <button
                   onClick={handleUpload}
                   disabled={uploading || recording}
@@ -430,7 +445,7 @@ export default function LessonsAdmin() {
           </div>
 
           {/* ────────── Lesson list ────────── */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3 space-y-4">
             <div className="bg-white rounded-3xl border border-rose-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-rose-100 flex items-center gap-3 flex-wrap">
                 <h2 className="font-semibold">Все уроки</h2>
@@ -438,7 +453,6 @@ export default function LessonsAdmin() {
                   {filtered.length} из {lessons.length}
                 </span>
                 <div className="ml-auto flex items-center gap-2">
-                  {/* Type filter */}
                   <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
                     {[
                       { k: 'all', label: 'Все' },
@@ -456,7 +470,6 @@ export default function LessonsAdmin() {
                       </button>
                     ))}
                   </div>
-                  {/* Search */}
                   <div className="relative">
                     <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
@@ -499,13 +512,79 @@ export default function LessonsAdmin() {
                     groupById={groupById}
                     fmtDuration={fmtDuration}
                     onDelete={() => setConfirmDelete({ id: l.id, title: l.title })}
+                    onPreview={() => setPreviewLesson(l)}
                   />
                 ))}
               </div>
             </div>
+
+            {/* ── Trash bin ── */}
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+              <button
+                onClick={() => setShowTrash(v => !v)}
+                className="w-full px-5 py-4 flex items-center gap-3 hover:bg-gray-50 transition text-left"
+              >
+                <Trash size={18} className="text-gray-400" />
+                <span className="font-medium text-gray-600">Корзина</span>
+                {trashItems.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full font-medium">
+                    {trashItems.length}
+                  </span>
+                )}
+                <span className="ml-auto text-xs text-gray-400">
+                  {showTrash ? '▲ Скрыть' : '▼ Показать'}
+                </span>
+              </button>
+
+              {showTrash && (
+                <div className="border-t border-gray-100">
+                  {trashLoading && (
+                    <div className="p-6 text-center text-gray-400 text-sm">Загрузка…</div>
+                  )}
+                  {!trashLoading && trashItems.length === 0 && (
+                    <div className="p-6 text-center text-gray-400 text-sm">Корзина пуста.</div>
+                  )}
+                  {!trashLoading && trashItems.map(l => (
+                    <div key={l.id} className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 last:border-0 bg-gray-50/50">
+                      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 text-gray-400">
+                        {l.lesson_type === 'audio' ? <Headphones size={18} /> : <Play size={18} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-700 truncate">{l.title}</p>
+                        <p className="text-xs text-gray-400">
+                          {l.lesson_type === 'audio' ? 'Аудио' : 'Видео'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => performRestore(l.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition"
+                        title="Восстановить"
+                      >
+                        <RotateCcw size={13} /> Восстановить
+                      </button>
+                      <button
+                        onClick={() => setConfirmPermanent({ id: l.id, title: l.title })}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition"
+                        title="Удалить навсегда"
+                      >
+                        <Trash2 size={13} /> Удалить
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Preview modal */}
+      {previewLesson && (
+        <PreviewModal
+          lesson={previewLesson}
+          onClose={() => setPreviewLesson(null)}
+        />
+      )}
 
       {/* Modals */}
       <AlertModal
@@ -522,10 +601,24 @@ export default function LessonsAdmin() {
         title="Удалить урок?"
         message={
           confirmDelete
-            ? `Урок «${confirmDelete.title}» будет удалён.\nЭто действие нельзя отменить.`
+            ? `Урок «${confirmDelete.title}» переместится в корзину.\nОткройте корзину внизу страницы, чтобы восстановить или удалить насовсем.`
             : ''
         }
-        confirmText="Удалить"
+        confirmText="В корзину"
+        cancelText="Отмена"
+        variant="danger"
+      />
+      <ConfirmModal
+        open={!!confirmPermanent}
+        onClose={() => setConfirmPermanent(null)}
+        onConfirm={performPermanentDelete}
+        title="Удалить навсегда?"
+        message={
+          confirmPermanent
+            ? `Урок «${confirmPermanent.title}» будет удалён безвозвратно вместе с файлом.`
+            : ''
+        }
+        confirmText="Удалить навсегда"
         cancelText="Отмена"
         variant="danger"
       />
@@ -536,17 +629,23 @@ export default function LessonsAdmin() {
 // ───────────────────────────────────────────────────────────────────────────
 // Lesson card row
 // ───────────────────────────────────────────────────────────────────────────
-function LessonRow({ lesson: l, groupById, fmtDuration, onDelete }) {
+function LessonRow({ lesson: l, groupById, fmtDuration, onDelete, onPreview }) {
   const isAudio = l.lesson_type === 'audio'
   return (
     <div className="flex items-center gap-4 p-4 hover:bg-rose-50/30 transition">
       {/* Thumb */}
-      <div className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${
+      <div className={`w-16 h-12 rounded-xl flex items-center justify-center shrink-0 overflow-hidden ${
         isAudio
           ? 'bg-gradient-to-br from-purple-100 to-pink-100 text-purple-600'
           : 'bg-gradient-to-br from-rose-100 to-pink-100 text-rose-600'
       }`}>
-        {isAudio ? <Headphones size={22} /> : <Play size={22} />}
+        {!isAudio && l.thumbnail_url ? (
+          <img src={l.thumbnail_url} alt={l.title} className="w-full h-full object-cover" onError={e => { e.target.style.display='none' }} />
+        ) : isAudio ? (
+          <Headphones size={22} />
+        ) : (
+          <Play size={22} />
+        )}
       </div>
       {/* Body */}
       <div className="flex-1 min-w-0">
@@ -580,13 +679,98 @@ function LessonRow({ lesson: l, groupById, fmtDuration, onDelete }) {
         </div>
       </div>
       {/* Actions */}
-      <button
-        onClick={onDelete}
-        className="p-2 rounded-xl text-rose-500 hover:bg-rose-100 transition shrink-0"
-        title="Удалить урок"
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={onPreview}
+          className="p-2 rounded-xl text-violet-500 hover:bg-violet-50 transition"
+          title="Просмотр"
+        >
+          <Eye size={18} />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-2 rounded-xl text-rose-500 hover:bg-rose-100 transition"
+          title="В корзину"
+        >
+          <Trash2 size={18} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Preview modal
+// ───────────────────────────────────────────────────────────────────────────
+function PreviewModal({ lesson, onClose }) {
+  const [loading, setLoading] = useState(true)
+  const [info, setInfo] = useState(null)
+
+  useEffect(() => {
+    api.get(`/education/lessons/${lesson.id}/preview/`)
+      .then(r => setInfo(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [lesson.id])
+
+  const isAudio = lesson.lesson_type === 'audio'
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
       >
-        <Trash2 size={18} />
-      </button>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-rose-100">
+          <div>
+            <h3 className="font-semibold text-lg">{lesson.title}</h3>
+            <p className="text-sm text-gray-500">{isAudio ? 'Аудиоурок' : 'Видеоурок'}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-rose-50">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6">
+          {loading && (
+            <div className="flex items-center justify-center h-48">
+              <div className="w-8 h-8 border-2 border-rose-200 border-t-rose-500 rounded-full animate-spin" />
+            </div>
+          )}
+
+          {!loading && !info?.playback_url && (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-500 gap-3">
+              <AlertCircle size={40} className="text-rose-300" />
+              <p className="text-sm text-center">
+                Файл ещё обрабатывается или хранилище не настроено.
+                <br />
+                <span className="text-xs text-gray-400">Попробуйте снова через минуту.</span>
+              </p>
+            </div>
+          )}
+
+          {!loading && info?.playback_url && isAudio && (
+            <audio
+              controls
+              src={info.playback_url}
+              className="w-full rounded-xl"
+              controlsList="nodownload"
+              onContextMenu={e => e.preventDefault()}
+            />
+          )}
+
+          {!loading && info?.playback_url && !isAudio && (
+            <div className="aspect-video bg-black rounded-2xl overflow-hidden">
+              <HlsPlayer
+                src={info.playback_url}
+                kind={info.video_kind || 'hls'}
+                autoPlay
+                poster={lesson.thumbnail_url || ''}
+              />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
