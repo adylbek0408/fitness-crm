@@ -310,6 +310,67 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
         consultation.save(update_fields=['status', 'updated_at'])
         return Response(self.get_serializer(consultation).data)
 
+    @action(detail=True, methods=['post'])
+    def stop(self, request, pk=None):
+        """Stop a consultation and propagate to the student's room via status polling."""
+        consultation = self.get_object()
+        now = timezone.now()
+        if consultation.started_at:
+            consultation.duration_sec = max(
+                0, int((now - consultation.started_at).total_seconds())
+            )
+        consultation.status = 'cancelled'
+        consultation.ended_at = now
+        consultation.save(update_fields=[
+            'status', 'ended_at', 'duration_sec', 'updated_at',
+        ])
+        return Response(self.get_serializer(consultation).data)
+
+    @action(detail=True, methods=['get'], url_path='join-as-trainer')
+    def join_as_trainer(self, request, pk=None):
+        """Return Jitsi room info for the trainer without incrementing used_count."""
+        consultation = self.get_object()
+        if consultation.status not in ('active',):
+            return Response(
+                {'valid': False, 'reason': consultation.status},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not consultation.started_at:
+            consultation.started_at = timezone.now()
+            consultation.save(update_fields=['started_at', 'updated_at'])
+
+        display_name = (
+            getattr(request.user, 'display_name', None)
+            or request.user.username
+            or 'Тренер'
+        )
+
+        from django.conf import settings as dj_settings
+        from .services import JitsiService
+        from django.core.exceptions import ImproperlyConfigured as IC
+
+        domain = (getattr(dj_settings, 'JITSI_DOMAIN', '') or '').strip() or 'meet.jit.si'
+        secret = (getattr(dj_settings, 'JITSI_APP_SECRET', '') or '').strip()
+        token = None
+        if secret and domain not in ('meet.jit.si',):
+            try:
+                token = JitsiService.create_room_token(
+                    room=str(consultation.room_uuid),
+                    display_name=display_name,
+                    is_moderator=True,
+                )
+            except IC:
+                token = None
+
+        return Response({
+            'valid': True,
+            'room_name': str(consultation.room_uuid),
+            'jitsi_token': token,
+            'jitsi_domain': domain,
+            'display_name': display_name,
+        })
+
 
 # ---------------------------------------------------------------------------
 # Cloudflare Stream webhook

@@ -328,6 +328,31 @@ class CabinetStreamViewersView(APIView):
 # Public consultation endpoint (no auth — link is the credential)
 # ---------------------------------------------------------------------------
 
+class ConsultationStatusView(APIView):
+    """GET /api/consultation/{room_uuid}/status/
+    Public. Returns current status without incrementing used_count.
+    Used by the student's room to detect when the trainer stopped the call.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, room_uuid):
+        try:
+            c = Consultation.objects.get(room_uuid=room_uuid)
+        except Consultation.DoesNotExist:
+            return Response({'active': False, 'status': 'not_found'})
+
+        # Auto-expire stale rows.
+        if c.status == 'active' and c.expires_at and c.expires_at < timezone.now():
+            c.status = 'expired'
+            c.save(update_fields=['status', 'updated_at'])
+
+        return Response({
+            'active': c.status == 'active',
+            'status': c.status,
+        })
+
+
 class PublicConsultationView(APIView):
     """GET /api/consultation/{room_uuid}/
 

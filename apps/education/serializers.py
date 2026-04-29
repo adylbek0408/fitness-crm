@@ -80,12 +80,13 @@ class StreamViewerSerializer(serializers.ModelSerializer):
 class ConsultationSerializer(serializers.ModelSerializer):
     room_url = serializers.SerializerMethodField()
     is_consumable = serializers.BooleanField(read_only=True)
+    trainer_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Consultation
         fields = [
             'id', 'room_uuid', 'room_url', 'title',
-            'trainer', 'client',
+            'trainer', 'trainer_name', 'client',
             'expires_at', 'max_uses', 'used_count',
             'status', 'is_consumable',
             'started_at', 'ended_at', 'duration_sec',
@@ -98,5 +99,9 @@ class ConsultationSerializer(serializers.ModelSerializer):
         )
 
     def get_room_url(self, obj):
-        # Frontend route is /room/{uuid}; absolute URL is built when needed.
         return f"/room/{obj.room_uuid}"
+
+    def get_trainer_name(self, obj):
+        if not obj.trainer:
+            return None
+        return f"{obj.trainer.first_name} {obj.trainer.last_name}".strip()

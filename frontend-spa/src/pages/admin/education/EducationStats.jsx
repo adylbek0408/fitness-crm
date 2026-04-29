@@ -74,7 +74,7 @@ export default function EducationStats() {
               className="px-3 py-2 border rounded-lg min-w-[200px]"
             >
               <option value="">Все группы</option>
-              {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              {groups.map(g => <option key={g.id} value={g.id}>Группа {g.number}</option>)}
             </select>
           </div>
           <div>

@@ -1,23 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { Video, AlertTriangle, Clock } from 'lucide-react'
+import { Video, AlertTriangle, PhoneOff } from 'lucide-react'
 import api from '../../api/axios'
 
 /**
- * Public consultation room — no auth.
- * Loads Jitsi external_api.js script on demand and embeds the room.
- *
- * Backend endpoint: GET /api/consultation/{room_uuid}/?name=<display>
+ * Public consultation room — no auth required.
+ * Loads Jitsi external_api.js and embeds the call in an iframe within this page.
+ * Polls /api/consultation/{uuid}/status/ every 10 s so if the trainer stops
+ * the session, this page closes Jitsi and shows a "session ended" screen.
  */
 export default function ConsultationRoom() {
   const { uuid } = useParams()
   const [params] = useSearchParams()
   const [name, setName] = useState(params.get('name') || '')
-  const [info, setInfo] = useState(null)
+  const [info, setInfo] = useState(null)       // set after successful join
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [ended, setEnded] = useState(false)    // trainer stopped the session
+
   const containerRef = useRef(null)
   const apiRef = useRef(null)
+  const pollRef = useRef(null)
 
   const handleJoin = async () => {
     setLoading(true); setError('')
@@ -28,9 +31,9 @@ export default function ConsultationRoom() {
       if (!r.data?.valid) {
         const reasons = {
           not_found: 'Ссылка не найдена.',
-          expired: 'Срок действия ссылки истёк.',
-          used: 'Ссылка уже использована.',
-          cancelled: 'Ссылка отменена.',
+          expired:   'Срок действия ссылки истёк.',
+          used:      'Консультация уже завершена.',
+          cancelled: 'Консультация отменена.',
         }
         setError(reasons[r.data?.reason] || 'Ссылка недействительна.')
         return
@@ -43,7 +46,7 @@ export default function ConsultationRoom() {
     }
   }
 
-  // Load Jitsi external API once info is available
+  // ── Jitsi initialisation ────────────────────────────────────────────────
   useEffect(() => {
     if (!info?.jitsi_domain || !info?.room_name) return
     const domain = info.jitsi_domain
@@ -52,12 +55,14 @@ export default function ConsultationRoom() {
     const init = () => {
       if (!window.JitsiMeetExternalAPI || !containerRef.current) return
       if (apiRef.current) return
-      const options = {
+
+      apiRef.current = new window.JitsiMeetExternalAPI(domain, {
         roomName: info.room_name,
         parentNode: containerRef.current,
         width: '100%',
         height: window.innerHeight,
         userInfo: { displayName: info.display_name || 'Гость' },
+        ...(info.jitsi_token ? { jwt: info.jitsi_token } : {}),
         configOverwrite: {
           startWithAudioMuted: false,
           startWithVideoMuted: false,
@@ -68,13 +73,12 @@ export default function ConsultationRoom() {
           MOBILE_APP_PROMO: false,
           SHOW_JITSI_WATERMARK: false,
           TOOLBAR_BUTTONS: [
-            'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',
-            'hangup', 'chat', 'raisehand', 'videoquality', 'tileview',
+            'microphone', 'camera', 'closedcaptions', 'desktop',
+            'fullscreen', 'hangup', 'chat', 'raisehand', 'videoquality', 'tileview',
           ],
         },
-      }
-      if (info.jitsi_token) options.jwt = info.jitsi_token
-      apiRef.current = new window.JitsiMeetExternalAPI(domain, options)
+      })
+
       apiRef.current.addEventListener('readyToClose', () => {
         try { apiRef.current.dispose() } catch {}
         apiRef.current = null
@@ -87,7 +91,7 @@ export default function ConsultationRoom() {
       s.src = `https://${domain}/external_api.js`
       s.async = true
       s.onload = init
-      s.onerror = () => setError('Не удалось загрузить Jitsi.')
+      s.onerror = () => setError('Не удалось загрузить видеозвонок. Проверьте соединение.')
       document.body.appendChild(s)
     } else {
       init()
@@ -101,6 +105,49 @@ export default function ConsultationRoom() {
     }
   }, [info])
 
+  // ── Status polling — auto-close when trainer stops ──────────────────────
+  useEffect(() => {
+    if (!info) return
+
+    const poll = async () => {
+      try {
+        const r = await api.get(`/consultation/${uuid}/status/`)
+        if (!r.data?.active) {
+          // Trainer stopped the session
+          if (apiRef.current) {
+            try { apiRef.current.dispose() } catch {}
+            apiRef.current = null
+          }
+          setEnded(true)
+          clearInterval(pollRef.current)
+        }
+      } catch {
+        // Network blip — keep polling
+      }
+    }
+
+    pollRef.current = setInterval(poll, 10_000)
+    return () => clearInterval(pollRef.current)
+  }, [info, uuid])
+
+  // ── "Session ended" screen ──────────────────────────────────────────────
+  if (ended) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
+            <PhoneOff size={28} className="text-rose-500" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Консультация завершена</h2>
+          <p className="text-sm text-gray-500">
+            Тренер завершил сеанс. Спасибо за участие!
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Active room ─────────────────────────────────────────────────────────
   if (info) {
     return (
       <div style={{ height: '100dvh', background: '#000' }} className="flex flex-col relative">
@@ -109,28 +156,18 @@ export default function ConsultationRoom() {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white p-8 text-center gap-4">
             <AlertTriangle size={48} className="text-rose-400" />
             <p className="text-lg font-semibold">{error}</p>
-            <p className="text-sm text-gray-400">
-              Комната: <span className="font-mono text-white">{info.room_name?.slice(0,8)}…</span>
-            </p>
-            <a
-              href={`https://${info.jitsi_domain}/${info.room_name}`}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 px-6 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-sm font-semibold transition"
-            >
-              Открыть в браузере Jitsi →
-            </a>
           </div>
         )}
       </div>
     )
   }
 
+  // ── Join form ───────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 to-pink-100 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center">
             <Video size={24} className="text-white" />
           </div>
           <div>
@@ -152,20 +189,21 @@ export default function ConsultationRoom() {
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
-          placeholder="Имя"
-          className="w-full px-4 py-2.5 rounded-xl border border-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-300"
+          onKeyDown={e => e.key === 'Enter' && !loading && handleJoin()}
+          placeholder="Введите ваше имя"
+          className="w-full px-4 py-2.5 rounded-xl border border-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-300"
         />
 
         <button
           onClick={handleJoin}
           disabled={loading}
-          className="mt-5 w-full py-3 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg transition disabled:opacity-50"
+          className="mt-5 w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md hover:shadow-lg transition disabled:opacity-50"
         >
           {loading ? 'Подключение…' : 'Войти в комнату'}
         </button>
 
-        <p className="mt-4 text-xs text-gray-400 flex items-center gap-1">
-          <Clock size={12} /> Ссылка одноразовая и действительна ограниченное время.
+        <p className="mt-4 text-xs text-gray-400 text-center">
+          Видеозвонок откроется прямо в этом браузере — ничего устанавливать не нужно.
         </p>
       </div>
     </div>

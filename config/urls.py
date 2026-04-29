@@ -8,7 +8,7 @@ from apps.groups.views import GroupViewSet
 from apps.clients.views import ClientViewSet
 from apps.attendance.views import AttendanceViewSet
 from apps.statistics.views import StatisticsViewSet
-from apps.education.cabinet_views import PublicConsultationView
+from apps.education.cabinet_views import PublicConsultationView, ConsultationStatusView
 
 router = DefaultRouter()
 router.register(r'statistics', StatisticsViewSet, basename='statistics')
@@ -28,6 +28,9 @@ urlpatterns = [
     path('api/consultation/<uuid:room_uuid>/',
          PublicConsultationView.as_view(),
          name='public-consultation'),
+    path('api/consultation/<uuid:room_uuid>/status/',
+         ConsultationStatusView.as_view(),
+         name='consultation-status'),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
