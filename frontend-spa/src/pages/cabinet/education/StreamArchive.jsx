@@ -81,14 +81,16 @@ export default function StreamArchive() {
               className="group rounded-2xl bg-white border border-rose-100 overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
             >
               <div className="aspect-video bg-gradient-to-br from-rose-100 to-pink-200 relative flex items-center justify-center">
-                {l.thumbnail_url ? (
+                {/* Fallback icon */}
+                <Play size={48} className="text-rose-400 opacity-70" />
+                {/* Thumbnail overlay */}
+                {l.thumbnail_url && (
                   <img
                     src={l.thumbnail_url}
                     alt={l.title}
                     className="absolute inset-0 w-full h-full object-cover"
+                    onError={e => { e.currentTarget.style.display = 'none' }}
                   />
-                ) : (
-                  <Play size={48} className="text-rose-400" />
                 )}
                 <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-xs bg-rose-500 text-white shadow flex items-center gap-1">
                   <Radio size={11} /> Запись эфира

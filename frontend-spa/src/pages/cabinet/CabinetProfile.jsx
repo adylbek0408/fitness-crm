@@ -65,6 +65,7 @@ export default function CabinetProfile() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [attendance, setAttendance] = useState(null)
+  const [activeStream, setActiveStream] = useState(null)
   const nav = useNavigate()
 
   useEffect(() => {
@@ -73,12 +74,14 @@ export default function CabinetProfile() {
     const load = async () => {
       setLoading(true); setError('')
       try {
-        const [pr, ar] = await Promise.all([
+        const [pr, ar, sr] = await Promise.all([
           api.get('/cabinet/me/'),
           api.get('/cabinet/attendance/?limit=200').catch(() => null),
+          api.get('/cabinet/education/streams/active/').catch(() => null),
         ])
         setProfile(pr.data)
         if (ar) setAttendance(ar.data)
+        if (sr) setActiveStream(sr.data?.stream || null)
       } catch (e) {
         if (e.response?.status === 401) { nav('/cabinet'); return }
         const d = e.response?.data
@@ -86,6 +89,13 @@ export default function CabinetProfile() {
       } finally { setLoading(false) }
     }
     load()
+    // Auto-poll active stream every 30s so the LIVE badge appears without refresh
+    const t2 = setInterval(() => {
+      api.get('/cabinet/education/streams/active/')
+        .then(r => setActiveStream(r.data?.stream || null))
+        .catch(() => {})
+    }, 30000)
+    return () => clearInterval(t2)
   }, [nav])
 
   const logout = () => {
@@ -201,15 +211,26 @@ export default function CabinetProfile() {
               </div>
             </Link>
             <Link to="/cabinet/stream"
-              className="rounded-2xl p-4 flex flex-col gap-2 transition hover:-translate-y-0.5 hover:shadow-md"
-              style={{ background: 'linear-gradient(135deg,#ede9fe,#fce7f3)', border: '1px solid #c4b5fd' }}>
+              className="relative rounded-2xl p-4 flex flex-col gap-2 transition hover:-translate-y-0.5 hover:shadow-md"
+              style={activeStream
+                ? { background: 'linear-gradient(135deg,#fff1f2,#ffe4e6)', border: '1px solid #fb7185' }
+                : { background: 'linear-gradient(135deg,#ede9fe,#fce7f3)', border: '1px solid #c4b5fd' }}>
+              {activeStream && (
+                <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-600 text-white shadow">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
+                </span>
+              )}
               <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                   style={{ background: 'linear-gradient(135deg,#7c3aed,#ec4899)' }}>
-                <Radio size={18} className="text-white" />
+                   style={{ background: activeStream
+                     ? 'linear-gradient(135deg,#e11d48,#ec4899)'
+                     : 'linear-gradient(135deg,#7c3aed,#ec4899)' }}>
+                <Radio size={18} className={activeStream ? 'text-white animate-pulse' : 'text-white'} />
               </div>
               <div>
                 <p className="font-semibold text-gray-900">Прямой эфир</p>
-                <p className="text-xs text-gray-500">Подключиться к трансляции</p>
+                <p className="text-xs text-gray-500">
+                  {activeStream ? 'Идёт сейчас — заходи!' : 'Когда тренер запустит'}
+                </p>
               </div>
             </Link>
             <Link to="/cabinet/archive"

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import {
   BarChart3, Users, Activity, AlertCircle,
-  CheckCircle2, Eye, X, Headphones, Play, Phone,
+  CheckCircle2, Eye, X, Headphones, Play, Phone, RefreshCw,
 } from 'lucide-react'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
@@ -52,34 +52,57 @@ export default function EducationStats() {
   const lessons = data?.lessons || []
   const inactive = data?.inactive_clients || []
 
+  // Sort: lessons with viewers first (by viewers desc, then avg %),
+  // then unwatched lessons by recency (already comes ordered from API).
   const sortedLessons = useMemo(
-    () => [...lessons].sort((a, b) => b.viewers_count - a.viewers_count),
+    () => [...lessons].sort((a, b) => {
+      if (a.viewers_count !== b.viewers_count) return b.viewers_count - a.viewers_count
+      return (b.avg_percent || 0) - (a.avg_percent || 0)
+    }),
     [lessons],
   )
 
   return (
     <AdminLayout user={user}>
-      <div className="p-6 max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <BarChart3 /> Аналитика обучения
-        </h1>
+      <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+
+        {/* Compact header */}
+        <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md">
+              <BarChart3 size={20} />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Аналитика</h1>
+              <p className="text-xs text-gray-500">
+                {summary ? (
+                  <>
+                    Уроков <span className="font-semibold text-gray-700">{summary.total_lessons}</span>
+                    {' · '}
+                    Средний просмотр <span className="font-semibold text-rose-600">{summary.avg_completion_percent}%</span>
+                  </>
+                ) : 'Прогресс студентов по урокам'}
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-2xl border p-4 mb-6 shadow-sm flex flex-wrap items-end gap-4">
+        <div className="bg-white rounded-3xl border border-rose-100 p-4 sm:p-5 mb-6 shadow-sm flex flex-wrap items-end gap-4">
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Группа</label>
+            <label className="text-xs text-gray-500 block mb-1 font-medium">Группа</label>
             <select
               value={filterGroup}
               onChange={e => setFilterGroup(e.target.value)}
-              className="px-3 py-2 border rounded-lg min-w-[200px]"
+              className="px-3 py-2.5 border border-gray-200 rounded-xl min-w-[200px] focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 bg-white text-sm"
             >
               <option value="">Все группы</option>
               {groups.map(g => <option key={g.id} value={g.id}>Группа {g.number}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 block mb-1">
-              Неактивны с (дней)
+            <label className="text-xs text-gray-500 block mb-1 font-medium">
+              Порог неактивности (дней)
             </label>
             <input
               type="number"
@@ -87,9 +110,17 @@ export default function EducationStats() {
               max={365}
               value={inactiveDays}
               onChange={e => setInactiveDays(Number(e.target.value) || 7)}
-              className="px-3 py-2 border rounded-lg w-32"
+              className="px-3 py-2.5 border border-gray-200 rounded-xl w-32 focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 text-sm"
             />
           </div>
+          <button
+            onClick={() => reload()}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 transition text-sm font-medium disabled:opacity-50 ml-auto"
+          >
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            Обновить
+          </button>
         </div>
 
         {error && (
@@ -133,9 +164,9 @@ export default function EducationStats() {
         )}
 
         {/* Lessons table */}
-        <div className="bg-white rounded-2xl border shadow-sm mb-6">
-          <div className="p-4 border-b font-semibold flex items-center gap-2">
-            <Eye size={18} /> Уроки и просмотры
+        <div className="bg-white rounded-3xl border border-rose-100 shadow-sm mb-6">
+          <div className="p-4 sm:p-5 border-b border-rose-50 font-semibold flex items-center gap-2">
+            <Eye size={18} className="text-rose-500" /> Уроки и просмотры
           </div>
           {loading && !data && (
             <div className="p-6 text-center text-gray-400">Загрузка…</div>
@@ -181,8 +212,8 @@ export default function EducationStats() {
         </div>
 
         {/* Inactive students */}
-        <div className="bg-white rounded-2xl border shadow-sm">
-          <div className="p-4 border-b font-semibold flex items-center gap-2">
+        <div className="bg-white rounded-3xl border border-rose-100 shadow-sm">
+          <div className="p-4 sm:p-5 border-b border-rose-50 font-semibold flex items-center gap-2">
             <AlertCircle size={18} className="text-amber-500" />
             Неактивные студенты ({inactive.length})
           </div>

@@ -250,6 +250,47 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
             logger.exception('Admin preview URL generation failed')
         return Response({'playback_url': playback_url, 'video_kind': video_kind})
 
+    def _get_any_lesson(self, pk):
+        """Fetch a lesson by pk including stream-recording lessons.
+
+        The default get_queryset hides recordings (they appear in the
+        stream archive instead), so detail actions like editing metadata
+        or uploading a thumbnail need this wider lookup.
+        """
+        return Lesson.objects.filter(pk=pk, deleted_at__isnull=True).first()
+
+    @action(detail=True, methods=['patch'], url_path='metadata')
+    def metadata(self, request, pk=None):
+        """
+        Update editable metadata of any lesson (including stream
+        recordings): title, description, groups.  This avoids the
+        recordings-hidden default queryset.
+
+        Body: { "title"?: str, "description"?: str, "groups"?: [uuid] }
+        """
+        lesson = self._get_any_lesson(pk)
+        if not lesson:
+            return Response({'detail': 'Not found.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        update = []
+        if 'title' in request.data:
+            t = (request.data.get('title') or '').strip()
+            if not t:
+                return Response({'detail': 'title cannot be empty.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            lesson.title = t
+            update.append('title')
+        if 'description' in request.data:
+            lesson.description = request.data.get('description') or ''
+            update.append('description')
+        if update:
+            update.append('updated_at')
+            lesson.save(update_fields=update)
+        if 'groups' in request.data:
+            groups = request.data.get('groups') or []
+            lesson.groups.set(groups)
+        return Response(LessonAdminSerializer(lesson).data)
+
     @action(detail=True, methods=['post'], url_path='thumbnail-upload-url')
     def thumbnail_upload_url(self, request, pk=None):
         """
@@ -260,10 +301,15 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         public URL (no expiry).  Otherwise a 1-hour presigned download URL
         is returned as a fallback (local-dev convenience).
 
+        Works on stream-recording lessons too (uses _get_any_lesson).
+
         Response: { upload_url, thumbnail_url }
         """
         from django.conf import settings as dj_settings
-        lesson = self.get_object()
+        lesson = self._get_any_lesson(pk)
+        if not lesson:
+            return Response({'detail': 'Not found.'},
+                            status=status.HTTP_404_NOT_FOUND)
         key = f"thumbnails/{lesson.id}.jpg"
 
         try:

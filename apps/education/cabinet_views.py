@@ -388,15 +388,14 @@ class PublicConsultationView(APIView):
             else:
                 display_name = 'Гость'
 
-        # Increment usage (each fetch counts as a join attempt).
-        consultation.used_count = (consultation.used_count or 0) + 1
-        if consultation.used_count >= consultation.max_uses:
-            consultation.status = 'used'
+        # Mark first-join time only. We deliberately don't increment
+        # used_count or auto-flip to 'used' here — the link must survive
+        # legitimate refreshes / reconnects (network blips, mobile sleep,
+        # student leaving and coming back). The trainer ends the call with
+        # the explicit "Завершить" button.
         if not consultation.started_at:
             consultation.started_at = timezone.now()
-        consultation.save(update_fields=[
-            'used_count', 'status', 'started_at', 'updated_at',
-        ])
+            consultation.save(update_fields=['started_at', 'updated_at'])
 
         from django.conf import settings as dj_settings
         domain = (getattr(dj_settings, 'JITSI_DOMAIN', '') or '').strip() or 'meet.jit.si'

@@ -13,10 +13,12 @@ const links = [
   { to: '/admin/clients',    icon: Users,            label: 'Клиенты'    },
   { to: '/admin/statistics', icon: BarChart2,        label: 'Статистика' },
   { to: '/admin/managers',   icon: UserCog,          label: 'Менеджеры'  },
+  { divider: 'Обучение' },
   { to: '/admin/education/lessons',       icon: Play,    label: 'Уроки'         },
   { to: '/admin/education/streams',       icon: Radio,   label: 'Эфиры'         },
   { to: '/admin/education/consultations', icon: Video,   label: 'Консультации'  },
   { to: '/admin/education/stats',         icon: BarChart3, label: 'Аналитика'   },
+  { divider: '' },
   { to: '/admin/trash',      icon: Trash2,           label: 'Корзина',   danger: true },
 ]
 
@@ -63,7 +65,20 @@ export default function AdminLayout({ children, user }) {
 
         {/* Навигация */}
         <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
-          {links.map(l => {
+          {links.map((l, i) => {
+            if ('divider' in l) {
+              return (
+                <div key={`div-${i}`} className="pt-3 pb-1 px-3">
+                  {l.divider && (
+                    <p className="text-[10px] font-semibold uppercase tracking-widest"
+                       style={{ color: 'rgba(255,255,255,0.25)' }}>
+                      {l.divider}
+                    </p>
+                  )}
+                  {!l.divider && <div className="h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />}
+                </div>
+              )
+            }
             const Icon = l.icon
             return (
               <NavLink key={l.to} to={l.to}
@@ -137,8 +152,16 @@ export default function AdminLayout({ children, user }) {
           </button>
         </div>
         <nav className="px-3 pb-2.5 overflow-x-auto no-scrollbar">
-          <div className="flex gap-1 min-w-max">
-            {links.map(l => {
+          <div className="flex items-center gap-1 min-w-max">
+            {links.map((l, i) => {
+              if ('divider' in l) {
+                return (
+                  <span key={`mdiv-${i}`} className="px-2 text-[9px] font-semibold uppercase tracking-widest"
+                        style={{ color: 'rgba(255,255,255,0.25)' }}>
+                    {l.divider || '·'}
+                  </span>
+                )
+              }
               const Icon = l.icon
               return (
                 <NavLink key={l.to} to={l.to}

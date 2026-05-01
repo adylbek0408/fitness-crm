@@ -1,26 +1,47 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { Radio, Mic, Video, MicOff, VideoOff, Square } from 'lucide-react'
+import { useParams, useNavigate } from 'react-router-dom'
+import {
+  Radio, Mic, Video, MicOff, VideoOff, Square, Users, Settings, CheckCircle2,
+} from 'lucide-react'
 import api from '../../../api/axios'
 
 /**
  * Browser-based live streaming via WebRTC (WHIP protocol → Cloudflare Stream).
  * Route: /admin/education/broadcast/:id
  *
- * No OBS needed. Works on mobile Chrome/Firefox.
+ * Auto-flips backend stream status to 'live' when broadcasting starts,
+ * and to 'ended' when it stops. No separate "Готов" button needed.
  */
 export default function BroadcastPage() {
   const { id } = useParams()
+  const nav = useNavigate()
   const [stream, setStream] = useState(null)
   const [error, setError] = useState('')
   const [broadcasting, setBroadcasting] = useState(false)
   const [micOn, setMicOn] = useState(true)
   const [camOn, setCamOn] = useState(true)
   const [status, setStatus] = useState('idle') // idle | connecting | live | ended
+  const [viewers, setViewers] = useState([])
+  const [quality, setQuality] = useState('720p')
+  const [showSettings, setShowSettings] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const [redirectIn, setRedirectIn] = useState(null) // countdown seconds
 
   const localVideoRef = useRef(null)
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
+  const elapsedTimerRef = useRef(null)
+  const statusRef = useRef(status) // keep ref in sync so cleanup sees latest status
+
+  // Quality presets — width × height × fps × max video bitrate (kbps).
+  // Without setting maxBitrate explicitly, WebRTC defaults to ~300kbps which
+  // is what causes the "blurry / laggy" complaint.
+  const QUALITIES = {
+    '480p':  { width: 854,  height: 480,  frameRate: 30, videoKbps: 1200, label: 'SD 480p' },
+    '720p':  { width: 1280, height: 720,  frameRate: 30, videoKbps: 2500, label: 'HD 720p' },
+    '1080p': { width: 1920, height: 1080, frameRate: 30, videoKbps: 4500, label: 'Full HD 1080p' },
+  }
+  const AUDIO_KBPS = 128 // Opus stereo
 
   // Load stream info
   useEffect(() => {
@@ -34,26 +55,126 @@ export default function BroadcastPage() {
       .catch(() => setError('Ошибка загрузки'))
   }, [id])
 
+  // Poll viewers when live
+  useEffect(() => {
+    if (status !== 'live' || !id) return
+    let stopped = false
+    const pull = () => {
+      api.get(`/education/streams/${id}/viewers/`)
+        .then(r => { if (!stopped) setViewers(r.data || []) })
+        .catch(() => {})
+    }
+    pull()
+    const t = setInterval(pull, 5000)
+    return () => { stopped = true; clearInterval(t) }
+  }, [status, id])
+
+  // Elapsed counter
+  useEffect(() => {
+    if (status !== 'live') {
+      clearInterval(elapsedTimerRef.current)
+      return
+    }
+    setElapsed(0)
+    elapsedTimerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(elapsedTimerRef.current)
+  }, [status])
+
+  // Keep statusRef in sync
+  useEffect(() => { statusRef.current = status }, [status])
+
+  // Auto-redirect to streams list after broadcast ends (3 second countdown)
+  useEffect(() => {
+    if (status !== 'ended') return
+    setRedirectIn(3)
+    const interval = setInterval(() => {
+      setRedirectIn(prev => {
+        if (prev <= 1) {
+          clearInterval(interval)
+          nav('/admin/education/streams')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [status, nav])
+
+  // Cleanup on unmount: end the stream if still live
+  useEffect(() => {
+    return () => {
+      if (statusRef.current === 'live') {
+        api.post(`/education/streams/${id}/end/`).catch(() => {})
+      }
+      localStreamRef.current?.getTracks().forEach(t => t.stop())
+      pcRef.current?.close()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const fmtElapsed = sec => {
+    const h = Math.floor(sec / 3600)
+    const m = Math.floor((sec % 3600) / 60)
+    const s = sec % 60
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    return `${m}:${String(s).padStart(2, '0')}`
+  }
+
   const startBroadcast = async () => {
     if (!stream?.cf_webrtc_url) {
       setError('WebRTC URL не найден. Пересоздайте эфир.'); return
     }
     setError(''); setStatus('connecting')
     try {
-      // Get camera + mic
+      // Get camera + mic with chosen quality
+      const q = QUALITIES[quality]
       const local = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720, frameRate: 30 },
-        audio: true,
+        video: { width: q.width, height: q.height, frameRate: q.frameRate },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
       localStreamRef.current = local
       if (localVideoRef.current) localVideoRef.current.srcObject = local
 
       // Create peer connection
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] })
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
+      })
       pcRef.current = pc
 
-      // Add tracks
-      local.getTracks().forEach(t => pc.addTrack(t, local))
+      // Add tracks + force high bitrate (default WebRTC = ~300 kbps → blurry)
+      local.getTracks().forEach(t => {
+        const sender = pc.addTrack(t, local)
+        try {
+          const params = sender.getParameters()
+          if (!params.encodings) params.encodings = [{}]
+          if (t.kind === 'video') {
+            params.encodings[0].maxBitrate = q.videoKbps * 1000
+            params.encodings[0].maxFramerate = q.frameRate
+            params.degradationPreference = 'maintain-framerate'
+          } else if (t.kind === 'audio') {
+            params.encodings[0].maxBitrate = AUDIO_KBPS * 1000
+          }
+          sender.setParameters(params).catch(() => {})
+        } catch {}
+      })
+
+      // Prefer H.264 (better Safari/iOS compatibility) then VP9 then VP8
+      try {
+        const transceivers = pc.getTransceivers()
+        const videoTransceiver = transceivers.find(t => t.sender?.track?.kind === 'video')
+        if (videoTransceiver && RTCRtpSender.getCapabilities) {
+          const caps = RTCRtpSender.getCapabilities('video')
+          if (caps?.codecs) {
+            const ordered = [
+              ...caps.codecs.filter(c => /h264/i.test(c.mimeType)),
+              ...caps.codecs.filter(c => /vp9/i.test(c.mimeType)),
+              ...caps.codecs.filter(c => /vp8/i.test(c.mimeType)),
+              ...caps.codecs.filter(c => !/h264|vp8|vp9/i.test(c.mimeType)),
+            ]
+            videoTransceiver.setCodecPreferences?.(ordered)
+          }
+        }
+      } catch {}
 
       // Create offer
       const offer = await pc.createOffer()
@@ -62,7 +183,12 @@ export default function BroadcastPage() {
       // Wait for ICE gathering
       await new Promise(resolve => {
         if (pc.iceGatheringState === 'complete') { resolve(); return }
-        const check = () => { if (pc.iceGatheringState === 'complete') { pc.removeEventListener('icegatheringstatechange', check); resolve() } }
+        const check = () => {
+          if (pc.iceGatheringState === 'complete') {
+            pc.removeEventListener('icegatheringstatechange', check)
+            resolve()
+          }
+        }
         pc.addEventListener('icegatheringstatechange', check)
         setTimeout(resolve, 3000) // fallback
       })
@@ -77,6 +203,13 @@ export default function BroadcastPage() {
       const answer = await resp.text()
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
 
+      // AUTO go-live in backend so students can see the stream
+      try {
+        await api.post(`/education/streams/${id}/start/`)
+      } catch (e) {
+        console.warn('Failed to flip status to live:', e)
+      }
+
       setBroadcasting(true)
       setStatus('live')
     } catch (e) {
@@ -86,12 +219,17 @@ export default function BroadcastPage() {
     }
   }
 
-  const stopBroadcast = () => {
+  const stopBroadcast = async () => {
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     setBroadcasting(false)
     setStatus('ended')
     if (localVideoRef.current) localVideoRef.current.srcObject = null
+
+    // AUTO end backend stream
+    try {
+      await api.post(`/education/streams/${id}/end/`)
+    } catch {}
   }
 
   const toggleMic = () => {
@@ -106,95 +244,177 @@ export default function BroadcastPage() {
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-800">
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-800">
         <Radio size={20} className="text-rose-400" />
-        <h1 className="font-semibold text-lg">Трансляция из браузера</h1>
+        <h1 className="font-semibold text-sm sm:text-base">
+          Студия эфира
+          {stream && <span className="ml-2 text-gray-400 font-normal">· {stream.title}</span>}
+        </h1>
         {status === 'live' && (
-          <span className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-600 text-sm font-bold">
-            <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> LIVE
-          </span>
+          <>
+            <span className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-600 text-xs sm:text-sm font-bold">
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> LIVE
+            </span>
+            <span className="text-xs sm:text-sm font-mono text-gray-300">{fmtElapsed(elapsed)}</span>
+          </>
+        )}
+        {status !== 'live' && (
+          <button
+            onClick={() => setShowSettings(s => !s)}
+            className="ml-auto p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white"
+            title="Настройки"
+          >
+            <Settings size={18} />
+          </button>
         )}
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6">
-        {error && (
-          <div className="w-full max-w-xl p-4 bg-rose-900/60 rounded-xl text-rose-200 text-sm">{error}</div>
-        )}
+      {/* Settings dropdown (idle) */}
+      {showSettings && status !== 'live' && (
+        <div className="px-5 py-3 bg-gray-900 border-b border-gray-800 flex items-center gap-3">
+          <span className="text-xs text-gray-400">Качество:</span>
+          {Object.keys(QUALITIES).map(k => (
+            <button
+              key={k}
+              onClick={() => setQuality(k)}
+              disabled={status !== 'idle'}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                quality === k ? 'bg-rose-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {QUALITIES[k].label}
+            </button>
+          ))}
+        </div>
+      )}
 
-        {stream && (
-          <div className="text-center text-gray-300 text-sm">
-            Эфир: <b className="text-white">{stream.title}</b>
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 lg:p-6 min-h-0">
+        {/* Left — preview + controls */}
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 min-h-0">
+          {error && (
+            <div className="w-full max-w-2xl p-4 bg-rose-900/60 rounded-xl text-rose-200 text-sm">{error}</div>
+          )}
+
+          {/* Preview */}
+          <div className="w-full max-w-2xl aspect-video bg-black rounded-2xl overflow-hidden relative shadow-2xl">
+            <video
+              ref={localVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+            {!broadcasting && status !== 'live' && (
+              <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+                {status === 'ended' ? 'Трансляция завершена' : 'Нажмите «Начать», чтобы запустить камеру'}
+              </div>
+            )}
+            {!camOn && broadcasting && (
+              <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+                <VideoOff size={48} className="text-gray-600" />
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Preview */}
-        <div className="w-full max-w-xl aspect-video bg-black rounded-2xl overflow-hidden relative shadow-2xl">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted
-            playsInline
-            className="w-full h-full object-cover"
-          />
-          {!broadcasting && status !== 'live' && (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
-              {status === 'ended' ? 'Трансляция завершена' : 'Предпросмотр появится после нажатия «Начать»'}
-            </div>
+          {/* Controls */}
+          <div className="flex items-center gap-4">
+            {broadcasting && (
+              <>
+                <button
+                  onClick={toggleMic}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition ${
+                    micOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-rose-600 hover:bg-rose-700'
+                  }`}
+                  title={micOn ? 'Выключить микрофон' : 'Включить микрофон'}
+                >
+                  {micOn ? <Mic size={20} /> : <MicOff size={20} />}
+                </button>
+                <button
+                  onClick={toggleCam}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition ${
+                    camOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-rose-600 hover:bg-rose-700'
+                  }`}
+                  title={camOn ? 'Выключить камеру' : 'Включить камеру'}
+                >
+                  {camOn ? <Video size={20} /> : <VideoOff size={20} />}
+                </button>
+              </>
+            )}
+
+            {!broadcasting && status !== 'ended' && (
+              <button
+                onClick={startBroadcast}
+                disabled={status === 'connecting' || !stream?.cf_webrtc_url}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 font-semibold text-lg transition shadow-lg"
+              >
+                <Radio size={20} />
+                {status === 'connecting' ? 'Подключение…' : 'Начать эфир'}
+              </button>
+            )}
+
+            {broadcasting && (
+              <button
+                onClick={stopBroadcast}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-rose-700 hover:bg-rose-800 font-semibold text-lg transition shadow-lg"
+              >
+                <Square size={20} /> Завершить эфир
+              </button>
+            )}
+          </div>
+
+          {status === 'idle' && (
+            <p className="text-gray-500 text-xs text-center max-w-md">
+              Разрешите доступ к камере и микрофону. Эфир пойдёт в Cloudflare Stream — ученики увидят вас в кабинете.
+            </p>
           )}
-          {!camOn && broadcasting && (
-            <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-              <VideoOff size={48} className="text-gray-600" />
+          {status === 'ended' && (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <CheckCircle2 size={32} className="text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-white font-semibold text-lg">Эфир завершён</p>
+                <p className="text-gray-400 text-sm mt-1">
+                  Переход к списку эфиров через{' '}
+                  <span className="text-rose-400 font-bold">{redirectIn}</span> сек…
+                </p>
+              </div>
+              <button
+                onClick={() => nav('/admin/education/streams')}
+                className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-medium transition"
+              >
+                Перейти сейчас
+              </button>
             </div>
           )}
         </div>
 
-        {/* Controls */}
-        <div className="flex items-center gap-4">
-          {broadcasting && (
-            <>
-              <button
-                onClick={toggleMic}
-                className={`w-12 h-12 rounded-full flex items-center justify-center transition ${micOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-rose-600 hover:bg-rose-700'}`}
-              >
-                {micOn ? <Mic size={20} /> : <MicOff size={20} />}
-              </button>
-              <button
-                onClick={toggleCam}
-                className={`w-12 h-12 rounded-full flex items-center justify-center transition ${camOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-rose-600 hover:bg-rose-700'}`}
-              >
-                {camOn ? <Video size={20} /> : <VideoOff size={20} />}
-              </button>
-            </>
-          )}
-
-          {!broadcasting && status !== 'ended' && (
-            <button
-              onClick={startBroadcast}
-              disabled={status === 'connecting' || !stream?.cf_webrtc_url}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 font-semibold text-lg transition"
-            >
-              <Radio size={20} />
-              {status === 'connecting' ? 'Подключение…' : 'Начать трансляцию'}
-            </button>
-          )}
-
-          {broadcasting && (
-            <button
-              onClick={stopBroadcast}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gray-700 hover:bg-gray-600 font-semibold text-lg transition"
-            >
-              <Square size={20} /> Завершить
-            </button>
-          )}
-        </div>
-
-        {status === 'idle' && (
-          <p className="text-gray-500 text-xs text-center max-w-md">
-            Разрешите доступ к камере и микрофону. Трансляция идёт напрямую в Cloudflare Stream — студенты увидят её на странице «Эфир» в кабинете.
-          </p>
-        )}
-        {status === 'ended' && (
-          <p className="text-gray-400 text-sm">Трансляция завершена. Закройте эту вкладку.</p>
+        {/* Right — viewers panel (only visible when live) */}
+        {status === 'live' && (
+          <div className="w-full lg:w-72 shrink-0 bg-gray-900 rounded-2xl border border-gray-800 p-4 flex flex-col">
+            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-800">
+              <Users size={16} className="text-rose-400" />
+              <h3 className="font-semibold text-sm">На эфире ({viewers.length})</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {viewers.length === 0 && (
+                <p className="text-xs text-gray-500 text-center py-6">
+                  Зрители ещё не подключились
+                </p>
+              )}
+              {viewers.map(v => (
+                <div key={v.id} className="flex items-center gap-2 p-2 rounded-lg bg-gray-800/50">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                    {(v.client_name || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{v.client_name || 'Гость'}</p>
+                    <p className="text-[10px] text-emerald-400">в эфире</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

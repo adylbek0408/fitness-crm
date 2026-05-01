@@ -67,15 +67,22 @@ export default function ConsultationRoom() {
           startWithAudioMuted: false,
           startWithVideoMuted: false,
           prejoinPageEnabled: false,
+          prejoinConfig: { enabled: false },
           disableDeepLinking: true,
+          enableWelcomePage: false,
+          enableClosePage: false,
+          requireDisplayName: false,
+          disableInviteFunctions: true,
+          toolbarButtons: [
+            'microphone', 'camera', 'desktop', 'fullscreen',
+            'hangup', 'chat', 'tileview', 'videoquality', 'settings',
+          ],
         },
         interfaceConfigOverwrite: {
           MOBILE_APP_PROMO: false,
           SHOW_JITSI_WATERMARK: false,
-          TOOLBAR_BUTTONS: [
-            'microphone', 'camera', 'closedcaptions', 'desktop',
-            'fullscreen', 'hangup', 'chat', 'raisehand', 'videoquality', 'tileview',
-          ],
+          SHOW_BRAND_WATERMARK: false,
+          SHOW_POWERED_BY: false,
         },
       })
 

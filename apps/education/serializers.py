@@ -8,6 +8,28 @@ from .models import Lesson, LessonProgress, LiveStream, StreamViewer, Consultati
 
 
 class LessonSerializer(serializers.ModelSerializer):
+    """
+    thumbnail_url: if the model field is empty but the lesson has a
+    Cloudflare Stream UID we derive the thumbnail URL automatically.
+    CF Stream exposes it publicly at:
+      https://{customer}.cloudflarestream.com/{uid}/thumbnails/thumbnail.jpg
+    (works for uploaded videos AND live-input recordings)
+    """
+    thumbnail_url = serializers.SerializerMethodField()
+
+    def get_thumbnail_url(self, obj):
+        if obj.thumbnail_url:
+            return obj.thumbnail_url
+        if obj.lesson_type == 'video' and obj.stream_uid:
+            from django.conf import settings as dj_settings
+            sub = getattr(dj_settings, 'CF_STREAM_CUSTOMER', '') or ''
+            if sub:
+                return (
+                    f'https://{sub}.cloudflarestream.com'
+                    f'/{obj.stream_uid}/thumbnails/thumbnail.jpg'
+                )
+        return ''
+
     class Meta:
         model = Lesson
         fields = [

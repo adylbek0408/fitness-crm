@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import {
   Trash2, Users, Layers2, UserCog, AlertTriangle,
   Search, RefreshCw, X, CheckSquare, Square, ShieldAlert, RotateCcw,
-  Archive, FolderInput
+  Archive, FolderInput, Play, Radio, Video, Headphones,
 } from 'lucide-react'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
@@ -29,10 +29,15 @@ const GROUP_STATUS_COLOR = {
 }
 
 const TABS = [
-  { key: 'clients',  label: 'Клиенты',   Icon: Users    },
-  { key: 'groups',   label: 'Группы',    Icon: Layers2  },
-  { key: 'managers', label: 'Менеджеры', Icon: UserCog  },
+  { key: 'clients',       label: 'Клиенты',      Icon: Users    },
+  { key: 'groups',        label: 'Группы',       Icon: Layers2  },
+  { key: 'managers',      label: 'Менеджеры',    Icon: UserCog  },
+  { key: 'lessons',       label: 'Уроки',        Icon: Play, group: 'edu' },
+  { key: 'streams',       label: 'Эфиры',        Icon: Radio, group: 'edu' },
+  { key: 'consultations', label: 'Консультации', Icon: Video, group: 'edu' },
 ]
+
+const EDU_TABS = ['lessons', 'streams', 'consultations']
 
 function mapActiveClients(results) {
   return (results || []).map(c => ({
@@ -64,13 +69,41 @@ function mapActiveManagers(results) {
   }))
 }
 
+function mapLessons(results) {
+  return (results || []).map(l => ({
+    id:    l.id,
+    title: l.title || '—',
+    type:  l.lesson_type,
+    is_published: l.is_published,
+  }))
+}
+
+function mapStreams(results) {
+  return (results || []).map(s => ({
+    id:     s.id,
+    title:  s.title || '—',
+    status: s.status,
+  }))
+}
+
+function mapConsultations(results) {
+  return (results || []).map(c => ({
+    id:     c.id,
+    title:  c.title || 'Консультация',
+    status: c.status,
+  }))
+}
+
 export default function Trash() {
   const { user } = useOutletContext()
   /** Раздел: перенос в корзину (soft) vs содержимое корзины */
   const [section, setSection]     = useState('delete')
   const [tab, setTab]             = useState('clients')
   const [deletedData, setDeletedData] = useState(null)
-  const [activeData, setActiveData]   = useState({ clients: [], groups: [], managers: [] })
+  const [activeData, setActiveData]   = useState({
+    clients: [], groups: [], managers: [],
+    lessons: [], streams: [], consultations: [],
+  })
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [selected, setSelected]   = useState(new Set())
@@ -87,9 +120,19 @@ export default function Trash() {
   }
 
   const loadDeleted = useCallback(() => {
-    return api.get('/statistics/trash-data/')
-      .then(r => setDeletedData(r.data))
-      .catch(() => showToast('error', 'Ошибка загрузки корзины'))
+    return Promise.all([
+      api.get('/statistics/trash-data/'),
+      api.get('/education/lessons/trash/').catch(() => ({ data: [] })),
+      api.get('/education/streams/trash/').catch(() => ({ data: [] })),
+      api.get('/education/consultations/trash/').catch(() => ({ data: [] })),
+    ]).then(([base, lessons, streams, consultations]) => {
+      setDeletedData({
+        ...(base.data || {}),
+        lessons:       mapLessons(lessons.data || []),
+        streams:       mapStreams(streams.data || []),
+        consultations: mapConsultations(consultations.data || []),
+      })
+    }).catch(() => showToast('error', 'Ошибка загрузки корзины'))
   }, [])
 
   const loadActive = useCallback(() => {
@@ -97,14 +140,23 @@ export default function Trash() {
       api.get('/clients/', { params: { page_size: 500 } }),
       api.get('/groups/', { params: { page_size: 500 } }),
       api.get('/accounts/managers/', { params: { page_size: 500 } }),
-    ]).then(([c, g, m]) => {
+      api.get('/education/lessons/').catch(() => ({ data: [] })),
+      api.get('/education/streams/').catch(() => ({ data: [] })),
+      api.get('/education/consultations/').catch(() => ({ data: [] })),
+    ]).then(([c, g, m, lessons, streams, consultations]) => {
       const cr = c.data.results ?? c.data ?? []
       const gr = g.data.results ?? g.data ?? []
       const mr = m.data.results ?? m.data ?? []
+      const lr = lessons.data?.results ?? lessons.data ?? []
+      const sr = streams.data?.results ?? streams.data ?? []
+      const csr = consultations.data?.results ?? consultations.data ?? []
       setActiveData({
-        clients:  mapActiveClients(cr),
-        groups:   mapActiveGroups(gr),
-        managers: mapActiveManagers(mr),
+        clients:       mapActiveClients(cr),
+        groups:        mapActiveGroups(gr),
+        managers:      mapActiveManagers(mr),
+        lessons:       mapLessons(lr),
+        streams:       mapStreams(sr),
+        consultations: mapConsultations(csr),
       })
     }).catch(() => showToast('error', 'Ошибка загрузки списков'))
   }, [])
@@ -118,29 +170,25 @@ export default function Trash() {
 
   useEffect(() => { refreshAll() }, [refreshAll])
 
+  const matchByTab = (item, q) => {
+    if (tab === 'clients')  return item.name.toLowerCase().includes(q) || item.phone?.includes(q)
+    if (tab === 'groups')   return String(item.number).toLowerCase().includes(q) || item.trainer.toLowerCase().includes(q)
+    if (tab === 'managers') return item.username.toLowerCase().includes(q) || item.name.toLowerCase().includes(q)
+    if (EDU_TABS.includes(tab)) return (item.title || '').toLowerCase().includes(q)
+    return true
+  }
+
   const currentDeletedList = () => {
     if (!deletedData) return []
     const items = deletedData[tab] || []
     if (!search.trim()) return items
-    const q = search.toLowerCase()
-    return items.filter(item => {
-      if (tab === 'clients')  return item.name.toLowerCase().includes(q) || item.phone?.includes(q)
-      if (tab === 'groups')   return String(item.number).toLowerCase().includes(q) || item.trainer.toLowerCase().includes(q)
-      if (tab === 'managers') return item.username.toLowerCase().includes(q) || item.name.toLowerCase().includes(q)
-      return true
-    })
+    return items.filter(item => matchByTab(item, search.toLowerCase()))
   }
 
   const currentActiveList = () => {
     const items = activeData[tab] || []
     if (!search.trim()) return items
-    const q = search.toLowerCase()
-    return items.filter(item => {
-      if (tab === 'clients')  return item.name.toLowerCase().includes(q) || item.phone?.includes(q)
-      if (tab === 'groups')   return String(item.number).toLowerCase().includes(q) || item.trainer.toLowerCase().includes(q)
-      if (tab === 'managers') return item.username.toLowerCase().includes(q) || item.name.toLowerCase().includes(q)
-      return true
-    })
+    return items.filter(item => matchByTab(item, search.toLowerCase()))
   }
 
   const list = section === 'deleted' ? currentDeletedList() : currentActiveList()
@@ -161,12 +209,31 @@ export default function Trash() {
   const entitySoft = tab === 'clients' ? 'client' : tab === 'groups' ? 'group' : 'manager'
   const entityLabel = entitySoft
 
+  // Education routes use a separate REST API path (no shared trash-restore).
+  const eduPath = (t) => ({ lessons: 'lessons', streams: 'streams', consultations: 'consultations' })[t]
+
+  const apiSoftDelete = (id) => {
+    if (tab === 'clients')  return api.delete(`/clients/${id}/`)
+    if (tab === 'groups')   return api.delete(`/groups/${id}/`)
+    if (tab === 'managers') return api.delete(`/accounts/managers/${id}/`)
+    if (EDU_TABS.includes(tab)) return api.delete(`/education/${eduPath(tab)}/${id}/`)
+    return Promise.reject(new Error('unknown tab'))
+  }
+
+  const apiRestore = (id) => {
+    if (EDU_TABS.includes(tab)) return api.post(`/education/${eduPath(tab)}/${id}/restore/`)
+    return api.post('/statistics/trash-restore/', { entity: entityLabel, id })
+  }
+
+  const apiPermanentDelete = (id) => {
+    if (EDU_TABS.includes(tab)) return api.delete(`/education/${eduPath(tab)}/${id}/permanent/`)
+    return api.post('/statistics/trash-delete/', { entity: entityLabel, id })
+  }
+
   const doSoftDelete = async (id) => {
     setBusy(true)
     try {
-      if (tab === 'clients')  await api.delete(`/clients/${id}/`)
-      if (tab === 'groups')   await api.delete(`/groups/${id}/`)
-      if (tab === 'managers') await api.delete(`/accounts/managers/${id}/`)
+      await apiSoftDelete(id)
       showToast('success', 'Перемещено в корзину')
       await Promise.all([loadDeleted(), loadActive()])
     } catch (e) {
@@ -182,13 +249,7 @@ export default function Trash() {
     let errors = 0
     const total = selected.size
     for (const id of selected) {
-      try {
-        if (tab === 'clients')  await api.delete(`/clients/${id}/`)
-        if (tab === 'groups')   await api.delete(`/groups/${id}/`)
-        if (tab === 'managers') await api.delete(`/accounts/managers/${id}/`)
-      } catch {
-        errors++
-      }
+      try { await apiSoftDelete(id) } catch { errors++ }
     }
     setBusy(false)
     setConfirmBulkSoft(false)
@@ -200,10 +261,10 @@ export default function Trash() {
     await Promise.all([loadDeleted(), loadActive()])
   }
 
-  const doRestore = async (entity, id) => {
+  const doRestore = async (_entity, id) => {
     setBusy(true)
     try {
-      await api.post('/statistics/trash-restore/', { entity, id })
+      await apiRestore(id)
       showToast('success', 'Объект восстановлен')
       await Promise.all([loadDeleted(), loadActive()])
     } catch (e) {
@@ -213,10 +274,10 @@ export default function Trash() {
     }
   }
 
-  const doDeleteForever = async (entity, id) => {
+  const doDeleteForever = async (_entity, id) => {
     setBusy(true)
     try {
-      await api.post('/statistics/trash-delete/', { entity, id })
+      await apiPermanentDelete(id)
       showToast('success', 'Объект удалён навсегда')
       await loadDeleted()
     } catch (e) {
@@ -232,11 +293,7 @@ export default function Trash() {
     const ids = [...selected]
     let errors = 0
     for (const id of ids) {
-      try {
-        await api.post('/statistics/trash-delete/', { entity: entityLabel, id })
-      } catch {
-        errors++
-      }
+      try { await apiPermanentDelete(id) } catch { errors++ }
     }
     const n = ids.length
     setBusy(false)
@@ -252,7 +309,11 @@ export default function Trash() {
   const deletedCount = (deletedData?.clients?.length ?? 0)
     + (deletedData?.groups?.length ?? 0)
     + (deletedData?.managers?.length ?? 0)
+    + (deletedData?.lessons?.length ?? 0)
+    + (deletedData?.streams?.length ?? 0)
+    + (deletedData?.consultations?.length ?? 0)
   const activeCount = activeData.clients.length + activeData.groups.length + activeData.managers.length
+    + activeData.lessons.length + activeData.streams.length + activeData.consultations.length
 
   return (
     <AdminLayout user={user}>
@@ -481,12 +542,56 @@ export default function Trash() {
                     </div>
                   )}
 
+                  {tab === 'lessons' && (
+                    <div className="flex-1 flex items-center gap-4 flex-wrap min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-rose-100 flex items-center justify-center text-rose-500 shrink-0">
+                        {item.type === 'audio' ? <Headphones size={15} /> : <Play size={15} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
+                        <p className="text-xs text-slate-400">{item.type === 'audio' ? 'Аудио' : 'Видео'}</p>
+                      </div>
+                      {item.is_published && (
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 font-medium">
+                          Опубликовано
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {tab === 'streams' && (
+                    <div className="flex-1 flex items-center gap-4 flex-wrap min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-rose-100 flex items-center justify-center text-rose-500 shrink-0">
+                        <Radio size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
+                        <p className="text-xs text-slate-400">{item.status}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {tab === 'consultations' && (
+                    <div className="flex-1 flex items-center gap-4 flex-wrap min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center text-violet-500 shrink-0">
+                        <Video size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
+                        <p className="text-xs text-slate-400">{item.status}</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 shrink-0">
                     {section === 'delete' && (
                       <button type="button" disabled={busy}
                         onClick={() => setConfirmSoft({
                           id: item.id,
-                          name: tab === 'clients' ? item.name : tab === 'groups' ? `Группа ${item.number}` : item.name,
+                          name: tab === 'clients' ? item.name
+                            : tab === 'groups' ? `Группа ${item.number}`
+                            : EDU_TABS.includes(tab) ? item.title
+                            : item.name,
                         })}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 transition">
                         <Archive size={12} /> В корзину
@@ -505,6 +610,7 @@ export default function Trash() {
                             id: item.id,
                             name: tab === 'clients' ? item.name
                               : tab === 'groups' ? `Группа ${item.number}`
+                              : EDU_TABS.includes(tab) ? item.title
                               : item.name,
                           })}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition">

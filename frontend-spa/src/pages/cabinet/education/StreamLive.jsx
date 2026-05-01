@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { ChevronLeft, Radio, Users, Shield, AlertTriangle } from 'lucide-react'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
+import { ChevronLeft, Radio, Users, Shield, AlertTriangle, Archive, CheckCircle2, Clock } from 'lucide-react'
 import api from '../../../api/axios'
 import HlsPlayer from '../../../components/education/HlsPlayer'
 import Watermark from '../../../components/education/Watermark'
@@ -8,7 +8,11 @@ import useContentProtection from '../../../components/education/useContentProtec
 
 export default function StreamLive() {
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
+  const streamId = searchParams.get('id') // specific stream from student link
+
   const [stream, setStream] = useState(null)
+  const [streamEnded, setStreamEnded] = useState(false)
   const [viewers, setViewers] = useState([])
   const [joined, setJoined] = useState(null)
   const [warning, setWarning] = useState('')
@@ -25,33 +29,38 @@ export default function StreamLive() {
     },
   })
 
-  // Find active stream
+  // Build API URL — use specific id from link when provided
+  const activeUrl = streamId
+    ? `/cabinet/education/streams/active/?id=${streamId}`
+    : '/cabinet/education/streams/active/'
+
+  // Find stream on mount — works for both specific ?id= links and auto-detect
   useEffect(() => {
     if (!localStorage.getItem('cabinet_access_token')) {
       nav('/cabinet'); return
     }
-    api.get('/cabinet/education/streams/active/')
+    api.get(activeUrl)
       .then(r => setStream(r.data?.stream || null))
       .catch(e => setError(e.response?.data?.detail || 'Ошибка'))
-  }, [nav])
+  }, [nav, activeUrl])
 
-  // Join + heartbeat
+  // Join + heartbeat — only when stream is actually LIVE (not scheduled)
   useEffect(() => {
-    if (!stream?.id) return
+    if (!stream?.id || stream.status !== 'live') return
     let cancelled = false
     api.post(`/cabinet/education/streams/${stream.id}/join/`)
       .then(r => { if (!cancelled) setJoined(r.data) })
-      .catch(e => setError(e.response?.data?.detail || 'Не удалось подключиться'))
+      .catch(() => {}) // non-fatal: heartbeat keeps viewer alive
 
     const beat = setInterval(() => {
       api.post(`/cabinet/education/streams/${stream.id}/heartbeat/`).catch(() => {})
     }, 15000)
     return () => { cancelled = true; clearInterval(beat) }
-  }, [stream?.id])
+  }, [stream?.id, stream?.status])
 
-  // Viewers polling
+  // Viewers polling — only when live
   useEffect(() => {
-    if (!stream?.id) return
+    if (!stream?.id || stream.status !== 'live') return
     const pull = () => {
       api.get(`/cabinet/education/streams/${stream.id}/viewers/`)
         .then(r => setViewers(r.data || []))
@@ -60,24 +69,43 @@ export default function StreamLive() {
     pull()
     const id = setInterval(pull, 5000)
     return () => clearInterval(id)
-  }, [stream?.id])
+  }, [stream?.id, stream?.status])
 
   const playback = joined?.playback_url || stream?.playback_url || ''
   const watermarkText = joined?.watermark?.text || ''
 
-  // Re-poll the stream every 5 s when joined but no playback URL yet
+  // Poll every 5 s — detect when stream goes live (scheduled→live) or ends
+  // Also handles: stream not yet started (shows waiting screen)
   useEffect(() => {
-    if (!stream?.id || playback) return
+    // Poll even before join — to detect scheduled→live transition
+    const targetId = stream?.id || streamId
+    if (!targetId) return
+    const pollUrl = streamId
+      ? `/cabinet/education/streams/active/?id=${streamId}`
+      : '/cabinet/education/streams/active/'
     const id = setInterval(() => {
-      api.get('/cabinet/education/streams/active/')
-        .then(r => { if (r.data?.stream) setStream(r.data.stream) })
+      api.get(pollUrl)
+        .then(r => {
+          const s = r.data?.stream
+          if (!s || s.status === 'ended' || s.status === 'archived') {
+            // Stream ended — show "Эфир завершён" only if we were watching
+            if (stream?.status === 'live') {
+              setStreamEnded(true)
+            } else if (s?.status === 'ended' || s?.status === 'archived') {
+              setStreamEnded(true)
+            }
+            setStream(null)
+          } else {
+            setStream(s) // update status: scheduled → live triggers join effect
+          }
+        })
         .catch(() => {})
     }, 5000)
     return () => clearInterval(id)
-  }, [stream?.id, playback])
+  }, [stream?.id, stream?.status, streamId])
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
       <header className="bg-white border-b border-rose-100 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
           <Link to="/cabinet/profile" className="p-2 rounded-lg hover:bg-rose-50">
@@ -102,15 +130,56 @@ export default function StreamLive() {
           <div className="p-4 rounded-xl bg-rose-50 text-rose-700 mb-4">{error}</div>
         )}
 
-        {!stream && !error && (
-          <div className="text-center py-20 text-gray-500">
-            <Radio size={56} className="mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium">Сейчас эфиров нет</p>
-            <p className="text-sm mt-1">Когда тренер начнёт трансляцию — она появится здесь.</p>
+        {streamEnded && (
+          <div className="text-center py-20">
+            <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5">
+              <CheckCircle2 size={36} className="text-emerald-400" />
+            </div>
+            <p className="text-xl font-semibold text-gray-700">Эфир завершён</p>
+            <p className="text-sm mt-2 text-gray-400">Тренер закончил трансляцию. Запись появится в архиве.</p>
+            <Link
+              to="/cabinet/archive"
+              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 rounded-xl text-sm font-medium transition"
+              style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', color: '#be185d', border: '1px solid #f9a8d4' }}
+            >
+              <Archive size={15} /> Смотреть записи эфиров
+            </Link>
           </div>
         )}
 
-        {stream && (
+        {/* Stream scheduled but not yet started */}
+        {stream && stream.status === 'scheduled' && (
+          <div className="text-center py-20">
+            <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5">
+              <Clock size={36} className="text-amber-400" />
+            </div>
+            <p className="text-xl font-semibold text-gray-700">{stream.title}</p>
+            <p className="text-sm mt-2 text-gray-400">Тренер ещё не начал трансляцию.</p>
+            <p className="text-xs mt-1 text-gray-400">Страница обновится автоматически когда эфир начнётся.</p>
+            <div className="flex items-center justify-center gap-2 mt-4 text-amber-500 text-sm">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Ожидание начала…
+            </div>
+          </div>
+        )}
+
+        {!stream && !streamEnded && !error && (
+          <div className="text-center py-20 text-gray-500">
+            <div className="w-20 h-20 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-5">
+              <Radio size={36} className="text-rose-300" />
+            </div>
+            <p className="text-xl font-semibold text-gray-700">Сейчас эфиров нет</p>
+            <p className="text-sm mt-2 text-gray-400">Когда тренер начнёт трансляцию — она появится здесь.</p>
+            <Link
+              to="/cabinet/archive"
+              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 rounded-xl text-sm font-medium transition"
+              style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', color: '#be185d', border: '1px solid #f9a8d4' }}
+            >
+              <Archive size={15} /> Смотреть записи эфиров
+            </Link>
+          </div>
+        )}
+
+        {stream && stream.status === 'live' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <div className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg">

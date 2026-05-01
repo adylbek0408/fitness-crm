@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Upload, Trash2, Plus, CheckCircle2, Headphones, Play,
   Mic, Square, Video, FileAudio, Search, Users,
-  X, AlertCircle, ChevronLeft, ChevronRight, Image,
+  X, AlertCircle, ChevronLeft, ChevronRight, Image, Pencil,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -45,6 +45,7 @@ export default function LessonsAdmin() {
   const [thumbnailBlob, setThumbnailBlob] = useState(null)
   const [thumbnailPreview, setThumbnailPreview] = useState('')
   const [thumbLessonId, setThumbLessonId] = useState(null) // for updating existing lesson thumbnail
+  const [editLesson, setEditLesson] = useState(null) // for editing title/description/groups
 
   const reload = () => {
     setLoading(true)
@@ -66,42 +67,91 @@ export default function LessonsAdmin() {
   }, [])
 
   // ── Thumbnail helpers ────────────────────────────────────────────────────
+  // Robust video frame capture. Handles WebM with infinite duration,
+  // MP4 from screen recordings, etc. Returns null only on real failure.
   const captureVideoFrame = (file) => {
     return new Promise(resolve => {
       const url = URL.createObjectURL(file)
       const video = document.createElement('video')
-      video.src = url
+      video.preload = 'auto'
       video.muted = true
-      video.crossOrigin = 'anonymous'
-      video.onloadeddata = () => {
-        // seek to 10% of duration (or 2 s, whichever is smaller) to skip black frames
-        video.currentTime = Math.min(video.duration * 0.1, 2)
+      video.playsInline = true
+      video.src = url
+
+      let done = false
+      const finish = (blob) => {
+        if (done) return
+        done = true
+        try { URL.revokeObjectURL(url) } catch {}
+        resolve(blob)
       }
-      video.onseeked = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = 640
-        canvas.height = 360
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(video, 0, 0, 640, 360)
-        URL.revokeObjectURL(url)
-        canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85)
+
+      const grab = () => {
+        try {
+          const w = video.videoWidth || 640
+          const h = video.videoHeight || 360
+          const targetW = 640
+          const targetH = Math.round(targetW * (h / w))
+          const canvas = document.createElement('canvas')
+          canvas.width = targetW
+          canvas.height = targetH
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(video, 0, 0, targetW, targetH)
+          canvas.toBlob(b => finish(b || null), 'image/jpeg', 0.85)
+        } catch (e) {
+          console.warn('captureVideoFrame draw failed:', e)
+          finish(null)
+        }
       }
-      video.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
-      video.load()
+
+      video.addEventListener('loadeddata', () => {
+        // seek a bit past the start to skip a black opening frame
+        const dur = video.duration
+        const target = (Number.isFinite(dur) && dur > 0)
+          ? Math.min(dur * 0.1, 2)
+          : 0.5
+        try { video.currentTime = target } catch { grab() }
+      })
+      video.addEventListener('seeked', grab)
+      video.addEventListener('error', () => {
+        console.warn('captureVideoFrame: video element error')
+        finish(null)
+      })
+
+      // Safety net — never block the upload longer than 8 s
+      setTimeout(() => {
+        if (!done) {
+          console.warn('captureVideoFrame: timeout, grabbing whatever we have')
+          if (video.readyState >= 2) grab()
+          else finish(null)
+        }
+      }, 8000)
     })
   }
 
+  // Uploads a thumbnail blob to R2 via presigned PUT URL.
+  // Returns the resulting public/presigned URL, or null on failure.
   const uploadThumbnailForLesson = async (lessonId, blob) => {
-    if (!blob) return
+    if (!blob) {
+      console.warn('uploadThumbnailForLesson: empty blob')
+      return null
+    }
     try {
       const { data } = await api.post(`/education/lessons/${lessonId}/thumbnail-upload-url/`)
-      await fetch(data.upload_url, {
+      const r = await fetch(data.upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': 'image/jpeg' },
         body: blob,
       })
+      if (!r.ok) {
+        const text = await r.text().catch(() => '')
+        console.warn('Thumbnail PUT failed', r.status, text)
+        throw new Error(`R2 PUT ${r.status}`)
+      }
+      return data.thumbnail_url || null
     } catch (e) {
       console.warn('Thumbnail upload failed:', e)
+      return null
     }
   }
 
@@ -204,9 +254,21 @@ export default function LessonsAdmin() {
       await api.post(`/education/lessons/${lesson.id}/finalize/`, {})
       setProgress(85)
 
-      // Upload thumbnail (non-blocking, errors are soft)
+      // Upload thumbnail. If we got no blob (capture failed), warn but
+      // don't block the upload — admin can attach one manually later.
+      let thumbWarning = null
       if (form.lesson_type === 'video') {
-        await uploadThumbnailForLesson(lesson.id, thumbBlob)
+        if (!thumbBlob) {
+          thumbWarning = 'Не удалось автоматически захватить кадр из видео. ' +
+                        'Откройте урок и нажмите кнопку «Обновить превью», ' +
+                        'чтобы добавить картинку вручную.'
+        } else {
+          const url = await uploadThumbnailForLesson(lesson.id, thumbBlob)
+          if (!url) {
+            thumbWarning = 'Видео сохранилось, но превью не загрузилось. ' +
+                          'Используйте кнопку «Обновить превью» в карточке урока.'
+          }
+        }
       }
 
       setProgress(100)
@@ -215,6 +277,14 @@ export default function LessonsAdmin() {
       setThumbnailPreview('')
       setShowForm(false)
       reload()
+
+      if (thumbWarning) {
+        setAlertModal({
+          title: 'Превью не сохранено',
+          message: thumbWarning,
+          variant: 'info',
+        })
+      }
     } catch (e) {
       setAlertModal({
         title: 'Не удалось сохранить урок',
@@ -263,19 +333,19 @@ export default function LessonsAdmin() {
   return (
     <AdminLayout user={user}>
       <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-        {/* Hero — minimal */}
-        <div className="rounded-3xl bg-gradient-to-br from-rose-500 via-pink-500 to-purple-500 p-5 sm:p-7 text-white shadow-xl mb-6">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <h1 className="text-2xl sm:text-3xl font-bold">Уроки</h1>
-            <div className="grid grid-cols-2 gap-3 text-sm shrink-0">
-              <div className="bg-white/15 backdrop-blur rounded-xl px-4 py-2.5 text-center">
-                <div className="text-xs text-rose-100">Всего</div>
-                <div className="text-xl font-bold">{lessons.length}</div>
-              </div>
-              <div className="bg-white/15 backdrop-blur rounded-xl px-4 py-2.5 text-center">
-                <div className="text-xs text-rose-100">Опубликовано</div>
-                <div className="text-xl font-bold">{lessons.filter(l => l.is_published).length}</div>
-              </div>
+        {/* Compact header */}
+        <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md">
+              <Video size={20} />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Уроки</h1>
+              <p className="text-xs text-gray-500">
+                Всего <span className="font-semibold text-gray-700">{lessons.length}</span>
+                {' · '}
+                Опубликовано <span className="font-semibold text-emerald-600">{lessons.filter(l => l.is_published).length}</span>
+              </p>
             </div>
           </div>
         </div>
@@ -366,6 +436,7 @@ export default function LessonsAdmin() {
                   onPreview={() => setPreviewLesson(l)}
                   onDelete={() => setConfirmDelete({ id: l.id, title: l.title })}
                   onSetThumbnail={() => setThumbLessonId(l.id)}
+                  onEdit={() => setEditLesson(l)}
                 />
               ))}
             </div>
@@ -448,6 +519,17 @@ export default function LessonsAdmin() {
         />
       )}
 
+      {/* Edit lesson metadata (title + groups) */}
+      {editLesson && (
+        <EditLessonModal
+          lesson={editLesson}
+          groups={groups}
+          onClose={() => setEditLesson(null)}
+          onSaved={() => { setEditLesson(null); reload() }}
+          onError={msg => setAlertModal({ title: 'Не удалось сохранить', message: msg, variant: 'error' })}
+        />
+      )}
+
       {/* Modals */}
       <AlertModal
         open={!!alertModal}
@@ -477,7 +559,7 @@ export default function LessonsAdmin() {
 // ───────────────────────────────────────────────────────────────────────────
 // Lesson card — clickable preview, hover delete
 // ───────────────────────────────────────────────────────────────────────────
-function LessonCard({ lesson: l, groupById, fmtDuration, onPreview, onDelete, onSetThumbnail }) {
+function LessonCard({ lesson: l, groupById, fmtDuration, onPreview, onDelete, onSetThumbnail, onEdit }) {
   const isAudio = l.lesson_type === 'audio'
   const groupNames = (l.groups || [])
     .map(gid => groupById[gid] ? `Группа ${groupById[gid].number}` : null)
@@ -502,6 +584,7 @@ function LessonCard({ lesson: l, groupById, fmtDuration, onPreview, onDelete, on
         {/* Thumbnail on top — from CF Stream (auto-generated) or manually set */}
         {!isAudio && l.thumbnail_url && (
           <img
+            key={l.thumbnail_url}
             src={l.thumbnail_url}
             alt={l.title}
             className="absolute inset-0 w-full h-full object-cover"
@@ -544,7 +627,7 @@ function LessonCard({ lesson: l, groupById, fmtDuration, onPreview, onDelete, on
           <Trash2 size={14} />
         </button>
 
-        {/* Thumbnail button — hover only, bottom-right of left side for video */}
+        {/* Thumbnail button — hover only */}
         {!isAudio && (
           <button
             onClick={e => { e.stopPropagation(); onSetThumbnail() }}
@@ -554,6 +637,15 @@ function LessonCard({ lesson: l, groupById, fmtDuration, onPreview, onDelete, on
             <Image size={14} />
           </button>
         )}
+
+        {/* Edit button — hover only */}
+        <button
+          onClick={e => { e.stopPropagation(); onEdit() }}
+          className={`absolute bottom-2 ${isAudio ? 'left-12' : 'left-[5.5rem]'} w-8 h-8 rounded-full bg-white/95 text-purple-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg hover:bg-purple-50`}
+          title="Редактировать"
+        >
+          <Pencil size={14} />
+        </button>
       </div>
 
       {/* Body */}
@@ -648,6 +740,129 @@ function ThumbnailModal({ lessonId, onClose, onDone, captureVideoFrame, uploadTh
             {uploading
               ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Загрузка…</>
               : <><Upload size={16} /> Сохранить превью</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Edit lesson modal — title, description, groups (works for stream
+// recordings too via PATCH /education/lessons/{id}/metadata/)
+// ───────────────────────────────────────────────────────────────────────────
+function EditLessonModal({ lesson, groups, onClose, onSaved, onError }) {
+  const [title, setTitle] = useState(lesson.title || '')
+  const [description, setDescription] = useState(lesson.description || '')
+  const [groupIds, setGroupIds] = useState(lesson.groups || [])
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    if (!title.trim()) {
+      onError?.('Название не может быть пустым.')
+      return
+    }
+    setSaving(true)
+    try {
+      await api.patch(`/education/lessons/${lesson.id}/metadata/`, {
+        title: title.trim(),
+        description,
+        groups: groupIds,
+      })
+      onSaved()
+    } catch (e) {
+      onError?.(e.response?.data?.detail || e.message || 'Попробуйте ещё раз.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
+      <div
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-xl my-8"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-purple-100 flex items-center justify-between bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-3xl">
+          <h2 className="font-semibold flex items-center gap-2 text-purple-700">
+            <Pencil size={18} /> Редактировать урок
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-white">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Название</label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-300"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Описание</label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-300 resize-none"
+              placeholder="Краткое описание (необязательно)"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1 flex items-center gap-1">
+              <Users size={12} /> Доступ для групп
+            </label>
+            <div className="rounded-xl border border-gray-200 max-h-44 overflow-y-auto p-2 space-y-1">
+              {groups.length === 0 && (
+                <p className="text-xs text-gray-400 p-2">Группы загружаются…</p>
+              )}
+              {groups.map(g => {
+                const checked = groupIds.includes(g.id)
+                return (
+                  <label
+                    key={g.id}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm transition ${
+                      checked ? 'bg-purple-50 text-purple-700' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={e => setGroupIds(prev =>
+                        e.target.checked ? [...prev, g.id] : prev.filter(x => x !== g.id)
+                      )}
+                      className="rounded text-purple-500 focus:ring-purple-300"
+                    />
+                    <span>Группа {g.number}</span>
+                    {g.trainer && (
+                      <span className="text-xs text-gray-400 truncate">
+                        · {g.trainer.first_name} {g.trainer.last_name}
+                      </span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">
+              Ученики выбранных групп увидят этот урок в кабинете.
+            </p>
+          </div>
+
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition"
+          >
+            {saving
+              ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Сохранение…</>
+              : <><CheckCircle2 size={16} /> Сохранить</>
             }
           </button>
         </div>
