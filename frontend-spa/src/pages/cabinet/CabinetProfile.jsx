@@ -148,10 +148,10 @@ export default function CabinetProfile() {
 
   return (
     <div className="min-h-screen" style={{ background: '#faf7f8' }}>
-      <div className="max-w-xl mx-auto pb-12">
+      <div className="max-w-xl sm:max-w-2xl lg:max-w-3xl mx-auto pb-12">
 
         {/* ── Hero header ── */}
-        <div className="relative overflow-hidden px-6 pt-10 pb-8 mb-0"
+        <div className="relative overflow-hidden px-5 sm:px-8 pt-8 sm:pt-10 pb-6 sm:pb-8 mb-0"
              style={{ background: 'linear-gradient(150deg, #1a1023 0%, #3b1060 60%, #1a1030 100%)' }}>
           {/* Декоративные круги */}
           <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full pointer-events-none opacity-20"
@@ -160,16 +160,17 @@ export default function CabinetProfile() {
                style={{ background: 'radial-gradient(circle,#a78bfa,transparent 70%)' }} />
 
           {/* Top row */}
-          <div className="relative flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+          <div className="relative flex items-center justify-between mb-5 sm:mb-6">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
                    style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
                    <User size={13} className="text-white" strokeWidth={2} />
               </div>
-              <span className="text-white text-xs font-medium opacity-70">Личный кабинет</span>
+              <span className="text-white text-xs font-medium opacity-70 truncate">Личный кабинет</span>
             </div>
             <button onClick={logout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition"
+              aria-label="Выйти из кабинета"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-rose-300/40 shrink-0"
               style={{ color: '#fda4af', background: 'rgba(253,164,175,0.1)', border: '1px solid rgba(253,164,175,0.2)' }}>
               <LogOut size={13} /> Выйти
             </button>
@@ -177,7 +178,7 @@ export default function CabinetProfile() {
 
           {/* Имя */}
           <div className="relative">
-            <h1 className="text-2xl font-bold text-white tracking-tight mb-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-2 break-words">
               {profile.last_name} {profile.first_name}
             </h1>
             <div className="flex items-center gap-2 flex-wrap">
@@ -194,7 +195,7 @@ export default function CabinetProfile() {
           </div>
         </div>
 
-        <div className="px-4 space-y-3 pt-4">
+        <div className="px-3 sm:px-4 space-y-3 pt-4">
 
           {/* ── Обучение ── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

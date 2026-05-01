@@ -332,16 +332,15 @@ export default function LessonsAdmin() {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <AdminLayout user={user}>
-      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
         {/* Compact header */}
-        <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4 sm:mb-5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md shrink-0">
               <Video size={20} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Уроки</h1>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 truncate">
                 Всего <span className="font-semibold text-gray-700">{lessons.length}</span>
                 {' · '}
                 Опубликовано <span className="font-semibold text-emerald-600">{lessons.filter(l => l.is_published).length}</span>
@@ -351,15 +350,15 @@ export default function LessonsAdmin() {
         </div>
 
         {/* Controls row */}
-        <div className="flex items-center gap-3 flex-wrap mb-5">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap mb-4 sm:mb-5">
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg transition"
+            className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg transition focus:outline-none focus:ring-2 focus:ring-rose-300 w-full sm:w-auto"
           >
             <Plus size={18} /> Новый урок
           </button>
 
-          <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+          <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5 w-full sm:w-auto">
             {[
               { k: 'all', label: 'Все' },
               { k: 'video', label: 'Видео' },
@@ -368,7 +367,8 @@ export default function LessonsAdmin() {
               <button
                 key={t.k}
                 onClick={() => setTypeFilter(t.k)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                aria-pressed={typeFilter === t.k}
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-rose-200 ${
                   typeFilter === t.k ? 'bg-white shadow text-rose-600' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -382,7 +382,8 @@ export default function LessonsAdmin() {
             <select
               value={groupFilter}
               onChange={e => setGroupFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 bg-white text-gray-700"
+              aria-label="Фильтр по группе"
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 bg-white text-gray-700 flex-1 sm:flex-none"
             >
               <option value="">Все группы</option>
               {groups.map(g => (
@@ -391,21 +392,22 @@ export default function LessonsAdmin() {
             </select>
           )}
 
-          <div className="relative ml-auto">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <div className="relative w-full sm:w-auto sm:ml-auto">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Поиск по названию…"
-              className="pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 w-48 sm:w-64"
+              aria-label="Поиск уроков"
+              className="pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 w-full sm:w-64"
             />
           </div>
         </div>
 
         {/* Lesson list — card grid */}
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" aria-busy="true" aria-live="polite">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="rounded-2xl bg-white border border-rose-100 h-64 animate-pulse" />
             ))}
@@ -426,7 +428,7 @@ export default function LessonsAdmin() {
 
         {!loading && filtered.length > 0 && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {pageItems.map(l => (
                 <LessonCard
                   key={l.id}
@@ -447,7 +449,8 @@ export default function LessonsAdmin() {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={safePage === 1}
-                  className="p-2 rounded-lg bg-white border border-rose-100 text-gray-500 hover:bg-rose-50 disabled:opacity-40"
+                  aria-label="Предыдущая страница"
+                  className="p-2 rounded-lg bg-white border border-rose-100 text-gray-500 hover:bg-rose-50 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-rose-200"
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -457,7 +460,8 @@ export default function LessonsAdmin() {
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={safePage === totalPages}
-                  className="p-2 rounded-lg bg-white border border-rose-100 text-gray-500 hover:bg-rose-50 disabled:opacity-40"
+                  aria-label="Следующая страница"
+                  className="p-2 rounded-lg bg-white border border-rose-100 text-gray-500 hover:bg-rose-50 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-rose-200"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -465,7 +469,6 @@ export default function LessonsAdmin() {
             )}
           </>
         )}
-      </div>
 
       {/* Upload modal */}
       {showForm && (

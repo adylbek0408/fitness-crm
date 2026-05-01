@@ -64,17 +64,16 @@ export default function EducationStats() {
 
   return (
     <AdminLayout user={user}>
-      <div className="p-4 sm:p-6 max-w-6xl mx-auto">
 
         {/* Compact header */}
-        <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4 sm:mb-5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md shrink-0">
               <BarChart3 size={20} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Аналитика</h1>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 truncate">
                 {summary ? (
                   <>
                     Уроков <span className="font-semibold text-gray-700">{summary.total_lessons}</span>
@@ -88,37 +87,39 @@ export default function EducationStats() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-3xl border border-rose-100 p-4 sm:p-5 mb-6 shadow-sm flex flex-wrap items-end gap-4">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1 font-medium">Группа</label>
+        <div className="bg-white rounded-3xl border border-rose-100 p-4 sm:p-5 mb-6 shadow-sm flex flex-wrap items-end gap-3 sm:gap-4">
+          <div className="flex-1 min-w-[140px] sm:min-w-[180px]">
+            <label htmlFor="stats-group" className="text-xs text-gray-500 block mb-1 font-medium">Группа</label>
             <select
+              id="stats-group"
               value={filterGroup}
               onChange={e => setFilterGroup(e.target.value)}
-              className="px-3 py-2.5 border border-gray-200 rounded-xl min-w-[200px] focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 bg-white text-sm"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 bg-white text-sm"
             >
               <option value="">Все группы</option>
               {groups.map(g => <option key={g.id} value={g.id}>Группа {g.number}</option>)}
             </select>
           </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1 font-medium">
+          <div className="w-full sm:w-auto">
+            <label htmlFor="stats-inactive" className="text-xs text-gray-500 block mb-1 font-medium">
               Порог неактивности (дней)
             </label>
             <input
+              id="stats-inactive"
               type="number"
               min={1}
               max={365}
               value={inactiveDays}
               onChange={e => setInactiveDays(Number(e.target.value) || 7)}
-              className="px-3 py-2.5 border border-gray-200 rounded-xl w-32 focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 text-sm"
+              className="px-3 py-2.5 border border-gray-200 rounded-xl w-full sm:w-32 focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 text-sm"
             />
           </div>
           <button
             onClick={() => reload()}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 transition text-sm font-medium disabled:opacity-50 ml-auto"
+            className="w-full sm:w-auto sm:ml-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 transition text-sm font-medium disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-rose-300"
           >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
             Обновить
           </button>
         </div>
@@ -258,7 +259,6 @@ export default function EducationStats() {
         {openLesson && (
           <LessonDetailModal lesson={openLesson} onClose={() => setOpenLesson(null)} />
         )}
-      </div>
     </AdminLayout>
   )
 }

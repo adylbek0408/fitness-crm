@@ -242,26 +242,28 @@ export default function BroadcastPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <div style={{ minHeight: '100dvh' }} className="bg-gray-950 text-white flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-800">
-        <Radio size={20} className="text-rose-400" />
-        <h1 className="font-semibold text-sm sm:text-base">
+      <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-b border-gray-800">
+        <Radio size={20} className="text-rose-400 shrink-0" />
+        <h1 className="font-semibold text-sm sm:text-base min-w-0 truncate flex-1">
           Студия эфира
           {stream && <span className="ml-2 text-gray-400 font-normal">· {stream.title}</span>}
         </h1>
         {status === 'live' && (
           <>
-            <span className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-600 text-xs sm:text-sm font-bold">
+            <span className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-rose-600 text-[11px] sm:text-sm font-bold shrink-0">
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> LIVE
             </span>
-            <span className="text-xs sm:text-sm font-mono text-gray-300">{fmtElapsed(elapsed)}</span>
+            <span className="text-xs sm:text-sm font-mono text-gray-300 shrink-0">{fmtElapsed(elapsed)}</span>
           </>
         )}
         {status !== 'live' && (
           <button
             onClick={() => setShowSettings(s => !s)}
-            className="ml-auto p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white"
+            aria-label="Настройки качества"
+            aria-expanded={showSettings}
+            className="p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-rose-400/40 shrink-0"
             title="Настройки"
           >
             <Settings size={18} />
@@ -271,14 +273,15 @@ export default function BroadcastPage() {
 
       {/* Settings dropdown (idle) */}
       {showSettings && status !== 'live' && (
-        <div className="px-5 py-3 bg-gray-900 border-b border-gray-800 flex items-center gap-3">
-          <span className="text-xs text-gray-400">Качество:</span>
+        <div className="px-3 sm:px-5 py-3 bg-gray-900 border-b border-gray-800 flex items-center gap-2 sm:gap-3 flex-wrap">
+          <span className="text-xs text-gray-400 shrink-0">Качество:</span>
           {Object.keys(QUALITIES).map(k => (
             <button
               key={k}
               onClick={() => setQuality(k)}
               disabled={status !== 'idle'}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+              aria-pressed={quality === k}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-rose-400/40 ${
                 quality === k ? 'bg-rose-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
               }`}
             >
@@ -288,9 +291,9 @@ export default function BroadcastPage() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 lg:p-6 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4 p-3 sm:p-4 lg:p-6 min-h-0">
         {/* Left — preview + controls */}
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 min-h-0">
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 sm:gap-4 min-h-0">
           {error && (
             <div className="w-full max-w-2xl p-4 bg-rose-900/60 rounded-xl text-rose-200 text-sm">{error}</div>
           )}
@@ -317,12 +320,14 @@ export default function BroadcastPage() {
           </div>
 
           {/* Controls */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 flex-wrap justify-center">
             {broadcasting && (
               <>
                 <button
                   onClick={toggleMic}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition ${
+                  aria-label={micOn ? 'Выключить микрофон' : 'Включить микрофон'}
+                  aria-pressed={!micOn}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-rose-400/40 ${
                     micOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-rose-600 hover:bg-rose-700'
                   }`}
                   title={micOn ? 'Выключить микрофон' : 'Включить микрофон'}
@@ -331,7 +336,9 @@ export default function BroadcastPage() {
                 </button>
                 <button
                   onClick={toggleCam}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition ${
+                  aria-label={camOn ? 'Выключить камеру' : 'Включить камеру'}
+                  aria-pressed={!camOn}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-rose-400/40 ${
                     camOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-rose-600 hover:bg-rose-700'
                   }`}
                   title={camOn ? 'Выключить камеру' : 'Включить камеру'}
@@ -345,7 +352,7 @@ export default function BroadcastPage() {
               <button
                 onClick={startBroadcast}
                 disabled={status === 'connecting' || !stream?.cf_webrtc_url}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 font-semibold text-lg transition shadow-lg"
+                className="flex items-center gap-2 px-5 sm:px-6 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 font-semibold text-base sm:text-lg transition shadow-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
               >
                 <Radio size={20} />
                 {status === 'connecting' ? 'Подключение…' : 'Начать эфир'}
@@ -355,7 +362,7 @@ export default function BroadcastPage() {
             {broadcasting && (
               <button
                 onClick={stopBroadcast}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-rose-700 hover:bg-rose-800 font-semibold text-lg transition shadow-lg"
+                className="flex items-center gap-2 px-5 sm:px-6 py-3 rounded-xl bg-rose-700 hover:bg-rose-800 font-semibold text-base sm:text-lg transition shadow-lg focus:outline-none focus:ring-2 focus:ring-rose-300"
               >
                 <Square size={20} /> Завершить эфир
               </button>

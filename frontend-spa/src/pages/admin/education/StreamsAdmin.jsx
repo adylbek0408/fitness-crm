@@ -146,14 +146,13 @@ export default function StreamsAdmin() {
 
   return (
     <AdminLayout user={user}>
-      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
         {/* Compact header */}
-        <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4 sm:mb-5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-md shrink-0">
               <Radio size={20} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Эфиры</h1>
               <p className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
                 <span className="text-rose-600 font-semibold">{summary.live} live</span>
@@ -166,7 +165,7 @@ export default function StreamsAdmin() {
           </div>
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg transition"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg transition focus:outline-none focus:ring-2 focus:ring-rose-300"
           >
             <Plus size={18} /> Новый эфир
           </button>
@@ -215,7 +214,6 @@ export default function StreamsAdmin() {
             />
           ))}
         </div>
-      </div>
 
       {/* Recording preview modal */}
       {previewInfo && (

@@ -60,7 +60,7 @@ export default function ConsultationRoom() {
         roomName: info.room_name,
         parentNode: containerRef.current,
         width: '100%',
-        height: window.innerHeight,
+        height: '100%',
         userInfo: { displayName: info.display_name || 'Гость' },
         ...(info.jitsi_token ? { jwt: info.jitsi_token } : {}),
         configOverwrite: {
@@ -160,9 +160,9 @@ export default function ConsultationRoom() {
       <div style={{ height: '100dvh', background: '#000' }} className="flex flex-col relative">
         <div ref={containerRef} style={{ flex: 1, width: '100%', minHeight: 0 }} />
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white p-8 text-center gap-4">
-            <AlertTriangle size={48} className="text-rose-400" />
-            <p className="text-lg font-semibold">{error}</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white p-6 sm:p-8 text-center gap-4">
+            <AlertTriangle size={48} className="text-rose-400" aria-hidden="true" />
+            <p className="text-base sm:text-lg font-semibold">{error}</p>
           </div>
         )}
       </div>
@@ -171,41 +171,44 @@ export default function ConsultationRoom() {
 
   // ── Join form ───────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center px-4">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center">
-            <Video size={24} className="text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center px-4 py-6">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-6 sm:p-8">
+        <div className="flex items-center gap-3 mb-5 sm:mb-6">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center shrink-0">
+            <Video size={24} className="text-white" aria-hidden="true" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold">Онлайн консультация</h1>
-            <p className="text-sm text-gray-500">1-на-1 видеозвонок с тренером</p>
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-bold">Онлайн консультация</h1>
+            <p className="text-xs sm:text-sm text-gray-500">1-на-1 видеозвонок с тренером</p>
           </div>
         </div>
 
         {error && (
-          <div className="p-3 rounded-xl bg-rose-50 text-rose-700 text-sm mb-4 flex items-start gap-2">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {error}
+          <div role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-700 text-sm mb-4 flex items-start gap-2">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" /> {error}
           </div>
         )}
 
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="consult-name" className="block text-sm font-medium text-gray-700 mb-1">
           Как вас зовут?
         </label>
         <input
+          id="consult-name"
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !loading && handleJoin()}
           placeholder="Введите ваше имя"
+          autoComplete="name"
           className="w-full px-4 py-2.5 rounded-xl border border-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-300"
         />
 
         <button
           onClick={handleJoin}
           disabled={loading}
-          className="mt-5 w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md hover:shadow-lg transition disabled:opacity-50"
+          className="mt-5 w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md hover:shadow-lg transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-violet-300 flex items-center justify-center gap-2"
         >
+          {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />}
           {loading ? 'Подключение…' : 'Войти в комнату'}
         </button>
 

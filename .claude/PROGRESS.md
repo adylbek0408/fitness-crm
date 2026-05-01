@@ -56,6 +56,26 @@
 - [x] **5.5** E2E чек-лист (`.claude/E2E_CHECKLIST.md`)
 - [x] **5.6** Инструкция тренеру (`.claude/TRAINER_GUIDE.md`)
 
+## Спринт 6 — Production-quality polish (2026-05-02)
+- [x] **6.1** AdminLayout: drawer-меню для мобилки (≤ lg) с ESC/overlay/blockScroll/aria
+- [x] **6.2** Убран двойной padding во всех админских страницах
+       (LessonsAdmin/StreamsAdmin/ConsultationsAdmin/EducationStats)
+- [x] **6.3** Адаптивные tap-targets ≥ 40px, кнопки full-width на mobile, focus-rings
+- [x] **6.4** ConsultationRoom: `height: '100%'` вместо `window.innerHeight`,
+       100dvh, `role="alert"` для ошибок, label/id связки
+- [x] **6.5** CabinetProfile hero — sm/lg breakpoints, max-w расширен с xl до 3xl
+       на больших экранах
+- [x] **6.6** AlertModal/ConfirmModal: focus-management, body-scroll lock,
+       role=dialog/aria-modal/aria-labelledby/aria-describedby
+- [x] **6.7** ErrorBoundary на корне App.jsx (показывает понятный экран
+       вместо белого при необработанной ошибке)
+- [x] **6.8** Lazy-routes: все админские, кабинетные, mobile, public страницы
+       через React.lazy + Suspense с RouteFallback. Главный bundle 76 KB gzip,
+       страницы — отдельные chunks 1–10 KB.
+- [x] **6.9** BroadcastPage: адаптивные controls (flex-wrap, 100dvh,
+       ARIA-pressed на toggle-кнопках)
+- [x] **6.10** Иконкам добавлен `aria-hidden`, кнопкам без текста — `aria-label`
+
 ---
 
 ## Решения по ходу

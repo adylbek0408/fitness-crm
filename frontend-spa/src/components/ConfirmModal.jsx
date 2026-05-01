@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 
 /**
@@ -23,21 +23,30 @@ export default function ConfirmModal({
   variant = 'danger',
 }) {
   const [loading, setLoading] = useState(false)
+  const cancelRef = useRef(null)
 
-  // ESC закрывает
+  // ESC + body scroll lock + focus management
   useEffect(() => {
     if (!open) return
-    const h = (e) => { if (e.key === 'Escape') onClose() }
+    const h = (e) => { if (e.key === 'Escape' && !loading) onClose() }
     window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [open, onClose])
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    // Default focus on cancel — safer for destructive actions
+    const t = setTimeout(() => cancelRef.current?.focus(), 0)
+    return () => {
+      window.removeEventListener('keydown', h)
+      document.body.style.overflow = prev
+      clearTimeout(t)
+    }
+  }, [open, onClose, loading])
 
   if (!open) return null
 
   const variantStyles = {
-    danger:  { iconBg: 'bg-red-100',    iconColor: 'text-red-600',    btnBg: 'bg-red-600 hover:bg-red-700',    btnShadow: 'shadow-red-200' },
-    warning: { iconBg: 'bg-amber-100',  iconColor: 'text-amber-600',  btnBg: 'bg-amber-600 hover:bg-amber-700', btnShadow: 'shadow-amber-200' },
-    info:    { iconBg: 'bg-indigo-100', iconColor: 'text-indigo-600', btnBg: 'bg-indigo-600 hover:bg-indigo-700', btnShadow: 'shadow-indigo-200' },
+    danger:  { iconBg: 'bg-red-100',    iconColor: 'text-red-600',    btnBg: 'bg-red-600 hover:bg-red-700',    btnShadow: 'shadow-red-200',    ring: 'focus:ring-red-300' },
+    warning: { iconBg: 'bg-amber-100',  iconColor: 'text-amber-600',  btnBg: 'bg-amber-600 hover:bg-amber-700', btnShadow: 'shadow-amber-200', ring: 'focus:ring-amber-300' },
+    info:    { iconBg: 'bg-indigo-100', iconColor: 'text-indigo-600', btnBg: 'bg-indigo-600 hover:bg-indigo-700', btnShadow: 'shadow-indigo-200', ring: 'focus:ring-indigo-300' },
   }
   const vs = variantStyles[variant] || variantStyles.danger
 
@@ -51,7 +60,14 @@ export default function ConfirmModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-title"
+      aria-describedby="confirm-message"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      onClick={!loading ? onClose : undefined}
+    >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
 
@@ -61,21 +77,26 @@ export default function ConfirmModal({
         onClick={e => e.stopPropagation()}
       >
         {/* Close button */}
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
+        <button
+          onClick={onClose}
+          disabled={loading}
+          aria-label="Закрыть"
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition focus:outline-none focus:ring-2 focus:ring-slate-300 rounded disabled:opacity-50"
+        >
           <X size={18} />
         </button>
 
         <div className="p-6">
           {/* Icon */}
           <div className={`w-12 h-12 rounded-2xl ${vs.iconBg} flex items-center justify-center mb-4`}>
-            <AlertTriangle size={22} className={vs.iconColor} />
+            <AlertTriangle size={22} className={vs.iconColor} aria-hidden="true" />
           </div>
 
           {/* Title */}
-          <h3 className="text-lg font-bold text-slate-800 mb-2">{title}</h3>
+          <h3 id="confirm-title" className="text-lg font-bold text-slate-800 mb-2">{title}</h3>
 
           {/* Message */}
-          <div className="text-sm text-slate-500 leading-relaxed whitespace-pre-line">
+          <div id="confirm-message" className="text-sm text-slate-500 leading-relaxed whitespace-pre-line">
             {message}
           </div>
         </div>
@@ -83,10 +104,11 @@ export default function ConfirmModal({
         {/* Actions */}
         <div className="flex gap-3 px-6 pb-6">
           <button
+            ref={cancelRef}
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-300"
           >
             {cancelText}
           </button>
@@ -94,9 +116,9 @@ export default function ConfirmModal({
             type="button"
             onClick={handleConfirm}
             disabled={loading}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-60 ${vs.btnBg} shadow-lg ${vs.btnShadow} flex items-center justify-center gap-2`}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-60 ${vs.btnBg} shadow-lg ${vs.btnShadow} ${vs.ring} focus:outline-none focus:ring-2 flex items-center justify-center gap-2`}
           >
-            {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />}
             {confirmText}
           </button>
         </div>

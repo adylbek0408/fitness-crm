@@ -327,18 +327,19 @@ export default function Trash() {
       )}
 
       <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
           <Trash2 size={20} className="text-red-600" />
         </div>
-        <div className="flex-1">
-          <h2 className="crm-page-title">Корзина и удаление</h2>
-          <p className="crm-page-subtitle">
+        <div className="flex-1 min-w-0">
+          <h2 className="crm-page-title text-xl sm:text-2xl">Корзина и удаление</h2>
+          <p className="crm-page-subtitle text-xs sm:text-sm">
             Перенос объектов в корзину (можно восстановить) и окончательное удаление из базы
           </p>
         </div>
         <button type="button" onClick={refreshAll} disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-500 hover:bg-slate-50 transition disabled:opacity-50">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Обновить
+          aria-label="Обновить списки"
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-500 hover:bg-slate-50 transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-rose-300">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} aria-hidden="true" /> <span className="hidden sm:inline">Обновить</span>
         </button>
       </div>
 
