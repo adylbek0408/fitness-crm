@@ -50,7 +50,8 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
 
     def get_queryset(self):
-        qs = Lesson.objects.filter(deleted_at__isnull=True)
+        # Exclude auto-created stream recordings — those appear in the stream archive.
+        qs = Lesson.objects.filter(deleted_at__isnull=True, source_streams__isnull=True)
         ltype = self.request.query_params.get('type')
         if ltype in ('video', 'audio'):
             qs = qs.filter(lesson_type=ltype)
@@ -248,6 +249,53 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception('Admin preview URL generation failed')
         return Response({'playback_url': playback_url, 'video_kind': video_kind})
+
+    @action(detail=True, methods=['post'], url_path='thumbnail-upload-url')
+    def thumbnail_upload_url(self, request, pk=None):
+        """
+        Return a presigned PUT URL so the browser can upload a thumbnail
+        directly to R2, then saves the thumbnail_url on the lesson.
+
+        If R2_PUBLIC_URL is configured, the thumbnail URL is the permanent
+        public URL (no expiry).  Otherwise a 1-hour presigned download URL
+        is returned as a fallback (local-dev convenience).
+
+        Response: { upload_url, thumbnail_url }
+        """
+        from django.conf import settings as dj_settings
+        lesson = self.get_object()
+        key = f"thumbnails/{lesson.id}.jpg"
+
+        try:
+            upload_url = R2StorageService.create_upload_presigned_url(
+                key=key, content_type='image/jpeg', ttl_seconds=600,
+            )
+        except ImproperlyConfigured as e:
+            return Response(
+                {'detail': f'R2 not configured: {e}'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as e:
+            logger.exception('thumbnail presigned URL failed')
+            return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        pub = (getattr(dj_settings, 'R2_PUBLIC_URL', '') or '').rstrip('/')
+        if pub:
+            thumbnail_url = f"{pub}/{key}"
+        else:
+            # Local dev: presigned download URL (expires in 1 h, fine for testing)
+            try:
+                thumbnail_url = R2StorageService.create_download_presigned_url(
+                    key=key, ttl_seconds=3600,
+                )
+            except Exception:
+                thumbnail_url = ''
+
+        # Pre-save the URL so the lesson card updates after the browser PUT.
+        lesson.thumbnail_url = thumbnail_url
+        lesson.save(update_fields=['thumbnail_url', 'updated_at'])
+
+        return Response({'upload_url': upload_url, 'thumbnail_url': thumbnail_url})
 
     @action(detail=False, methods=['get'])
     def trash(self, request):
@@ -710,9 +758,19 @@ class EducationStatsView(APIView):
                 'completed_count': agg['completed_count'] or 0,
             })
 
-        # Eligible clients (those whose group has at least one lesson)
+        # Eligible clients: those whose group has at least one published lesson.
+        # Without this filter, students in brand-new groups (no lessons yet)
+        # would falsely show up as "inactive".
+        groups_with_lessons = list(
+            Lesson.objects.filter(is_published=True, deleted_at__isnull=True)
+            .values_list('groups__id', flat=True).distinct()
+        )
+        groups_with_lessons = [g for g in groups_with_lessons if g]
+
         clients_qs = Client.objects.filter(
-            deleted_at__isnull=True, group__isnull=False,
+            deleted_at__isnull=True,
+            group__isnull=False,
+            group_id__in=groups_with_lessons,
         )
         if group_id:
             clients_qs = clients_qs.filter(group_id=group_id)
