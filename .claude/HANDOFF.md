@@ -1,6 +1,126 @@
-# HANDOFF — 2026-05-02 (сессия 3 — production-quality polish)
+# HANDOFF — 2026-05-02 (сессия 5 — production fixes)
 
-## Контекст для следующего Клауда
+## Что сделано в этой сессии
+
+### 1. ConsultationsAdmin — подтверждение и авто-стоп
+
+**Файл:** `frontend-spa/src/pages/admin/education/ConsultationsAdmin.jsx`
+
+- `JitsiRoomModal` теперь принимает `consultationId`.
+- При нажатии «Завершить и закрыть» показывается `window.confirm(...)` — 
+  пользователь явно подтверждает что хочет закрыть.
+- После подтверждения вызывается `POST /api/education/consultations/{id}/stop/`
+  через `fetch(..., { keepalive: true })` — работает даже в `beforeunload`.
+- `beforeunload` listener навешен пока модалка открыта — браузер показывает
+  стандартный диалог «Покинуть страницу?», консультация завершается.
+- Кнопка «Открыть в браузере» (фиолетовая) открывает `https://{domain}/{room}`
+  в новой вкладке — fallback когда встроенный Jitsi выдаёт «Сбой подключения».
+- Jitsi `readyToClose` (кнопка «Положить трубку» внутри Jitsi) тоже вызывает
+  `handleClose` с подтверждением.
+
+### 2. Serializer — авто-регенерация истёкших thumbnail URL
+
+**Файл:** `apps/education/serializers.py` — `LessonSerializer.get_thumbnail_url`
+
+Логика (по приоритету):
+1. Если в DB хранится постоянный URL (CDN/R2-public) — возвращаем его.
+2. Если URL содержит `X-Amz-Expires` (presigned, истекающий) — регенерируем
+   из ключа `thumbnails/{lesson.id}.jpg` через R2_PUBLIC_URL или свежий
+   presigned URL (7 дней TTL). Без дополнительных HTTP-запросов — только
+   подпись локально через boto3.
+3. Если thumbnail пустой и есть `stream_uid` — возвращаем CF Stream CDN URL
+   (публичный, без истечения).
+4. Иначе — пустая строка.
+
+### 3. Thumbnail TTL → 7 дней
+
+**Файл:** `apps/education/views.py` — `thumbnail_upload_url` action
+
+Когда `R2_PUBLIC_URL` не задан, TTL presigned download URL изменён с 1 часа
+на 7 дней. Для удобства в dev/staging до настройки публичного бакета.
+
+---
+
+## Про Jitsi «Сбой подключения»
+
+**Причина:** meet.jit.si с конца 2023 требует авторизации (Google/GitHub OAuth)
+для создания/модерации комнаты. Без токена JWT внешний API загружается, но
+конференция не стартует.
+
+**Текущий workaround:** кнопка «Открыть в браузере» — тренер открывает
+`https://meet.jit.si/{uuid}` в новой вкладке и логинится там.
+
+**Долгосрочное решение (из CLAUDE.md):** self-host Jitsi на
+`jitsi.crm.aiym-syry.kg` (`apt install jitsi-meet`). Тогда:
+- В `.env`: `JITSI_DOMAIN=jitsi.crm.aiym-syry.kg`, `JITSI_APP_SECRET=...`
+- Backend генерирует JWT токен (код уже есть в `views.py`)
+- Встроенный Jitsi работает без проблем с авторизацией
+
+---
+
+## Про превью уроков
+
+**Если урок загружен через CF Stream** (stream_uid задан):
+- Thumbnail: `https://customer-cyusd1ztro8pgq40.cloudflarestream.com/{uid}/thumbnails/thumbnail.jpg`
+- Preview: HLS через `customer-cyusd1ztro8pgq40.cloudflarestream.com/{uid}/manifest/video.m3u8`
+- Работает если `CF_STREAM_CUSTOMER=customer-cyusd1ztro8pgq40` в `.env` на сервере
+
+**Если урок загружен через R2 fallback** (нет stream_uid, есть r2_key):
+- Thumbnail: нет авто-thumbnail; нужно загрузить вручную через кнопку 🖼️ в карточке
+- Preview: R2 presigned URL (работает если R2 настроен)
+
+**Команда для диагностики на сервере:**
+```bash
+cd /var/www/fitness-crm
+source venv/bin/activate
+python manage.py shell -c "
+from apps.education.models import Lesson
+for l in Lesson.objects.all():
+    print(l.id, l.title[:30], 'uid=', l.stream_uid[:8] if l.stream_uid else 'NONE',
+          'r2=', l.r2_key[:15] if l.r2_key else 'NONE',
+          'thumb=', bool(l.thumbnail_url))
+"
+```
+
+---
+
+## Следующий шаг на сервере
+
+```bash
+# 1. Задеплоить новый код
+cd /var/www/fitness-crm && git pull origin main
+
+# 2. Убедиться что CF_STREAM_CUSTOMER задан в .env
+grep "CF_STREAM_CUSTOMER" .env  
+# должно быть: CF_STREAM_CUSTOMER=customer-cyusd1ztro8pgq40
+
+# 3. Пересобрать frontend
+cd frontend-spa && npm run build
+
+# 4. Перезапустить gunicorn
+sudo systemctl restart fitness-crm && sudo systemctl status fitness-crm
+```
+
+Если `CF_STREAM_CUSTOMER` не задан — добавить:
+```bash
+echo "CF_STREAM_CUSTOMER=customer-cyusd1ztro8pgq40" >> /var/www/fitness-crm/.env
+```
+
+---
+
+## Состояние git
+
+```
+main: b6250b6 — education: fix consultation stop-on-close, Jitsi fallback, thumbnail refresh
+```
+
+Все изменения закоммичены. Незакоммиченных файлов нет.
+
+---
+
+# Архив прошлых HANDOFF
+
+## HANDOFF — 2026-05-02 (сессия 3 — production-quality polish)
 
 В этой сессии прошла масштабная полировка проекта по «стандартам качества
 продуктов»: адаптивность, UX, доступность, производительность. Никакой
@@ -9,246 +129,10 @@
 **Билд:** `npm run build` ✅. **Django:** `manage.py check` ✅.
 Главный bundle уменьшился с ~монолита до **76 KB gzip + per-page chunks**.
 
----
-
-## Что сделано в этой сессии
-
-### 1. AdminLayout — настоящий мобильный drawer
-**Файл:** `frontend-spa/src/components/AdminLayout.jsx` — переписан целиком.
-
-- На `≥ lg` остаётся фиксированный sidebar 224px слева.
-- На `< lg` — sticky header (бургер + лого + заголовок текущей страницы +
-  кнопка выйти) и **выезжающий drawer слева** (80%, max 18rem).
-- Drawer: ESC закрывает, overlay-клик закрывает, body-scroll lock пока открыт,
-  автозакрытие при смене роута, `role="dialog"`, `aria-modal="true"`,
-  `aria-label="Меню навигации"`.
-- Все NavLink — touch-friendly (py-2.5), c focus-ring, `aria-label` на иконках.
-- **Убран горизонтально-скроллящийся таб-бар** — это было неудобно.
-
-### 2. Убран двойной padding во всех админских страницах образования
-Раньше каждая страница начиналась с `<div className="p-4 sm:p-6 max-w-7xl mx-auto">`
-**внутри** AdminLayout, который сам делает `p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto`.
-Получался двойной отступ на мобиле.
-
-Теперь padding/max-width задаётся **только в AdminLayout**.
-
-**Файлы:**
-- `LessonsAdmin.jsx`
-- `StreamsAdmin.jsx`
-- `ConsultationsAdmin.jsx`
-- `EducationStats.jsx`
-
-(в `Trash.jsx` структура другая — там работает `crm-card`, не трогали)
-
-### 3. Адаптивные кнопки и фильтры
-Везде в админке кнопка-CTA «Новый ХХХ» / «Обновить» теперь **w-full на mobile**,
-`w-auto` на sm+. Type-toggle и поиск — `w-full sm:w-auto`. Фокус-кольца
-(`focus:ring-2 focus:ring-rose-300`) на всех интерактивных элементах.
-
-### 4. Кабинет студента
-- **CabinetProfile**: hero-блок с sm-breakpoint padding-ами;
-  `max-w` расширен с `xl` до `2xl/3xl` на больших экранах
-  (раньше на ноутбуке узко, как мобильник).
-- **ConsultationRoom (`/room/:uuid`)**: критичный фикс —
-  было `height: window.innerHeight` (не реагирует на ротацию/клавиатуру).
-  Теперь `height: '100%'` внутри обёртки `100dvh`. Form: `htmlFor`/`id` связки,
-  `role="alert"` на ошибках, `autoComplete="name"`.
-- **BroadcastPage**: адаптивные controls (flex-wrap), `min-h-screen` →
-  `min-height: 100dvh`, ARIA на mic/cam-кнопках (`aria-pressed={!micOn}`).
-
-### 5. ErrorBoundary
-**Новый файл:** `frontend-spa/src/components/ErrorBoundary.jsx`.
-Обёрнут вокруг всего `App.jsx`. Если где-то упадёт неперехваченное исключение —
-вместо белого экрана пользователь видит карточку «Что-то пошло не так» с кнопкой
-«Обновить страницу». В консоли остаётся stack trace.
-
-### 6. Code splitting (production performance)
-**Файл:** `frontend-spa/src/App.jsx` — переписан.
-
-Все страницы (admin, cabinet, mobile, public) — `React.lazy` + `<Suspense>` с
-красивым `RouteFallback` (rose-spinner). Только `Login` и `CabinetLogin` грузятся
-синхронно — это первые экраны.
-
-**Размеры chunks (gzip):**
-- index (entry): **76 KB**
-- Каждая страница: 1–10 KB
-- HlsPlayer (hls.js): 162 KB — грузится только при открытии видео-урока/эфира
-- jsPDF: 127 KB — только в модуле клиентов
-
-### 7. Доступность модалок AlertModal / ConfirmModal
-**Файлы:** `components/AlertModal.jsx`, `components/ConfirmModal.jsx`.
-
-- `role="dialog"` + `aria-modal="true"` + `aria-labelledby` + `aria-describedby`.
-- Focus auto-перенесён в модалку при открытии (на cancel-кнопку в Confirm —
-  безопаснее для destructive actions; на «Понятно» в Alert).
-- `body { overflow: hidden }` пока модалка открыта — фон не скроллится.
-- ESC закрывает (если не loading).
-- Backdrop-click тоже не закрывает во время loading в ConfirmModal.
-
-### 8. Прочие улучшения
-- aria-label на все иконочные кнопки (поиск, фильтры, удаление, обновить).
-- `aria-pressed` на toggle-кнопках (тип фильтра, mic/cam).
-- `aria-hidden="true"` на декоративных иконках.
-- `aria-busy="true" aria-live="polite"` на скелетонах загрузки.
-
----
-
-## Что НЕ сделано / что остаётся следующему Клауду
-
-### Высокий приоритет
-1. **CF_STREAM_API_TOKEN на проде** — без него видео идут в R2 fallback,
-   нет HLS, нет auto-thumbnail. Шаги:
-   - В Cloudflare Dashboard → Stream → API Tokens создать токен с правами
-     `Stream:Edit`.
-   - На сервере прописать в `.env`: `CF_STREAM_API_TOKEN=...`,
-     `CF_STREAM_WEBHOOK_SECRET=...`, `CF_STREAM_SIGNING_KEY_ID=...`,
-     `CF_STREAM_SIGNING_JWK=...`, `R2_PUBLIC_URL=https://media.crm.aiym-syry.kg`.
-   - В CF Dashboard → Stream → Webhooks → добавить
-     `https://crm.aiym-syry.kg/api/education/cf-webhook/`.
-   - `systemctl restart gunicorn`.
-
-2. **Деплой на VPS**: `git pull && python manage.py migrate && systemctl restart gunicorn`.
-   Frontend: `cd frontend-spa && npm install && npm run build`,
-   nginx должен раздавать `dist/`.
-
-### Средний приоритет
-3. **Focus-trap в больших модалках** (UploadModal, EditLessonModal,
-   ThumbnailModal, PreviewModal в `LessonsAdmin.jsx`, JitsiRoomModal в
-   `ConsultationsAdmin.jsx`). Сейчас — только AlertModal/ConfirmModal.
-   Достаточно скопировать паттерн с `useRef` + `useEffect` для фокуса первой
-   интерактивной кнопки + `body { overflow: hidden }`.
-
-4. **Debounce поиска** в `LessonsAdmin.jsx` и `LessonsList.jsx`.
-   Сейчас на каждый keystroke — фильтрация. Не критично, но при росте
-   списка > 200 уроков начнёт лагать. Простой `useDeferredValue(search)`.
-
-5. **Pagination на бэкенде** для крупных списков:
-   - `/clients/` — уже paginated (DRF).
-   - `/education/lessons/` — пока выдаёт всё одним запросом.
-     При > 100 уроках надо `?page=1` поддержку.
-
-### Низкий приоритет (косметика)
-6. **Trash.jsx** — вкладок 6 штук, на mobile они скроллятся горизонтально.
-   Можно сделать `<select>`-замену или иконки-only.
-
-7. **EducationStats** — таблица уроков на mobile показывает только
-   `viewers + percent` без `completed`. Можно добавить разворачиваемые карточки.
-
-8. **CabinetProfile attendance table** — sticky-cells работают, но на узком
-   экране (< 360px) первая колонка может перекрывать содержимое. Решение:
-   `min-w-[120px]` вместо `min-w-[140px]`.
-
----
-
-## Структура изменённых файлов
-
-```
-frontend-spa/src/
-├── App.jsx                                  ⟵ lazy + Suspense + ErrorBoundary
-├── components/
-│   ├── AdminLayout.jsx                       ⟵ переписан полностью
-│   ├── AlertModal.jsx                        ⟵ a11y, focus, scroll-lock
-│   ├── ConfirmModal.jsx                      ⟵ a11y, focus, scroll-lock
-│   └── ErrorBoundary.jsx                     ⟵ новый файл
-├── pages/
-│   ├── admin/education/
-│   │   ├── LessonsAdmin.jsx                 ⟵ убран padding-обёртка, w-full mobile,
-│   │   │                                       grid xl:grid-cols-4, aria
-│   │   ├── StreamsAdmin.jsx                  ⟵ убран padding-обёртка
-│   │   ├── ConsultationsAdmin.jsx            ⟵ убран padding-обёртка
-│   │   ├── EducationStats.jsx                ⟵ убран padding-обёртка, label/id
-│   │   └── BroadcastPage.jsx                 ⟵ 100dvh, ARIA controls, sm-padding
-│   ├── admin/Trash.jsx                       ⟵ shrink-0, sm-typography, hidden text
-│   ├── cabinet/
-│   │   └── CabinetProfile.jsx                ⟵ max-w 3xl, sm-breakpoints в hero
-│   └── public/ConsultationRoom.jsx           ⟵ height: 100% (НЕ window.innerHeight),
-│                                                role=alert, htmlFor/id
-```
-
----
-
-## Команды для тестирования
-
-```bash
-# Backend check (✅ чисто)
-cd fitness-crm && source ../.venv/bin/activate && python manage.py check
-
-# Frontend build (✅ собирается)
-cd frontend-spa && npm run build
-
-# Frontend dev
-cd frontend-spa && npm run dev   # http://localhost:5173
-
-# Backend dev
-cd fitness-crm && python manage.py runserver
-```
-
-**Тестовые сценарии для проверки правок:**
-1. Открыть `/admin/education/lessons` на mobile (DevTools 375px) — должен
-   быть бургер-меню, drawer выезжает слева. ESC закрывает.
-2. Открыть `/admin/education/lessons` на desktop — sidebar слева, контент
-   с правильными отступами (без двойного padding).
-3. Создать урок → открыть превью → ESC должен закрывать модалку.
-4. Удалить урок → подтверждающая модалка → focus сразу на «Отмена».
-5. Открыть консультацию `/room/uuid` на mobile — Jitsi во весь экран,
-   prejoin отключен.
-6. Намеренно сломать что-то (выкинуть `throw` в render) → ErrorBoundary.
-
----
-
-## Состояние git
-
-```
-git status         → должен быть набор modified в admin/cabinet/components
-git log -5         → последний коммит "education: editable lesson groups + design pass + robust thumbnail capture"
-```
-
-**Не закоммичено в этой сессии**:
-- `frontend-spa/src/App.jsx`
-- `frontend-spa/src/components/AdminLayout.jsx`
-- `frontend-spa/src/components/AlertModal.jsx`
-- `frontend-spa/src/components/ConfirmModal.jsx`
-- `frontend-spa/src/components/ErrorBoundary.jsx` (новый)
-- `frontend-spa/src/pages/admin/education/*.jsx` (все 5)
-- `frontend-spa/src/pages/admin/Trash.jsx`
-- `frontend-spa/src/pages/cabinet/CabinetProfile.jsx`
-- `frontend-spa/src/pages/public/ConsultationRoom.jsx`
-- `.claude/PROGRESS.md` (добавлен Спринт 6)
-- `.claude/HANDOFF.md` (этот файл)
-
-**Коммит-мессадж рекомендуемый:**
-```
-education: production polish — adaptive layout, a11y, lazy routes, ErrorBoundary
-```
-
----
-
-# Архив прошлых HANDOFF — для контекста
-
 ## HANDOFF — 2026-05-02 (сессия 2 — pre-polish)
 
-В прошлых сессиях достроили модуль обучения (Sprint 1–5.6). Основные правки
-этой сессии:
-
-### Превью уроков
-**Корневая причина пустых превью:** у уроков `stream_uid=''` и
-`thumbnail_url=''`, потому что `CF_STREAM_API_TOKEN` не задан в `.env`,
-значит `upload-init` уходит в R2 fallback, и превью пустое.
-
-**Решение:**
-- `LessonAdminViewSet.thumbnail_upload_url` (`POST .../thumbnail-upload-url/`):
-  presigned PUT URL на R2, ставит `lesson.thumbnail_url` либо как
-  `R2_PUBLIC_URL/key`, либо presigned download (1 час).
-- `metadata` action (`PATCH .../metadata/`): редактирование `title`,
-  `description`, `groups` для ЛЮБОГО урока (включая записи эфиров).
-- Frontend: `captureVideoFrame` (Canvas API), кнопки 🖼️ + ✏️ в hover на карточке.
-
-### Кабинетные правки
-- StreamLive теперь корректно работает через `?id=` в ссылке.
-- BroadcastPage делает редирект через 3 сек после `status === 'ended'`.
-- Группы уроков редактируются из админки.
-
-### Что осталось из предыдущей сессии
-1. Проверить превью на проде (R2 CORS, R2_PUBLIC_URL).
-2. CF_STREAM_API_TOKEN на проде → решает 90% проблем с эфирами.
-3. Self-host Jitsi → лучшее качество видео в консультациях.
+В прошлых сессиях достроили модуль обучения (Sprint 1–5.6). Основные правки:
+- Thumbnail upload via R2 presigned PUT + Canvas capture
+- Metadata edit (PATCH /metadata/)
+- BroadcastPage redirect after stream end
+- StreamLive ?id= link support

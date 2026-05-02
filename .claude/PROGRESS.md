@@ -56,6 +56,19 @@
 - [x] **5.5** E2E чек-лист (`.claude/E2E_CHECKLIST.md`)
 - [x] **5.6** Инструкция тренеру (`.claude/TRAINER_GUIDE.md`)
 
+## Спринт 7 — Server deploy + bugfixes (2026-05-02)
+- [x] **7.1** Полный деплой на сервер (git pull, migrate, npm build, gunicorn TCP, nginx)
+- [x] **7.2** Systemd-сервис `fitness-crm.service` (auto-restart)
+- [x] **7.3** CF Stream webhook зарегистрирован (`/api/education/cf-webhook/`)
+- [x] **7.4** LessonsAdmin: stream-уроки скрыты из основного списка
+- [x] **7.5** StreamLive.jsx: экран "Эфир завершён" при окончании стрима
+- [x] **7.6** ConsultationsAdmin: подтверждение перед закрытием + авто-стоп
+       консультации через keepalive-fetch при закрытии/уходе со страницы
+- [x] **7.7** Jitsi fallback: кнопка "Открыть в браузере" для случаев
+       когда встроенный Jitsi не подключается
+- [x] **7.8** Thumbnail: авто-регенерация истёкших presigned URL в сериализаторе;
+       TTL увеличен до 7 дней
+
 ## Спринт 6 — Production-quality polish (2026-05-02)
 - [x] **6.1** AdminLayout: drawer-меню для мобилки (≤ lg) с ESC/overlay/blockScroll/aria
 - [x] **6.2** Убран двойной padding во всех админских страницах
