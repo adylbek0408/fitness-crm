@@ -215,8 +215,15 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def preview(self, request, pk=None):
-        """Return a playback URL for admin preview (no DRM/watermark)."""
-        lesson = self.get_object()
+        """Return a playback URL for admin preview (no DRM/watermark).
+
+        Uses _get_any_lesson so it also works on stream-recording lessons
+        (which are hidden from the default queryset).
+        """
+        lesson = self._get_any_lesson(pk)
+        if not lesson:
+            return Response({'detail': 'Not found.'},
+                            status=status.HTTP_404_NOT_FOUND)
         playback_url = None
         video_kind = None
         try:
@@ -454,19 +461,44 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='manual-archive')
     def manual_archive(self, request, pk=None):
-        """Manually create an archive lesson for a completed stream (when CF webhook failed)."""
+        """Manually create an archive lesson for a completed stream (when CF webhook failed).
+
+        Tries to fetch the latest video for this live input from Cloudflare
+        if recording_uid is empty (webhook didn't fire).
+        """
         stream = self.get_object()
         if stream.archived_lesson_id:
-            return Response({'detail': 'Stream already has an archive lesson.'},
+            return Response({'detail': 'У эфира уже есть запись.'},
                             status=status.HTTP_400_BAD_REQUEST)
         if stream.status not in ('ended', 'archived', 'live'):
-            return Response({'detail': 'Stream must be ended first.'},
+            return Response({'detail': 'Эфир должен быть завершён.'},
                             status=status.HTTP_400_BAD_REQUEST)
+
+        # If we don't have a recording_uid, try to fetch the latest video
+        # for this live input from CF Stream API.
+        recording_uid = stream.recording_uid
+        if not recording_uid and stream.cf_input_uid:
+            try:
+                recording_uid = CloudflareStreamService.find_latest_recording(
+                    live_input_uid=stream.cf_input_uid,
+                )
+                if recording_uid:
+                    stream.recording_uid = recording_uid
+                    stream.save(update_fields=['recording_uid', 'updated_at'])
+            except Exception:
+                logger.exception('Failed to query CF Stream for recording')
+
+        if not recording_uid:
+            return Response({
+                'detail': 'Cloudflare ещё не обработал запись. '
+                          'Подождите 5–10 минут после завершения эфира и попробуйте снова.',
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         lesson = Lesson.objects.create(
             title=f"Эфир: {stream.title}",
             description=stream.description or '',
             lesson_type='video',
-            stream_uid=stream.recording_uid or '',
+            stream_uid=recording_uid,
             duration_sec=0,
             thumbnail_url='',
             trainer=stream.trainer,

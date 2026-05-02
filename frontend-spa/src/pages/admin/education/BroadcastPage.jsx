@@ -112,6 +112,41 @@ export default function BroadcastPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Poll backend status — if stream was ended elsewhere (admin list), stop
+  // the local WebRTC sender so two pages don't fight each other.
+  useEffect(() => {
+    if (status !== 'live' || !id) return
+    let stopped = false
+    const t = setInterval(() => {
+      api.get('/education/streams/').then(r => {
+        if (stopped) return
+        const list = r.data?.results || r.data || []
+        const fresh = list.find(s => s.id === id)
+        if (fresh && fresh.status !== 'live') {
+          // Stream ended externally → stop local broadcast immediately
+          localStreamRef.current?.getTracks().forEach(t => t.stop())
+          pcRef.current?.close()
+          if (localVideoRef.current) localVideoRef.current.srcObject = null
+          setBroadcasting(false)
+          setStatus('ended')
+        }
+      }).catch(() => {})
+    }, 5000)
+    return () => { stopped = true; clearInterval(t) }
+  }, [status, id])
+
+  // beforeunload — warn user if leaving while live
+  useEffect(() => {
+    if (status !== 'live') return
+    const handler = (e) => {
+      e.preventDefault()
+      e.returnValue = 'Эфир ещё идёт. Если уйдёте — он завершится.'
+      return e.returnValue
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [status])
+
   const fmtElapsed = sec => {
     const h = Math.floor(sec / 3600)
     const m = Math.floor((sec % 3600) / 60)

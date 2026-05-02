@@ -221,6 +221,37 @@ class CloudflareStreamService:
             'srt_passphrase': srt.get('passphrase', ''),
         }
 
+    # --- Live input → video lookup (for manual_archive fallback) ---
+
+    @classmethod
+    def find_latest_recording(cls, live_input_uid: str) -> str:
+        """Query CF Stream for videos produced by a given live input.
+
+        Returns the UID of the most recent recording, or '' if none yet.
+        Used by the manual_archive endpoint as a fallback when the webhook
+        didn't fire.
+        """
+        import requests
+        if not live_input_uid:
+            return ''
+        url = (
+            f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream/live_inputs/"
+            f"{live_input_uid}/videos"
+        )
+        try:
+            resp = requests.get(url, headers=cls._headers(), timeout=15)
+            resp.raise_for_status()
+        except Exception:
+            logger.warning('CF Stream find_latest_recording failed', exc_info=True)
+            return ''
+        result = resp.json().get('result') or []
+        # CF returns videos newest-first; we pick the first ready one.
+        for v in result:
+            uid = v.get('uid')
+            if uid and v.get('readyToStream', True):
+                return uid
+        return ''
+
     # --- Webhook signature verification ---
 
     @classmethod
