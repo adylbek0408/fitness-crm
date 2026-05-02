@@ -329,10 +329,12 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         if pub:
             thumbnail_url = f"{pub}/{key}"
         else:
-            # Local dev: presigned download URL (expires in 1 h, fine for testing)
+            # No public URL: use a presigned download URL.
+            # We use a 7-day TTL so thumbnails stay valid across sessions;
+            # the serializer will auto-regenerate it on the next API call anyway.
             try:
                 thumbnail_url = R2StorageService.create_download_presigned_url(
-                    key=key, ttl_seconds=3600,
+                    key=key, ttl_seconds=7 * 24 * 3600,
                 )
             except Exception:
                 thumbnail_url = ''

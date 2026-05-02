@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Video, Copy, MessageCircle, Plus, Check,
   Clock, Users, AlertCircle,
@@ -35,6 +35,7 @@ export default function ConsultationsAdmin() {
 
   // Inline Jitsi
   const [jitsiInfo, setJitsiInfo] = useState(null)
+  const [jitsiConsultationId, setJitsiConsultationId] = useState(null)
   const [joiningId, setJoiningId] = useState(null)
 
 
@@ -90,6 +91,7 @@ export default function ConsultationsAdmin() {
         setAlertModal({ title: 'Не удалось войти', message: r.data?.reason || 'Консультация недоступна.', variant: 'error' })
         return
       }
+      setJitsiConsultationId(id)
       setJitsiInfo(r.data)
     } catch (e) {
       setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
@@ -234,7 +236,8 @@ export default function ConsultationsAdmin() {
       {jitsiInfo && (
         <JitsiRoomModal
           info={jitsiInfo}
-          onClose={() => { setJitsiInfo(null); reload() }}
+          consultationId={jitsiConsultationId}
+          onClose={() => { setJitsiInfo(null); setJitsiConsultationId(null); reload() }}
         />
       )}
 
@@ -498,10 +501,62 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onJoinRoom, j
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline Jitsi modal — trainer joins the room directly in the admin panel
+// Closes consultation automatically when the modal is closed or page is left.
 // ─────────────────────────────────────────────────────────────────────────────
-function JitsiRoomModal({ info, onClose }) {
+function JitsiRoomModal({ info, consultationId, onClose }) {
   const containerRef = useRef(null)
   const apiRef = useRef(null)
+  const stoppedRef = useRef(false)
+
+  // Stop consultation on backend (fire-and-forget with keepalive so it works
+  // even during beforeunload).
+  const stopConsultation = useCallback(() => {
+    if (stoppedRef.current || !consultationId) return
+    stoppedRef.current = true
+    const token = localStorage.getItem('access_token')
+    try {
+      fetch(`/api/education/consultations/${consultationId}/stop/`, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({}),
+      }).catch(() => {})
+    } catch {}
+  }, [consultationId])
+
+  // Warn user before navigating away and stop the consultation.
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      stopConsultation()
+      e.preventDefault()
+      e.returnValue = 'Консультация завершится. Вы уверены, что хотите выйти?'
+      return e.returnValue
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [stopConsultation])
+
+  // Confirm close → stop consultation → notify parent.
+  const handleClose = useCallback(() => {
+    const confirmed = window.confirm(
+      'Вы уверены, что хотите закрыть?\nКонсультация завершится и ученик увидит сообщение об окончании.'
+    )
+    if (!confirmed) return
+    stopConsultation()
+    if (apiRef.current) {
+      try { apiRef.current.dispose() } catch {}
+      apiRef.current = null
+    }
+    onClose()
+  }, [stopConsultation, onClose])
+
+  // Direct link to open the room in a new browser tab (fallback when embedded fails).
+  const roomUrl = info?.jitsi_domain && info?.room_name
+    ? `https://${info.jitsi_domain}/${info.room_name}`
+    : null
 
   useEffect(() => {
     if (!info?.jitsi_domain || !info?.room_name) return
@@ -522,8 +577,6 @@ function JitsiRoomModal({ info, onClose }) {
         configOverwrite: {
           startWithAudioMuted: false,
           startWithVideoMuted: false,
-          prejoinPageEnabled: false,
-          prejoinConfig: { enabled: false },
           disableDeepLinking: true,
           enableWelcomePage: false,
           enableClosePage: false,
@@ -543,11 +596,8 @@ function JitsiRoomModal({ info, onClose }) {
         },
       })
 
-      apiRef.current.addEventListener('readyToClose', () => {
-        try { apiRef.current.dispose() } catch {}
-        apiRef.current = null
-        onClose()
-      })
+      // When the user clicks Hang Up inside Jitsi — treat as close.
+      apiRef.current.addEventListener('readyToClose', handleClose)
     }
 
     if (!document.getElementById(scriptId)) {
@@ -567,19 +617,36 @@ function JitsiRoomModal({ info, onClose }) {
         apiRef.current = null
       }
     }
-  }, [info, onClose])
+  }, [info, handleClose])
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="absolute top-3 right-3 z-10">
-        <button
-          onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 text-sm font-medium backdrop-blur"
-        >
-          <X size={16} /> Закрыть
-        </button>
+      {/* Top bar */}
+      <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-2 bg-black/60 backdrop-blur">
+        <span className="text-white/70 text-xs">
+          Комната: <span className="font-mono text-white/90">{info?.room_name}</span>
+        </span>
+        <div className="flex items-center gap-2">
+          {roomUrl && (
+            <a
+              href={roomUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/80 text-white hover:bg-violet-500 text-xs font-medium"
+              title="Открыть в новой вкладке (если встроенный Jitsi не работает)"
+            >
+              <LogIn size={13} /> Открыть в браузере
+            </a>
+          )}
+          <button
+            onClick={handleClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/80 text-white hover:bg-rose-600 text-xs font-medium"
+          >
+            <X size={14} /> Завершить и закрыть
+          </button>
+        </div>
       </div>
-      <div ref={containerRef} style={{ width: '100%', flex: 1 }} />
+      <div ref={containerRef} style={{ width: '100%', flex: 1, paddingTop: '44px' }} />
     </div>
   )
 }

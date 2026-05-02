@@ -9,25 +9,49 @@ from .models import Lesson, LessonProgress, LiveStream, StreamViewer, Consultati
 
 class LessonSerializer(serializers.ModelSerializer):
     """
-    thumbnail_url: if the model field is empty but the lesson has a
-    Cloudflare Stream UID we derive the thumbnail URL automatically.
-    CF Stream exposes it publicly at:
-      https://{customer}.cloudflarestream.com/{uid}/thumbnails/thumbnail.jpg
-    (works for uploaded videos AND live-input recordings)
+    thumbnail_url logic (priority order):
+    1. If stored thumbnail is a permanent public URL → return as-is.
+    2. If stored thumbnail looks like an expired presigned URL (contains
+       X-Amz-Expires) → regenerate fresh presigned URL from the standard
+       key  thumbnails/{lesson.id}.jpg  or use R2_PUBLIC_URL if set.
+    3. If no stored thumbnail but lesson has a CF Stream UID → derive
+       thumbnail from CF Stream CDN (always public, no expiry).
+    4. Else return ''.
     """
     thumbnail_url = serializers.SerializerMethodField()
 
     def get_thumbnail_url(self, obj):
-        if obj.thumbnail_url:
-            return obj.thumbnail_url
+        from django.conf import settings as dj_settings
+
+        stored = obj.thumbnail_url or ''
+
+        if stored:
+            # Detect presigned (expiring) R2 URL — regenerate on every request
+            # so the client always gets a fresh link.
+            if 'X-Amz-Expires' in stored or 'X-Amz-Signature' in stored:
+                key = f'thumbnails/{obj.id}.jpg'
+                pub = (getattr(dj_settings, 'R2_PUBLIC_URL', '') or '').rstrip('/')
+                if pub:
+                    return f'{pub}/{key}'
+                try:
+                    from .services import R2StorageService
+                    return R2StorageService.create_download_presigned_url(
+                        key=key, ttl_seconds=7 * 24 * 3600,
+                    )
+                except Exception:
+                    pass
+            # Permanent URL (CF CDN, R2 public, custom domain) — return directly.
+            return stored
+
+        # No stored thumbnail — auto-derive from CF Stream CDN.
         if obj.lesson_type == 'video' and obj.stream_uid:
-            from django.conf import settings as dj_settings
             sub = getattr(dj_settings, 'CF_STREAM_CUSTOMER', '') or ''
             if sub:
                 return (
                     f'https://{sub}.cloudflarestream.com'
                     f'/{obj.stream_uid}/thumbnails/thumbnail.jpg'
                 )
+
         return ''
 
     class Meta:
