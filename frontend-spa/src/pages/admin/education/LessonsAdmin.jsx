@@ -234,12 +234,18 @@ export default function LessonsAdmin() {
         : Promise.resolve(thumbnailBlob)
 
       if (upload.kind === 'cf-direct') {
+        // CF Stream direct creator upload expects FormData with a 'file' field.
+        // Sending raw binary with Content-Type: video/mp4 causes HTTP 400.
+        const fd = new FormData()
+        fd.append('file', form.file)
         const r = await fetch(upload.url, {
           method: 'POST',
-          headers: { 'Content-Type': 'video/mp4' },
-          body: form.file,
+          body: fd,
         })
-        if (!r.ok) throw new Error('Cloudflare Stream: ' + r.status)
+        if (!r.ok) {
+          const errText = await r.text().catch(() => '')
+          throw new Error('Cloudflare Stream: ' + r.status + (errText ? ' — ' + errText.slice(0, 200) : ''))
+        }
       } else if (upload.kind === 'r2-presigned-put') {
         const r = await fetch(upload.url, {
           method: 'PUT',
