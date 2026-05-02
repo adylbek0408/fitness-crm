@@ -3,6 +3,7 @@ import {
   Upload, Trash2, Plus, CheckCircle2, Headphones, Play,
   Mic, Square, Video, FileAudio, Search, Users,
   X, AlertCircle, ChevronLeft, ChevronRight, Image, Pencil,
+  CheckSquare, Square as SquareIcon,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -29,6 +30,26 @@ export default function LessonsAdmin() {
 
   const [alertModal, setAlertModal] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+
+  // Selection mode for bulk operations.
+  // selectMode=true: cards show checkboxes, click toggles selection (no preview).
+  // selectMode=false: click opens preview as before.
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const toggleSelected = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
 
   // Preview
   const [previewLesson, setPreviewLesson] = useState(null)
@@ -130,11 +151,13 @@ export default function LessonsAdmin() {
   }
 
   // Uploads a thumbnail blob to R2 via presigned PUT URL.
-  // Returns the resulting public/presigned URL, or null on failure.
+  // Returns true on success, false on failure. The actual thumbnail_url is
+  // re-fetched by the lessons list reload (R2 presigned GET URL is generated
+  // server-side from the key on every list response).
   const uploadThumbnailForLesson = async (lessonId, blob) => {
     if (!blob) {
       console.warn('uploadThumbnailForLesson: empty blob')
-      return null
+      return false
     }
     try {
       const { data } = await api.post(`/education/lessons/${lessonId}/thumbnail-upload-url/`)
@@ -146,12 +169,12 @@ export default function LessonsAdmin() {
       if (!r.ok) {
         const text = await r.text().catch(() => '')
         console.warn('Thumbnail PUT failed', r.status, text)
-        throw new Error(`R2 PUT ${r.status}`)
+        return false
       }
-      return data.thumbnail_url || null
+      return true
     } catch (e) {
       console.warn('Thumbnail upload failed:', e)
-      return null
+      return false
     }
   }
 
@@ -269,8 +292,8 @@ export default function LessonsAdmin() {
                         'Откройте урок и нажмите кнопку «Обновить превью», ' +
                         'чтобы добавить картинку вручную.'
         } else {
-          const url = await uploadThumbnailForLesson(lesson.id, thumbBlob)
-          if (!url) {
+          const ok = await uploadThumbnailForLesson(lesson.id, thumbBlob)
+          if (!ok) {
             thumbWarning = 'Видео сохранилось, но превью не загрузилось. ' +
                           'Используйте кнопку «Обновить превью» в карточке урока.'
           }
@@ -314,6 +337,29 @@ export default function LessonsAdmin() {
       setAlertModal({
         title: 'Не удалось удалить',
         message: e.response?.data?.detail || e.message || 'Попробуйте позже.',
+        variant: 'error',
+      })
+    }
+  }
+
+  // Bulk delete — fires N parallel DELETE requests, then reloads.
+  // We tolerate per-item failures (Promise.allSettled) and surface a summary.
+  const performBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    setBulkDeleting(true)
+    const results = await Promise.allSettled(
+      ids.map(id => api.delete(`/education/lessons/${id}/`))
+    )
+    setBulkDeleting(false)
+    setConfirmBulkDelete(false)
+    const failed = results.filter(r => r.status === 'rejected').length
+    exitSelectMode()
+    reload()
+    if (failed > 0) {
+      setAlertModal({
+        title: 'Частично удалено',
+        message: `Удалено: ${ids.length - failed} из ${ids.length}. ${failed} уроков не удалось удалить.`,
         variant: 'error',
       })
     }
@@ -409,7 +455,52 @@ export default function LessonsAdmin() {
               className="pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 w-full sm:w-64"
             />
           </div>
+
+          {/* Select-mode toggle */}
+          <button
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            aria-pressed={selectMode}
+            className={`px-3 py-2 rounded-xl text-sm font-medium border transition focus:outline-none focus:ring-2 focus:ring-rose-200 ${
+              selectMode
+                ? 'bg-rose-50 border-rose-200 text-rose-600'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+            title={selectMode ? 'Выйти из режима выбора' : 'Выбрать несколько'}
+          >
+            {selectMode ? 'Отмена' : 'Выбрать'}
+          </button>
         </div>
+
+        {/* Bulk-action bar */}
+        {selectMode && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-200">
+            <span className="text-sm font-medium text-rose-700">
+              Выбрано: {selectedIds.size}
+            </span>
+            <button
+              onClick={() => {
+                const allIds = filtered.map(l => l.id)
+                if (selectedIds.size === allIds.length) setSelectedIds(new Set())
+                else setSelectedIds(new Set(allIds))
+              }}
+              className="text-xs text-rose-600 hover:text-rose-800 underline"
+            >
+              {selectedIds.size === filtered.length && filtered.length > 0
+                ? 'Снять выделение'
+                : 'Выбрать все'}
+            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => setConfirmBulkDelete(true)}
+                disabled={selectedIds.size === 0 || bulkDeleting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500 text-white text-sm font-medium hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                <Trash2 size={14} />
+                Удалить ({selectedIds.size})
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Lesson list — card grid */}
         {loading && (
@@ -441,6 +532,9 @@ export default function LessonsAdmin() {
                   lesson={l}
                   groupById={groupById}
                   fmtDuration={fmtDuration}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(l.id)}
+                  onToggleSelect={() => toggleSelected(l.id)}
                   onPreview={() => setPreviewLesson(l)}
                   onDelete={() => setConfirmDelete({ id: l.id, title: l.title })}
                   onSetThumbnail={() => setThumbLessonId(l.id)}
@@ -561,6 +655,19 @@ export default function LessonsAdmin() {
         cancelText="Отмена"
         variant="danger"
       />
+      <ConfirmModal
+        open={confirmBulkDelete}
+        onClose={() => !bulkDeleting && setConfirmBulkDelete(false)}
+        onConfirm={performBulkDelete}
+        title={`Удалить ${selectedIds.size} ${selectedIds.size === 1 ? 'урок' : 'уроков'}?`}
+        message={
+          `Все выбранные уроки переместятся в корзину. ` +
+          `Восстановить можно из раздела «Корзина».`
+        }
+        confirmText={bulkDeleting ? 'Удаление…' : 'В корзину'}
+        cancelText="Отмена"
+        variant="danger"
+      />
     </AdminLayout>
   )
 }
@@ -568,16 +675,30 @@ export default function LessonsAdmin() {
 // ───────────────────────────────────────────────────────────────────────────
 // Lesson card — clickable preview, hover delete
 // ───────────────────────────────────────────────────────────────────────────
-function LessonCard({ lesson: l, groupById, fmtDuration, onPreview, onDelete, onSetThumbnail, onEdit }) {
+function LessonCard({ lesson: l, groupById, fmtDuration, selectMode, selected, onToggleSelect, onPreview, onDelete, onSetThumbnail, onEdit }) {
   const isAudio = l.lesson_type === 'audio'
   const groupNames = (l.groups || [])
     .map(gid => groupById[gid] ? `Группа ${groupById[gid].number}` : null)
     .filter(Boolean)
+  // In select mode, clicking the card toggles selection instead of opening preview.
+  const handleCardClick = selectMode ? onToggleSelect : onPreview
   return (
     <div
-      onClick={onPreview}
-      className="group relative rounded-2xl bg-white border border-rose-100 overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition cursor-pointer"
+      onClick={handleCardClick}
+      className={`group relative rounded-2xl bg-white border overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition cursor-pointer ${
+        selected ? 'border-rose-400 ring-2 ring-rose-300' : 'border-rose-100'
+      }`}
     >
+      {/* Selection checkbox — visible in select mode */}
+      {selectMode && (
+        <div className="absolute top-2 right-2 z-20 pointer-events-none">
+          <div className={`w-7 h-7 rounded-md flex items-center justify-center shadow-md ${
+            selected ? 'bg-rose-500 text-white' : 'bg-white/95 text-gray-400 border border-gray-200'
+          }`}>
+            {selected ? <CheckSquare size={16} /> : <SquareIcon size={16} />}
+          </div>
+        </div>
+      )}
       {/* Thumbnail / type indicator */}
       <div className={`aspect-video relative flex items-center justify-center ${
         isAudio
@@ -606,8 +727,8 @@ function LessonCard({ lesson: l, groupById, fmtDuration, onPreview, onDelete, on
           {isAudio ? 'Аудио' : 'Видео'}
         </div>
 
-        {/* Top-right: status badge */}
-        {!l.is_published && (
+        {/* Top-right: status badge — hidden in select mode (checkbox lives there) */}
+        {!l.is_published && !selectMode && (
           <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500 text-white">
             Черновик
           </div>

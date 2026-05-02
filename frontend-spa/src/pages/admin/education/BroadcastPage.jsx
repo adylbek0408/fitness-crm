@@ -26,6 +26,9 @@ export default function BroadcastPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [redirectIn, setRedirectIn] = useState(null) // countdown seconds
+  // Real WebRTC peer-connection state — separate from `status`. Even if `status='live'`
+  // the actual data may not flow if ICE failed. Surface this so admin sees the truth.
+  const [connState, setConnState] = useState('') // '' | 'connecting' | 'connected' | 'failed' | 'disconnected'
 
   const localVideoRef = useRef(null)
   const pcRef = useRef(null)
@@ -176,6 +179,18 @@ export default function BroadcastPage() {
       })
       pcRef.current = pc
 
+      // Surface ICE / connection state to UI so admin (and us) can see when
+      // WHIP actually works vs camera-only-locally.
+      pc.addEventListener('iceconnectionstatechange', () => {
+        setConnState(pc.iceConnectionState)
+        // eslint-disable-next-line no-console
+        console.log('[WHIP] iceConnectionState:', pc.iceConnectionState)
+      })
+      pc.addEventListener('connectionstatechange', () => {
+        // eslint-disable-next-line no-console
+        console.log('[WHIP] connectionState:', pc.connectionState)
+      })
+
       // Add tracks + force high bitrate (default WebRTC = ~300 kbps → blurry)
       local.getTracks().forEach(t => {
         const sender = pc.addTrack(t, local)
@@ -291,6 +306,23 @@ export default function BroadcastPage() {
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> LIVE
             </span>
             <span className="text-xs sm:text-sm font-mono text-gray-300 shrink-0">{fmtElapsed(elapsed)}</span>
+            {/* Real WebRTC state — distinct from "LIVE" (which only flips backend status). */}
+            {connState && connState !== 'connected' && connState !== 'completed' && (
+              <span
+                className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-md shrink-0 ${
+                  connState === 'failed' || connState === 'disconnected'
+                    ? 'bg-amber-600/30 text-amber-200 border border-amber-500/40'
+                    : 'bg-gray-700 text-gray-300'
+                }`}
+                title="Состояние WebRTC-соединения с Cloudflare"
+              >
+                {connState === 'checking' && 'Подключение…'}
+                {connState === 'failed' && '⚠ Нет связи с CF'}
+                {connState === 'disconnected' && '⚠ Связь потеряна'}
+                {connState === 'closed' && 'Закрыто'}
+                {!['checking', 'failed', 'disconnected', 'closed'].includes(connState) && connState}
+              </span>
+            )}
           </>
         )}
         {status !== 'live' && (
