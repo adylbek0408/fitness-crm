@@ -500,64 +500,68 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onJoinRoom, j
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Inline Jitsi modal — trainer joins the room directly in the admin panel
-// Closes consultation automatically when the modal is closed or page is left.
+// Inline Jitsi modal — trainer joins the room directly in the admin panel.
+// JWT token is passed both to the embedded External API and to the "open in
+// browser" URL so the trainer is always recognized as moderator without any
+// extra Jitsi login.
 // ─────────────────────────────────────────────────────────────────────────────
 function JitsiRoomModal({ info, consultationId, onClose }) {
   const containerRef = useRef(null)
   const apiRef = useRef(null)
   const stoppedRef = useRef(false)
 
-  // Stop consultation on backend (fire-and-forget with keepalive so it works
-  // even during beforeunload).
-  const stopConsultation = useCallback(() => {
-    if (stoppedRef.current || !consultationId) return
-    stoppedRef.current = true
-    const token = localStorage.getItem('access_token')
-    try {
-      fetch(`/api/education/consultations/${consultationId}/stop/`, {
-        method: 'POST',
-        keepalive: true,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({}),
-      }).catch(() => {})
-    } catch {}
-  }, [consultationId])
-
-  // Warn user before navigating away and stop the consultation.
+  // ── beforeunload — fire-and-forget (no async in unload handlers) ──────────
   useEffect(() => {
+    const id = consultationId // capture in closure
     const handleBeforeUnload = (e) => {
-      stopConsultation()
+      if (id && !stoppedRef.current) {
+        stoppedRef.current = true
+        const token = localStorage.getItem('access_token')
+        try {
+          fetch(`/api/education/consultations/${id}/stop/`, {
+            method: 'POST', keepalive: true,
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: '{}',
+          }).catch(() => {})
+        } catch {}
+      }
       e.preventDefault()
-      e.returnValue = 'Консультация завершится. Вы уверены, что хотите выйти?'
+      e.returnValue = 'Консультация завершится. Вы уверены что хотите выйти?'
       return e.returnValue
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [stopConsultation])
+  }, [consultationId])
 
-  // Confirm close → stop consultation → notify parent.
-  const handleClose = useCallback(() => {
+  // ── Confirm + awaited stop → parent reload reflects updated status ────────
+  const handleClose = useCallback(async () => {
     const confirmed = window.confirm(
       'Вы уверены, что хотите закрыть?\nКонсультация завершится и ученик увидит сообщение об окончании.'
     )
     if (!confirmed) return
-    stopConsultation()
+
+    if (consultationId && !stoppedRef.current) {
+      stoppedRef.current = true
+      try { await api.post(`/education/consultations/${consultationId}/stop/`) } catch {}
+    }
+
     if (apiRef.current) {
       try { apiRef.current.dispose() } catch {}
       apiRef.current = null
     }
     onClose()
-  }, [stopConsultation, onClose])
+  }, [consultationId, onClose])
 
-  // Direct link to open the room in a new browser tab (fallback when embedded fails).
+  // JWT token goes into the URL for the "open in browser" fallback so Jitsi
+  // recognises the trainer as moderator without showing a login dialog.
   const roomUrl = info?.jitsi_domain && info?.room_name
-    ? `https://${info.jitsi_domain}/${info.room_name}`
+    ? `https://${info.jitsi_domain}/${info.room_name}${info.jitsi_token ? `?jwt=${info.jitsi_token}` : ''}`
     : null
 
+  // ── Embedded External API ─────────────────────────────────────────────────
   useEffect(() => {
     if (!info?.jitsi_domain || !info?.room_name) return
     const domain = info.jitsi_domain
@@ -573,10 +577,14 @@ function JitsiRoomModal({ info, consultationId, onClose }) {
         width: '100%',
         height: '100%',
         userInfo: { displayName: info.display_name || 'Тренер' },
+        // JWT token → trainer joins as moderator, no Prosody login dialog
         ...(info.jitsi_token ? { jwt: info.jitsi_token } : {}),
         configOverwrite: {
           startWithAudioMuted: false,
           startWithVideoMuted: false,
+          prejoinPageEnabled: false,
+          prejoinConfig: { enabled: false },
+          lobby: { autoKnock: false, enableChat: false },
           disableDeepLinking: true,
           enableWelcomePage: false,
           enableClosePage: false,
@@ -592,11 +600,9 @@ function JitsiRoomModal({ info, consultationId, onClose }) {
           SHOW_JITSI_WATERMARK: false,
           SHOW_BRAND_WATERMARK: false,
           SHOW_POWERED_BY: false,
-          DISABLE_VIDEO_BACKGROUND: false,
         },
       })
 
-      // When the user clicks Hang Up inside Jitsi — treat as close.
       apiRef.current.addEventListener('readyToClose', handleClose)
     }
 
@@ -621,12 +627,11 @@ function JitsiRoomModal({ info, consultationId, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-2 bg-black/60 backdrop-blur">
-        <span className="text-white/70 text-xs">
+        <span className="text-white/70 text-xs hidden sm:block">
           Комната: <span className="font-mono text-white/90">{info?.room_name}</span>
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           {roomUrl && (
             <a
               href={roomUrl}
