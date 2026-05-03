@@ -1,137 +1,153 @@
-# HANDOFF — 2026-05-02 (сессия 5 — production fixes)
+# HANDOFF — 2026-05-03 (сессия 6 — stream + jitsi + security)
 
 ## Что сделано в этой сессии
 
-### 1. ConsultationsAdmin — подтверждение и авто-стоп
+### 1. Стянули изменения друга (коммит b07b3fb)
+- `ConsultationStatusView` возвращает `active=True` для статуса 'used' (чтобы не кикать участников)
+- Атомарный инкремент `used_count` через `F()` (устарел — мы не инкрементируем)
+- `_build_stream_playback_url` — fallback на `videodelivery.net` если `CF_STREAM_CUSTOMER` не задан
+- Migration 0005: сброс слишком низких `max_uses` до 100, восстановление 'used' консультаций
 
-**Файл:** `frontend-spa/src/pages/admin/education/ConsultationsAdmin.jsx`
+### 2. Jitsi — фикс прав модератора
+**Файлы:** `apps/education/services.py`, `frontend-spa/src/pages/public/ConsultationRoom.jsx`
 
-- `JitsiRoomModal` теперь принимает `consultationId`.
-- При нажатии «Завершить и закрыть» показывается `window.confirm(...)` — 
-  пользователь явно подтверждает что хочет закрыть.
-- После подтверждения вызывается `POST /api/education/consultations/{id}/stop/`
-  через `fetch(..., { keepalive: true })` — работает даже в `beforeunload`.
-- `beforeunload` listener навешен пока модалка открыта — браузер показывает
-  стандартный диалог «Покинуть страницу?», консультация завершается.
-- Кнопка «Открыть в браузере» (фиолетовая) открывает `https://{domain}/{room}`
-  в новой вкладке — fallback когда встроенный Jitsi выдаёт «Сбой подключения».
-- Jitsi `readyToClose` (кнопка «Положить трубку» внутри Jitsi) тоже вызывает
-  `handleClose` с подтверждением.
+- JWT теперь включает `affiliation: 'owner'/'member'`, `role: 'moderator'/'participant'`
+- `enableUserRolesBasedOnToken: true` — Prosody enforces moderator rights via JWT claims
+- Ограничение кнопок тулбара для студента (нет записи, эфира, лишних кнопок)
+- `videoConferenceJoined` listener — defence-in-depth: перезаписывает конфиг при входе
+- `SETTINGS_SECTIONS: ['devices', 'language']` — нет лишних настроек у студента
 
-### 2. Serializer — авто-регенерация истёкших thumbnail URL
+### 3. GetCourse-style плеер (полный рерайт)
+**Файл:** `frontend-spa/src/components/education/HlsPlayer.jsx`
 
-**Файл:** `apps/education/serializers.py` — `LessonSerializer.get_thumbnail_url`
+- Кастомные контролы: play/pause, volume slider, scrubber с buffer indicator, quality menu, fullscreen
+- Auto-hide controls через 2.5s при воспроизведении
+- Quality selector: ABR (авто) + ручной выбор из HLS levels
+- `live` prop — скрывает scrubber, показывает красный LIVE dot
+- Retry при network error, `manifestLoadingMaxRetry: 10`
 
-Логика (по приоритету):
-1. Если в DB хранится постоянный URL (CDN/R2-public) — возвращаем его.
-2. Если URL содержит `X-Amz-Expires` (presigned, истекающий) — регенерируем
-   из ключа `thumbnails/{lesson.id}.jpg` через R2_PUBLIC_URL или свежий
-   presigned URL (7 дней TTL). Без дополнительных HTTP-запросов — только
-   подпись локально через boto3.
-3. Если thumbnail пустой и есть `stream_uid` — возвращаем CF Stream CDN URL
-   (публичный, без истечения).
-4. Иначе — пустая строка.
+### 4. Защита контента
+**Файлы:** `frontend-spa/src/components/education/useContentProtection.js`, `Watermark.jsx`
 
-### 3. Thumbnail TTL → 7 дней
+- Mac Cmd-шорткаты (Cmd+S/P/U/Shift+I/J/C/K)
+- `window.blur` пауза видео (OBS/QuickTime защита)
+- `copy/drag/selectstart` заблокированы
+- Print Screen → очистка буфера обмена
+- Watermark: 2 слоя — плавающий (каждые 5s) + 4×4 diagonal grid
 
-**Файл:** `apps/education/views.py` — `thumbnail_upload_url` action
+### 5. Исправление 5 критических багов в стримах/консультациях
 
-Когда `R2_PUBLIC_URL` не задан, TTL presigned download URL изменён с 1 часа
-на 7 дней. Для удобства в dev/staging до настройки публичного бакета.
+**Файлы:** `apps/education/cabinet_views.py`, `apps/education/views.py`, `frontend-spa/src/pages/cabinet/education/StreamLive.jsx`
+
+1. **StreamLive polling bug** — опрос не запускался когда нет активного стрима. Студент не видел эфир даже когда тренер начал стримить. Теперь опрашивает всегда (даже `stream=null`).
+2. **Soft-delete не фильтровался** — удалённые стримы были доступны студентам через GET/JOIN/heartbeat/viewers. Добавлен `deleted_at__isnull=True` везде.
+3. **Несоответствие прав join/view** — стримы без групп можно было видеть через ?id= ссылку, но нельзя было join. Теперь оба endpoint используют одну логику (группы отсутствуют = доступно всем).
+4. **Auto-detect fallback** — если группа студента не совпадает, теперь ищется стрим с нулевым числом групп (доступный всем).
+5. **PublicConsultationView + join_as_trainer** — статус 'used' с `ended_at=None` теперь разрешает rejoin (студент может обновить страницу при активной консультации).
+
+### 6. Фикс webhook-парсинга CF Stream
+**Файл:** `apps/education/views.py`
+
+`liveInput` в webhook payload CF Stream — это объект `{"uid": "..."}`, не строка. Старый код через `or` захватывал весь dict. Теперь правильно извлекает UID для обоих форматов событий.
+
+### 7. Массовое удаление уроков (bulk delete)
+**Файл:** `frontend-spa/src/pages/admin/education/LessonsAdmin.jsx`
+
+- Кнопка «Выбрать», чекбоксы на каждой карточке
+- `selectedIds` Set, `performBulkDelete` с `Promise.allSettled`
+- Bulk action bar с кнопкой «Удалить (N)» и ConfirmModal
 
 ---
 
-## Про Jitsi «Сбой подключения»
+## Состояние сервера — что нужно сделать на сервере
 
-**Причина:** meet.jit.si с конца 2023 требует авторизации (Google/GitHub OAuth)
-для создания/модерации комнаты. Без токена JWT внешний API загружается, но
-конференция не стартует.
-
-**Текущий workaround:** кнопка «Открыть в браузере» — тренер открывает
-`https://meet.jit.si/{uuid}` в новой вкладке и логинится там.
-
-**Долгосрочное решение (из CLAUDE.md):** self-host Jitsi на
-`jitsi.crm.aiym-syry.kg` (`apt install jitsi-meet`). Тогда:
-- В `.env`: `JITSI_DOMAIN=jitsi.crm.aiym-syry.kg`, `JITSI_APP_SECRET=...`
-- Backend генерирует JWT токен (код уже есть в `views.py`)
-- Встроенный Jitsi работает без проблем с авторизацией
-
----
-
-## Про превью уроков
-
-**Если урок загружен через CF Stream** (stream_uid задан):
-- Thumbnail: `https://customer-cyusd1ztro8pgq40.cloudflarestream.com/{uid}/thumbnails/thumbnail.jpg`
-- Preview: HLS через `customer-cyusd1ztro8pgq40.cloudflarestream.com/{uid}/manifest/video.m3u8`
-- Работает если `CF_STREAM_CUSTOMER=customer-cyusd1ztro8pgq40` в `.env` на сервере
-
-**Если урок загружен через R2 fallback** (нет stream_uid, есть r2_key):
-- Thumbnail: нет авто-thumbnail; нужно загрузить вручную через кнопку 🖼️ в карточке
-- Preview: R2 presigned URL (работает если R2 настроен)
-
-**Команда для диагностики на сервере:**
 ```bash
+# Подключиться к серверу
+ssh root@crm.aiym-syry.kg  # или через панель Timeweb
+
+# 1. Стянуть свежий код
+cd /var/www/fitness-crm
+git pull origin main
+
+# 2. Активировать venv и накатить миграции
+source venv/bin/activate
+python manage.py migrate
+# Должно применить migration 0005_fix_consultation_max_uses
+
+# 3. Убедиться что CF_STREAM_CUSTOMER задан
+grep "CF_STREAM_CUSTOMER" .env
+# Должно быть: CF_STREAM_CUSTOMER=customer-cyusd1ztro8pgq40
+# Если нет — добавить:
+echo "CF_STREAM_CUSTOMER=customer-cyusd1ztro8pgq40" >> .env
+
+# 4. Пересобрать frontend (занимает ~2-3 мин)
+cd frontend-spa
+npm run build
+cd ..
+
+# 5. Перезапустить gunicorn
+sudo systemctl restart fitness-crm.service
+sudo systemctl status fitness-crm.service  # должен быть active (running)
+
+# 6. Применить Jitsi config для enableUserRolesBasedOnToken
+# Если Jitsi настроен:
+sudo nano /etc/jitsi/meet/jitsi.crm.aiym-syry.kg-config.js
+# Найти и добавить/раскомментировать:
+#   enableUserRolesBasedOnToken: true,
+# Затем перезапустить Jitsi:
+sudo systemctl restart jitsi-videobridge2 prosody jicofo
+```
+
+---
+
+## Диагностика стрима (если всё ещё не работает)
+
+```bash
+# Проверить какие стримы есть в БД
 cd /var/www/fitness-crm
 source venv/bin/activate
 python manage.py shell -c "
-from apps.education.models import Lesson
-for l in Lesson.objects.all():
-    print(l.id, l.title[:30], 'uid=', l.stream_uid[:8] if l.stream_uid else 'NONE',
-          'r2=', l.r2_key[:15] if l.r2_key else 'NONE',
-          'thumb=', bool(l.thumbnail_url))
+from apps.education.models import LiveStream
+for s in LiveStream.objects.all().order_by('-created_at')[:5]:
+    print(s.id, s.title[:30], s.status,
+          'playback=', s.cf_playback_id[:8] if s.cf_playback_id else 'EMPTY',
+          'webrtc=', 'SET' if s.cf_webrtc_url else 'EMPTY',
+          'groups=', list(s.groups.values_list('name', flat=True)))
 "
+# Если cf_playback_id EMPTY — стрим создан когда CF не был настроен.
+# Нужно создать новый стрим через админку.
 ```
 
 ---
 
-## Следующий шаг на сервере
-
-```bash
-# 1. Задеплоить новый код
-cd /var/www/fitness-crm && git pull origin main
-
-# 2. Убедиться что CF_STREAM_CUSTOMER задан в .env
-grep "CF_STREAM_CUSTOMER" .env  
-# должно быть: CF_STREAM_CUSTOMER=customer-cyusd1ztro8pgq40
-
-# 3. Пересобрать frontend
-cd frontend-spa && npm run build
-
-# 4. Перезапустить gunicorn
-sudo systemctl restart fitness-crm && sudo systemctl status fitness-crm
-```
-
-Если `CF_STREAM_CUSTOMER` не задан — добавить:
-```bash
-echo "CF_STREAM_CUSTOMER=customer-cyusd1ztro8pgq40" >> /var/www/fitness-crm/.env
-```
-
----
-
-## Состояние git
+## Состояние git (после этой сессии)
 
 ```
-main: b6250b6 — education: fix consultation stop-on-close, Jitsi fallback, thumbnail refresh
+main: 7698691 — education: fix CF Stream webhook payload parsing
+main-1: 3701d62 — education: fix 5 stream/consultation bugs
+main-2: 87dd6de — education: Jitsi moderator fix, pro player, content security
+main-3: b07b3fb — fix: consultation kicks & stream playback (друг)
 ```
 
 Все изменения закоммичены. Незакоммиченных файлов нет.
 
 ---
 
-# Архив прошлых HANDOFF
+## Архив прошлых HANDOFF
 
-## HANDOFF — 2026-05-02 (сессия 3 — production-quality polish)
+### HANDOFF — 2026-05-02 (сессия 5 — production fixes)
 
-В этой сессии прошла масштабная полировка проекта по «стандартам качества
-продуктов»: адаптивность, UX, доступность, производительность. Никакой
-бизнес-логики не менялось — только presentation/quality слой.
+- `JitsiRoomModal` — подтверждение остановки консультации
+- Авто-регенерация истёкших thumbnail URL  
+- Thumbnail TTL → 7 дней
 
-**Билд:** `npm run build` ✅. **Django:** `manage.py check` ✅.
-Главный bundle уменьшился с ~монолита до **76 KB gzip + per-page chunks**.
+### HANDOFF — 2026-05-02 (сессия 3 — production-quality polish)
 
-## HANDOFF — 2026-05-02 (сессия 2 — pre-polish)
+Масштабная полировка: адаптивность, UX, доступность, производительность.
+Главный bundle: ~76 KB gzip + per-page chunks.
 
-В прошлых сессиях достроили модуль обучения (Sprint 1–5.6). Основные правки:
+### HANDOFF — 2026-05-02 (сессия 2 — pre-polish)
+
 - Thumbnail upload via R2 presigned PUT + Canvas capture
 - Metadata edit (PATCH /metadata/)
 - BroadcastPage redirect after stream end
