@@ -590,7 +590,8 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
     def join_as_trainer(self, request, pk=None):
         """Return Jitsi room info for the trainer without incrementing used_count."""
         consultation = self.get_object()
-        if consultation.status not in ('active',):
+        # Allow trainer to rejoin 'used' consultations while still ongoing
+        if consultation.status not in ('active', 'used'):
             return Response(
                 {'valid': False, 'reason': consultation.status},
                 status=status.HTTP_400_BAD_REQUEST,

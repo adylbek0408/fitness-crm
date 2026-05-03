@@ -74,12 +74,11 @@ export default function StreamLive() {
   const playback = joined?.playback_url || stream?.playback_url || ''
   const watermarkText = joined?.watermark?.text || ''
 
-  // Poll every 5 s — detect when stream goes live (scheduled→live) or ends
-  // Also handles: stream not yet started (shows waiting screen)
+  // Poll every 5 s — detect when stream goes live (scheduled→live) or ends.
+  // IMPORTANT: poll even when no stream is active yet (no guard on stream?.id)
+  // so the page auto-updates when the admin starts a broadcast.
   useEffect(() => {
-    // Poll even before join — to detect scheduled→live transition
-    const targetId = stream?.id || streamId
-    if (!targetId) return
+    if (streamEnded) return // no need to poll after stream has ended
     const pollUrl = streamId
       ? `/cabinet/education/streams/active/?id=${streamId}`
       : '/cabinet/education/streams/active/'
@@ -102,7 +101,8 @@ export default function StreamLive() {
         .catch(() => {})
     }, 5000)
     return () => clearInterval(id)
-  }, [stream?.id, stream?.status, streamId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream?.id, stream?.status, streamId, streamEnded])
 
   return (
     <div className="min-h-screen" style={{ background: '#fdf8fa' }}>

@@ -12,7 +12,7 @@ import logging
 from datetime import timedelta
 
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import F, Q
+from django.db.models import Count, F, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -226,20 +226,32 @@ class CabinetStreamView(APIView):
         if stream_id:
             # Fetch specific stream by ID (for shareable links)
             try:
-                stream = LiveStream.objects.get(pk=stream_id)
+                stream = LiveStream.objects.get(pk=stream_id, deleted_at__isnull=True)
             except LiveStream.DoesNotExist:
                 return Response({'stream': None, 'reason': 'not_found'})
-            # Access check: stream must belong to client's group OR have no groups
+            # Access check: stream must belong to client's group OR have no groups assigned
             if stream.groups.exists() and client.group_id:
                 if not stream.groups.filter(id=client.group_id).exists():
                     return Response({'stream': None, 'reason': 'forbidden'})
         else:
-            # Auto-detect active stream for client's group
-            if not client.group_id:
-                return Response({'stream': None})
-            stream = LiveStream.objects.filter(
-                status='live', groups__id=client.group_id,
-            ).order_by('-started_at').first()
+            # Auto-detect: find a live stream for this student.
+            stream = None
+            base_qs = LiveStream.objects.filter(status='live', deleted_at__isnull=True)
+
+            # Priority 1: stream assigned to the student's specific group
+            if client.group_id:
+                stream = base_qs.filter(groups__id=client.group_id).order_by('-started_at').first()
+
+            # Priority 2: stream with no groups assigned (available to everyone)
+            if not stream:
+                stream = (
+                    base_qs
+                    .annotate(group_count=Count('groups'))
+                    .filter(group_count=0)
+                    .order_by('-started_at')
+                    .first()
+                )
+
             if not stream:
                 return Response({'stream': None})
 
@@ -255,11 +267,15 @@ class CabinetStreamJoinView(APIView):
     def post(self, request, pk):
         client = request.user.client
         try:
-            stream = LiveStream.objects.get(pk=pk, status='live')
+            stream = LiveStream.objects.get(pk=pk, status='live', deleted_at__isnull=True)
         except LiveStream.DoesNotExist:
             return Response({'detail': 'Stream not active.'},
                             status=status.HTTP_404_NOT_FOUND)
-        if not client.group_id or not stream.groups.filter(id=client.group_id).exists():
+        # Access: stream must belong to student's group OR have no groups (open stream)
+        if stream.groups.exists() and (
+            not client.group_id
+            or not stream.groups.filter(id=client.group_id).exists()
+        ):
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
         viewer, _ = StreamViewer.objects.update_or_create(
@@ -286,12 +302,15 @@ class CabinetStreamHeartbeatView(APIView):
         if not viewer:
             # Recreate viewer record if stream still live.
             try:
-                stream = LiveStream.objects.get(pk=pk, status='live')
+                stream = LiveStream.objects.get(pk=pk, status='live', deleted_at__isnull=True)
             except LiveStream.DoesNotExist:
                 return Response({'detail': 'Not joined.'},
                                 status=status.HTTP_404_NOT_FOUND)
             client = request.user.client
-            if not client.group_id or not stream.groups.filter(id=client.group_id).exists():
+            if stream.groups.exists() and (
+                not client.group_id
+                or not stream.groups.filter(id=client.group_id).exists()
+            ):
                 return Response({'detail': 'Forbidden.'},
                                 status=status.HTTP_403_FORBIDDEN)
             StreamViewer.objects.create(stream=stream, client=client, is_active=True)
@@ -308,11 +327,15 @@ class CabinetStreamViewersView(APIView):
     def get(self, request, pk):
         client = request.user.client
         try:
-            stream = LiveStream.objects.get(pk=pk)
+            stream = LiveStream.objects.get(pk=pk, deleted_at__isnull=True)
         except LiveStream.DoesNotExist:
             return Response({'detail': 'Not found.'},
                             status=status.HTTP_404_NOT_FOUND)
-        if not client.group_id or not stream.groups.filter(id=client.group_id).exists():
+        # Access: stream must belong to student's group OR have no groups (open stream)
+        if stream.groups.exists() and (
+            not client.group_id
+            or not stream.groups.filter(id=client.group_id).exists()
+        ):
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
         # Drop stale viewers (heartbeat older than 30s).
@@ -378,7 +401,11 @@ class PublicConsultationView(APIView):
             consultation.status = 'expired'
             consultation.save(update_fields=['status', 'updated_at'])
 
-        if not consultation.is_consumable:
+        # Allow 'used' consultations when the call hasn't been explicitly ended
+        # (ended_at is None = trainer hasn't pressed Stop yet).
+        # This lets students rejoin after a network drop without getting locked out.
+        still_ongoing = consultation.status == 'used' and consultation.ended_at is None
+        if not still_ongoing and not consultation.is_consumable:
             return Response({'valid': False, 'reason': consultation.status})
 
         display_name = (request.query_params.get('name') or '').strip()
