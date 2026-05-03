@@ -100,7 +100,8 @@ class ClientService(BaseService):
         elif group_id:
             from apps.groups.models import Group
             try:
-                grp = Group.objects.get(id=group_id)
+                # Soft-deleted groups must not be selectable for new enrollments.
+                grp = Group.objects.get(id=group_id, deleted_at__isnull=True)
                 if grp.status == 'completed':
                     raise ValidationError('Нельзя записать клиента в завершённый поток')
                 data['status'] = 'active'
@@ -179,7 +180,8 @@ class ClientService(BaseService):
         if 'group_id' in data and data['group_id']:
             from apps.groups.models import Group
             try:
-                grp = Group.objects.get(id=data['group_id'])
+                # Soft-deleted groups must not be selectable.
+                grp = Group.objects.get(id=data['group_id'], deleted_at__isnull=True)
                 if grp.status == 'completed':
                     raise ValidationError('Нельзя привязать клиента к завершённому потоку')
             except Group.DoesNotExist:
@@ -212,7 +214,8 @@ class ClientService(BaseService):
         if client.group_id and str(client.group_id) != str(group_id):
             raise ValidationError(f'Клиент уже в Потоке #{client.group.number}')
         try:
-            group = Group.objects.get(id=group_id)
+            # Skip soft-deleted groups so they can't be reassigned to.
+            group = Group.objects.get(id=group_id, deleted_at__isnull=True)
         except Group.DoesNotExist:
             raise NotFoundError(f"Group {group_id} not found")
         if group.status == 'completed':
@@ -256,7 +259,8 @@ class ClientService(BaseService):
             raise ValidationError(f'Клиент уже в Потоке #{client.group.number}.')
 
         try:
-            group = Group.objects.get(id=group_id)
+            # Skip soft-deleted groups.
+            group = Group.objects.get(id=group_id, deleted_at__isnull=True)
         except Group.DoesNotExist:
             raise ValidationError(f'Поток {group_id} не найден')
         if group.status == 'completed':
@@ -448,7 +452,8 @@ class ClientService(BaseService):
             raise ValidationError('payment_type должен быть full или installment')
 
         try:
-            group = Group.objects.get(id=group_id)
+            # Skip soft-deleted groups.
+            group = Group.objects.get(id=group_id, deleted_at__isnull=True)
         except Group.DoesNotExist:
             raise ValidationError(f'Поток {group_id} не найден')
         if group.status == 'completed':

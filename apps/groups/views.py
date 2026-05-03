@@ -13,6 +13,25 @@ from .services import GroupService
 from .filters import GroupFilter
 
 
+def _auto_promote_groups():
+    """Promote groups whose start_date has arrived to 'active'.
+
+    Idempotent and cheap: filters by indexed (status, start_date), no-ops most
+    of the time. Called on every list/retrieve so admins don't need to remember
+    to run a cron — opening the page does the right thing.
+
+    We deliberately DO NOT auto-close 'active' → 'completed' here, because
+    close_group has side effects (creates ClientGroupHistory rows, detaches
+    clients) that should be explicit.
+    """
+    today = date.today()
+    Group.objects.filter(
+        status='recruitment',
+        start_date__lte=today,
+        deleted_at__isnull=True,
+    ).update(status='active')
+
+
 class GroupViewSet(viewsets.ModelViewSet):
     queryset      = Group.objects.filter(deleted_at__isnull=True).select_related('trainer').all()
     service       = GroupService()
@@ -30,6 +49,16 @@ class GroupViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update']:
             return GroupWriteSerializer
         return GroupReadSerializer
+
+    def list(self, request, *args, **kwargs):
+        # Auto-promote 'recruitment' → 'active' when the start date has arrived.
+        # Done on every list call so admins see fresh statuses without a cron.
+        _auto_promote_groups()
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        _auto_promote_groups()
+        return super().retrieve(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         data = serializer.validated_data.copy()
@@ -113,27 +142,28 @@ class GroupViewSet(viewsets.ModelViewSet):
         При завершении статус клиентов → 'completed'.
         """
         today = date.today()
-        activated  = []
         completed  = []
 
-        # recruitment → active
-        to_activate = Group.objects.filter(
+        # recruitment → active.  Skip soft-deleted rows.  Use a single bulk
+        # update for the activations (cheap, indexed, idempotent).  Names are
+        # collected separately for the response body.
+        to_activate_qs = Group.objects.filter(
             status='recruitment',
             start_date__lte=today,
+            deleted_at__isnull=True,
         )
-        for group in to_activate:
-            try:
-                group.status = 'active'
-                group.save(update_fields=['status'])
-                activated.append(group.number)
-            except Exception:
-                pass
+        activated = list(to_activate_qs.values_list('number', flat=True))
+        to_activate_qs.update(status='active')
 
-        # active → completed (закрываем через сервис, чтобы сохранить историю)
+        # active → completed (закрываем через сервис, чтобы сохранить историю).
+        # close_group has side effects (creates ClientGroupHistory rows, detaches
+        # clients) so we keep the per-row loop here.  But we must skip soft-deleted
+        # rows — otherwise we'd try to close a trashed group, which is incoherent.
         to_complete = Group.objects.filter(
             status='active',
             end_date__isnull=False,
             end_date__lt=today,
+            deleted_at__isnull=True,
         )
         for group in to_complete:
             try:

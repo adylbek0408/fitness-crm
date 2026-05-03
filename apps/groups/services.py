@@ -35,7 +35,12 @@ class GroupService(BaseService):
             raise NotFoundError(f"Group {group_id} not found")
 
     def create_group(self, data: dict) -> Group:
-        if Group.objects.filter(number=data.get('number')).exists():
+        # Uniqueness check must ignore soft-deleted rows. Otherwise a number
+        # belonging to a trashed group blocks reuse, even though the row is
+        # invisible everywhere else in the app.
+        if Group.objects.filter(
+            number=data.get('number'), deleted_at__isnull=True,
+        ).exists():
             raise ValidationError(f"Group with number {data['number']} already exists")
         group = Group.objects.create(**data)
         self.logger.info(f"Group created: {group.id} #{group.number}")
@@ -52,7 +57,9 @@ class GroupService(BaseService):
             # Сохраняем остальные поля (без статуса) перед закрытием
             other_data = {k: v for k, v in data.items() if k != 'status'}
             if 'number' in other_data and other_data['number'] != group.number:
-                if Group.objects.filter(number=other_data['number']).exists():
+                if Group.objects.filter(
+                    number=other_data['number'], deleted_at__isnull=True,
+                ).exists():
                     raise ValidationError(f"Group number {other_data['number']} already taken")
             for field, value in other_data.items():
                 setattr(group, field, value)
@@ -61,7 +68,9 @@ class GroupService(BaseService):
             return self.close_group(group_id)
 
         if 'number' in data and data['number'] != group.number:
-            if Group.objects.filter(number=data['number']).exists():
+            if Group.objects.filter(
+                number=data['number'], deleted_at__isnull=True,
+            ).exists():
                 raise ValidationError(f"Group number {data['number']} already taken")
         for field, value in data.items():
             setattr(group, field, value)

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import {
   STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
-  toAbsoluteUrl, fmtDateTime
+  toAbsoluteUrl, fmtDateTime, fmtDate
 } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPaymentForm'
@@ -1226,10 +1226,23 @@ export default function ClientDetail() {
 
   const allReceipts = []
   if (client.payment_type === 'full' && full?.receipt)
-    allReceipts.push({ id: full.id, date: full.paid_at, amount: full.amount, label: 'Полная оплата', receipt: full.receipt })
+    // Prefer created_at (exact upload datetime) over paid_at (which on
+    // installments is just a date) so 3–4 receipts uploaded the same day
+    // can be told apart by minute.
+    allReceipts.push({
+      id: full.id,
+      date: full.created_at || full.paid_at,
+      amount: full.amount,
+      label: 'Полная оплата',
+      receipt: full.receipt,
+    })
   if (client.payment_type === 'installment' && plan?.payments?.length)
     plan.payments.forEach((p, i) => allReceipts.push({
-      id: p.id, date: p.paid_at, amount: p.amount, label: `Платёж ${i + 1}`, receipt: p.receipt || null
+      id: p.id,
+      date: p.created_at || p.paid_at,
+      amount: p.amount,
+      label: `Платёж ${i + 1}`,
+      receipt: p.receipt || null,
     }))
 
   const payProgress = plan
@@ -1487,7 +1500,14 @@ export default function ClientDetail() {
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">История платежей</p>
                   {plan.payments.map((p, i) => (
                     <div key={p.id} className="flex items-center justify-between py-2 text-xs border-b border-slate-50 last:border-0">
-                      <span className="text-slate-400">{p.paid_at}</span>
+                      <div className="flex flex-col">
+                        <span className="text-slate-500">{fmtDate(p.paid_at)}</span>
+                        {p.created_at && (
+                          <span className="text-[10px] text-slate-400">
+                            загружен {fmtDateTime(p.created_at)}
+                          </span>
+                        )}
+                      </div>
                       <span className="font-semibold text-slate-700 crm-money">{fmtMoney(p.amount)}</span>
                       {p.receipt
                         ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer"

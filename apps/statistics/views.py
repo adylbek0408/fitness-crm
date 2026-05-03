@@ -242,9 +242,26 @@ class StatisticsViewSet(viewsets.GenericViewSet):
         from apps.groups.models import Group
         from apps.accounts.models import ManagerProfile
 
-        clients = Client.objects.filter(deleted_at__isnull=False).select_related('group', 'trainer').order_by('-deleted_at')[:200]
-        groups = Group.objects.filter(deleted_at__isnull=False).select_related('trainer').order_by('-deleted_at')[:200]
-        managers = ManagerProfile.objects.filter(deleted_at__isnull=False).select_related('user').order_by('-deleted_at')
+        # No hard cap on the trash list — admins need to see every deleted
+        # row to clean up. The previous [:200] silently hid older entries
+        # once total deletions crossed 200 (user complained: 272 clients vs
+        # 200 in trash). If the list ever grows huge, paginate; for now
+        # explicit `count()` size is in the thousands at most.
+        clients = (
+            Client.objects.filter(deleted_at__isnull=False)
+            .select_related('group', 'trainer')
+            .order_by('-deleted_at')
+        )
+        groups = (
+            Group.objects.filter(deleted_at__isnull=False)
+            .select_related('trainer')
+            .order_by('-deleted_at')
+        )
+        managers = (
+            ManagerProfile.objects.filter(deleted_at__isnull=False)
+            .select_related('user')
+            .order_by('-deleted_at')
+        )
 
         return Response({
             'clients': [

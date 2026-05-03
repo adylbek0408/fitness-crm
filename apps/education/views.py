@@ -781,35 +781,61 @@ class CFStreamWebhookView(APIView):
 
         # Auto-archive: if we know which live input produced this video,
         # attach the lesson to that LiveStream.
+        #
+        # Idempotency: Cloudflare retries webhooks (we observed duplicate
+        # deliveries in prod). Without locking, two concurrent calls could
+        # both pass the `archived_lesson_id is None` check and create two
+        # `Lesson` rows for the same recording. We wrap the read+update in a
+        # transaction with `select_for_update` so the second delivery either
+        # sees the already-set `archived_lesson` and bails, or sees the same
+        # `recording_uid` and reuses the existing lesson.
         if live_input_uid and video_uid:
-            stream = LiveStream.objects.filter(
-                cf_input_uid=live_input_uid,
-            ).order_by('-created_at').first()
-            if stream and not stream.archived_lesson_id:
-                lesson = Lesson.objects.create(
-                    title=f"Эфир: {stream.title}",
-                    description=stream.description or '',
-                    lesson_type='video',
-                    stream_uid=video_uid,
-                    duration_sec=int(duration or 0),
-                    thumbnail_url=thumbnail or '',
-                    trainer=stream.trainer,
-                    is_published=True,
-                    published_at=timezone.now(),
+            from django.db import transaction
+            with transaction.atomic():
+                stream = (
+                    LiveStream.objects.select_for_update()
+                    .filter(cf_input_uid=live_input_uid)
+                    .order_by('-created_at')
+                    .first()
                 )
-                # propagate group access
-                if stream.groups.exists():
-                    lesson.groups.set(list(stream.groups.values_list('id', flat=True)))
-                stream.archived_lesson = lesson
-                stream.recording_uid = video_uid
-                stream.status = 'archived'
-                if not stream.ended_at:
-                    stream.ended_at = timezone.now()
-                stream.save(update_fields=[
-                    'archived_lesson', 'recording_uid', 'status',
-                    'ended_at', 'updated_at',
-                ])
-                return Response({'ok': True, 'archived_lesson_id': str(lesson.id)})
+                if stream and stream.archived_lesson_id:
+                    # Already archived (likely a retry). No-op.
+                    return Response({
+                        'ok': True,
+                        'archived_lesson_id': str(stream.archived_lesson_id),
+                        'idempotent': True,
+                    })
+                if stream:
+                    # Defensive: if a Lesson with this exact stream_uid already
+                    # exists (e.g. webhook arrived twice and the prior call
+                    # created the row before this transaction got the lock),
+                    # link it instead of creating a duplicate.
+                    lesson = Lesson.objects.filter(stream_uid=video_uid).first()
+                    if not lesson:
+                        lesson = Lesson.objects.create(
+                            title=f"Эфир: {stream.title}",
+                            description=stream.description or '',
+                            lesson_type='video',
+                            stream_uid=video_uid,
+                            duration_sec=int(duration or 0),
+                            thumbnail_url=thumbnail or '',
+                            trainer=stream.trainer,
+                            is_published=True,
+                            published_at=timezone.now(),
+                        )
+                        # propagate group access
+                        if stream.groups.exists():
+                            lesson.groups.set(list(stream.groups.values_list('id', flat=True)))
+                    stream.archived_lesson = lesson
+                    stream.recording_uid = video_uid
+                    stream.status = 'archived'
+                    if not stream.ended_at:
+                        stream.ended_at = timezone.now()
+                    stream.save(update_fields=[
+                        'archived_lesson', 'recording_uid', 'status',
+                        'ended_at', 'updated_at',
+                    ])
+                    return Response({'ok': True, 'archived_lesson_id': str(lesson.id)})
 
         # Case 2: regular uploaded video became ready — backfill metadata.
         if video_uid:

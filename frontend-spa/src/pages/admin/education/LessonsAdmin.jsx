@@ -3,7 +3,7 @@ import {
   Upload, Trash2, Plus, CheckCircle2, Headphones, Play,
   Mic, Square, Video, FileAudio, Search, Users,
   X, AlertCircle, ChevronLeft, ChevronRight, Image, Pencil,
-  CheckSquare, Square as SquareIcon,
+  CheckSquare, Square as SquareIcon, Calendar, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -53,6 +53,10 @@ export default function LessonsAdmin() {
 
   // Preview
   const [previewLesson, setPreviewLesson] = useState(null)
+
+  // Track which card has its groups list expanded — enforces
+  // "only one open at a time" so the layout doesn't get messy.
+  const [expandedGroupsId, setExpandedGroupsId] = useState(null)
 
   const [recording, setRecording]   = useState(false)
   const [recSeconds, setRecSeconds] = useState(0)
@@ -542,6 +546,10 @@ export default function LessonsAdmin() {
                   onDelete={() => setConfirmDelete({ id: l.id, title: l.title })}
                   onSetThumbnail={() => setThumbLessonId(l.id)}
                   onEdit={() => setEditLesson(l)}
+                  groupsExpanded={expandedGroupsId === l.id}
+                  onToggleGroups={() => setExpandedGroupsId(
+                    prev => prev === l.id ? null : l.id,
+                  )}
                 />
               ))}
             </div>
@@ -678,13 +686,26 @@ export default function LessonsAdmin() {
 // ───────────────────────────────────────────────────────────────────────────
 // Lesson card — clickable preview, hover delete
 // ───────────────────────────────────────────────────────────────────────────
-function LessonCard({ lesson: l, groupById, fmtDuration, selectMode, selected, onToggleSelect, onPreview, onDelete, onSetThumbnail, onEdit }) {
+function LessonCard({
+  lesson: l, groupById, fmtDuration, selectMode, selected,
+  onToggleSelect, onPreview, onDelete, onSetThumbnail, onEdit,
+  groupsExpanded, onToggleGroups,
+}) {
   const isAudio = l.lesson_type === 'audio'
   const groupNames = (l.groups || [])
     .map(gid => groupById[gid] ? `Группа ${groupById[gid].number}` : null)
     .filter(Boolean)
+  // Show first 2 groups inline. If there are more, render the expand button.
+  const COMPACT_GROUPS_LIMIT = 2
+  const hasMoreGroups = groupNames.length > COMPACT_GROUPS_LIMIT
   // In select mode, clicking the card toggles selection instead of opening preview.
   const handleCardClick = selectMode ? onToggleSelect : onPreview
+  // Format created date as "DD.MM.YYYY" — short, locale-friendly.
+  const createdDate = l.created_at
+    ? new Date(l.created_at).toLocaleDateString('ru-RU', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      })
+    : ''
   return (
     <div
       onClick={handleCardClick}
@@ -784,16 +805,64 @@ function LessonCard({ lesson: l, groupById, fmtDuration, selectMode, selected, o
       {/* Body */}
       <div className="p-4">
         <h3 className="font-semibold text-gray-900 line-clamp-2 mb-1.5">{l.title}</h3>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          {groupNames.length > 0 ? (
-            <span className="flex items-center gap-1 truncate">
-              <Users size={11} />
-              <span className="truncate">{groupNames.join(', ')}</span>
-            </span>
-          ) : (
-            <span className="text-amber-600">Без группы</span>
-          )}
-        </div>
+
+        {/* Created date */}
+        {createdDate && (
+          <div className="flex items-center gap-1 text-[11px] text-gray-400 mb-1.5">
+            <Calendar size={10} />
+            <span>Создан {createdDate}</span>
+          </div>
+        )}
+
+        {/* Groups: first 2 inline, rest behind expand button. The card-click
+            handler still triggers preview/select, so the chevron button stops
+            propagation. Parent enforces "only one expanded card at a time". */}
+        {groupNames.length === 0 && (
+          <div className="text-xs text-amber-600">Без группы</div>
+        )}
+        {groupNames.length > 0 && (
+          <div className="text-xs text-gray-500">
+            <div className="flex items-start gap-1.5">
+              <Users size={11} className="mt-0.5 shrink-0 text-gray-400" />
+              <div className="flex-1 min-w-0">
+                {!groupsExpanded ? (
+                  <span className="line-clamp-1">
+                    {groupNames.slice(0, COMPACT_GROUPS_LIMIT).join(', ')}
+                    {hasMoreGroups && <span className="text-gray-400">…</span>}
+                  </span>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {groupNames.map((n, i) => (
+                      <span
+                        key={i}
+                        className="px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[10px]"
+                      >
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {hasMoreGroups && (
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); onToggleGroups() }}
+                  className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-rose-600 hover:bg-rose-50 transition focus:outline-none focus:ring-2 focus:ring-rose-200"
+                  title={groupsExpanded ? 'Свернуть' : `Ещё ${groupNames.length - COMPACT_GROUPS_LIMIT}`}
+                >
+                  {groupsExpanded
+                    ? <ChevronUp size={12} />
+                    : (
+                      <>
+                        <span className="text-[10px] font-semibold">+{groupNames.length - COMPACT_GROUPS_LIMIT}</span>
+                        <ChevronDown size={12} />
+                      </>
+                    )}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

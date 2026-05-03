@@ -12,13 +12,24 @@ from .models import Client, ClientAccount
 class FullPaymentReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = FullPayment
-        fields = ['id', 'amount', 'course_amount', 'is_paid', 'paid_at', 'receipt']
+        # created_at = exact upload time of the receipt (ISO datetime).
+        # paid_at can be the same instant (set via mark_paid) but the UI
+        # uses created_at to differentiate when several receipts are
+        # uploaded back-to-back on the same day.
+        fields = [
+            'id', 'amount', 'course_amount', 'is_paid', 'paid_at',
+            'receipt', 'created_at',
+        ]
 
 
 class InstallmentPaymentReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstallmentPayment
-        fields = ['id', 'amount', 'paid_at', 'receipt', 'note']
+        # paid_at is a DateField (no time) — when the payment is dated.
+        # created_at is the actual upload moment with full timestamp,
+        # which is what the UI shows in "История чеков" so 3-4 receipts
+        # uploaded the same day can be told apart.
+        fields = ['id', 'amount', 'paid_at', 'receipt', 'note', 'created_at']
 
 
 class InstallmentPlanReadSerializer(serializers.ModelSerializer):

@@ -1,4 +1,47 @@
-# HANDOFF — 2026-05-03 (сессия 7 — stream diagnostics, archive polling, pagination)
+# HANDOFF — 2026-05-03 (сессия 8 — business-logic bugs)
+
+## Что сделано в этой сессии
+
+### 1. Группы: автопереход «Набор» → «Активные» по дате старта
+**Файлы:** `apps/groups/views.py`
+
+- На каждый `GET /api/groups/` (и retrieve) запускается `_auto_promote_groups()` — bulk update по индексу `(status, start_date)`. Дешевле cron-задачи и не требует отдельного процесса.
+- `auto_update_status` (POST endpoint) тоже починен: добавлен фильтр `deleted_at__isnull=True`, замена per-row `.save()` на `update()`.
+- Auto-close active → completed остаётся ручным (есть side-effects: `ClientGroupHistory`, открепление клиентов).
+
+### 2. Уроки: дата создания, раскрытие списка групп, нормальная пагинация
+**Файлы:** `frontend-spa/src/pages/admin/education/LessonsAdmin.jsx`
+
+- В карточке появилась дата создания урока (`Calendar` icon + `created_at`).
+- Если групп больше 2 — показываются «+N» chevron-кнопка. Раскрытая карточка показывает все группы chip-ами.
+- Контролируется снаружи (`expandedGroupsId` в LessonsAdmin) — при открытии одной автоматически закрывается прошлая.
+- Пагинация уже была (PAGE_SIZE=12) — теперь работает корректно потому что max_page_size бампнут.
+
+### 3. История чеков: точное время загрузки
+**Файлы:** `apps/clients/serializers.py`, `frontend-spa/src/pages/admin/ClientDetail.jsx`, `frontend-spa/src/utils/format.js` (импорт `fmtDate`)
+
+- В `FullPaymentReadSerializer` и `InstallmentPaymentReadSerializer` добавлен `created_at` — точное время загрузки чека.
+- В блоке «История чеков» используется `created_at` (если есть) вместо `paid_at`. Формат `fmtDateTime` показывает `DD.MM.YYYY HH:mm`.
+- В «История платежей» (рассрочка) под датой платежа добавлена строка «загружен HH:mm» — теперь 3-4 чека за день различимы.
+
+### 4. Корзина: показывает все 272+ записей, не 200
+**Файлы:** `apps/statistics/views.py`, `core/pagination.py`
+
+- В `trash_data` убраны хардкод `[:200]` для clients/groups.
+- `StandardResultsPagination.max_page_size` = 1000 (было 200). Многие админ-страницы запрашивают `?page_size=500` чтобы получить весь список для клиентского фильтра — раньше тихо клипались до 200.
+
+### 5. Аудит → ещё 3 бага бизнес-логики поправлены
+
+**Файлы:** `apps/groups/services.py`, `apps/clients/services.py`, `apps/education/views.py`
+
+- **Уникальность номера группы**: после soft-delete номер не освобождался (`number=X already exists`, хотя видимой группы нет). Все 3 проверки в `GroupService` теперь с `deleted_at__isnull=True`.
+- **Назначение клиента в trash-группу**: 4 точки в `ClientService` (`create_client`, `update_client`, `assign_to_group`, `add_new_client_to_group`, `re_enroll_client`) теперь фильтруют `deleted_at__isnull=True` при `Group.objects.get()`.
+- **Webhook CF Stream — гонка двойного архива**: при ретраях Cloudflare два concurrent webhook-а могли создать два дублирующих `Lesson`. Обёрнули в `transaction.atomic()` + `select_for_update()` на `LiveStream`, плюс fallback по `stream_uid` для повторного использования существующего урока.
+
+### 6. Защита ученика от прав модератора (усилена)
+**Файл:** `frontend-spa/src/pages/public/ConsultationRoom.jsx` (доп. правки этой сессии — лаконичный strict toolbar, `lockDownToParticipantUI` re-applied на role change и через таймауты после join)
+
+---
 
 ## Что сделано в этой сессии (продолжение прерванной сессии)
 
