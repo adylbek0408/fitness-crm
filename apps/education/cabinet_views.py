@@ -12,7 +12,7 @@ import logging
 from datetime import timedelta
 
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -198,17 +198,18 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
 # ---------------------------------------------------------------------------
 
 def _build_stream_playback_url(stream: LiveStream) -> str:
-    """HLS playback URL for a live input. Public (CF Stream live-input HLS
-    is keyed by playback id, not signed in MVP). Signed live URLs require
-    `requireSignedURLs=True` on the input which we'll enable when needed."""
-    customer = (
-        stream._meta.app_config and ''  # noqa
-    )
+    """HLS playback URL for a live input."""
     from django.conf import settings as dj_settings
-    sub = getattr(dj_settings, 'CF_STREAM_CUSTOMER', '')
-    if not sub or not stream.cf_playback_id:
+    if not stream.cf_playback_id:
         return ''
-    return f'https://{sub}.cloudflarestream.com/{stream.cf_playback_id}/manifest/video.m3u8'
+    sub = getattr(dj_settings, 'CF_STREAM_CUSTOMER', '').strip()
+    if sub:
+        return f'https://{sub}.cloudflarestream.com/{stream.cf_playback_id}/manifest/video.m3u8'
+    # Fallback: use account-level URL when customer subdomain is not configured.
+    account = getattr(dj_settings, 'CF_STREAM_ACCOUNT_ID', '').strip()
+    if account:
+        return f'https://videodelivery.net/{stream.cf_playback_id}/manifest/video.m3u8'
+    return ''
 
 
 class CabinetStreamView(APIView):
@@ -347,8 +348,10 @@ class ConsultationStatusView(APIView):
             c.status = 'expired'
             c.save(update_fields=['status', 'updated_at'])
 
+        # 'used' means used_count reached max_uses but the call is still ongoing.
+        # Only 'cancelled' and 'expired' mean the session is truly over.
         return Response({
-            'active': c.status == 'active',
+            'active': c.status in ('active', 'used'),
             'status': c.status,
         })
 

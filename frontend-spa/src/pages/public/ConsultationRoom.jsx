@@ -119,8 +119,10 @@ export default function ConsultationRoom() {
     const poll = async () => {
       try {
         const r = await api.get(`/consultation/${uuid}/status/`)
-        if (!r.data?.active) {
-          // Trainer stopped the session
+        // 'used' = link quota reached but session is still live.
+        // Only 'cancelled' / 'expired' / 'not_found' mean the trainer ended the call.
+        const truly_ended = !r.data?.active && !['used', 'active'].includes(r.data?.status)
+        if (truly_ended) {
           if (apiRef.current) {
             try { apiRef.current.dispose() } catch {}
             apiRef.current = null
