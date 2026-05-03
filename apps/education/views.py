@@ -698,13 +698,23 @@ class CFStreamWebhookView(APIView):
         # so handle two common shapes.
 
         # Case 1: live recording ready (preferred event for auto-archive).
+        # CF Stream sends different shapes depending on event type:
+        #   video.ready: {"uid": "vid_uid", "meta": {"live_input": "input_uid"}, ...}
+        #   live_input.recording.ready: {"liveInput": {"uid": "input_uid"}, "video": {"uid": "vid_uid"}}
+        _live_input_raw = payload.get('liveInput') or {}
         live_input_uid = (
-            payload.get('liveInput')
-            or payload.get('live_input')
-            or (payload.get('meta') or {}).get('live_input')
+            (payload.get('meta') or {}).get('live_input')       # video.ready shape
+            or (payload.get('live_input') or '')                 # flat string form
+            or (_live_input_raw.get('uid') if isinstance(_live_input_raw, dict) else _live_input_raw)  # nested obj
             or ''
         )
-        video_uid = payload.get('uid') or payload.get('video_uid') or ''
+        _video_raw = payload.get('video') or {}
+        video_uid = (
+            payload.get('uid')                                   # video.ready top-level uid
+            or (_video_raw.get('uid') if isinstance(_video_raw, dict) else '')  # nested in video.ready
+            or payload.get('video_uid')
+            or ''
+        )
         duration = payload.get('duration') or 0
         thumbnail = payload.get('thumbnail') or ''
 
