@@ -209,11 +209,19 @@ class CloudflareStreamService:
         rtmps = result.get('rtmps', {}) or {}
         srt = result.get('srt', {}) or {}
         webrtc = result.get('webRTC', {}) or {}
-        # Build WHEP playback URL for students (WebRTC instead of HLS)
-        sub = getattr(settings, 'CF_STREAM_CUSTOMER', '').strip()
-        webrtc_playback_url = ''
-        if sub and uid:
-            webrtc_playback_url = f'https://{sub}.cloudflarestream.com/{uid}/webRTC/play'
+        webrtc_playback = result.get('webRTCPlayback', {}) or {}
+        webrtc_playback_url = webrtc_playback.get('url', '')
+
+        # Debug: log full response keys
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info('CF live_input response keys: %s', list(result.keys()))
+        logger.info('webRTCPlayback: %s', webrtc_playback)
+
+        if not webrtc_playback_url and uid:
+            sub = getattr(settings, 'CF_STREAM_CUSTOMER', '').strip()
+            if sub:
+                webrtc_playback_url = f'https://{sub}.cloudflarestream.com/{uid}/webRTC/play'
         return {
             'uid': uid,
             'rtmp_url': rtmps.get('url', ''),

@@ -2,14 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, Radio, Users, Shield, AlertTriangle, Archive, CheckCircle2, Clock } from 'lucide-react'
 import api from '../../../api/axios'
-import HlsPlayer from '../../../components/education/HlsPlayer'
-import WebRTCPlayer from '../../../components/education/WebRTCPlayer'
 import CloudflareStreamPlayer from '../../../components/education/CloudflareStreamPlayer'
 import Watermark from '../../../components/education/Watermark'
 import useContentProtection from '../../../components/education/useContentProtection'
-
-// Откат: поменяй на false чтобы вернуться к WebRTC/HLS плееру
-const USE_IFRAME = true
 
 const CF_SUBDOMAIN = 'customer-cyusd1ztro8pgq40.cloudflarestream.com'
 
@@ -24,7 +19,6 @@ export default function StreamLive() {
   const [joined, setJoined] = useState(null)
   const [warning, setWarning] = useState('')
   const [error, setError] = useState('')
-  const [forcedHls, setForcedHls] = useState(false)
   // Backend returns {stream:null, reason:'forbidden'|'not_found'} when access
   // denied or stream missing. Surface that to the user instead of the generic
   // "Сейчас эфиров нет" — which made them think the link was broken.
@@ -117,8 +111,6 @@ export default function StreamLive() {
     }
   }, [streamId]) // stable — never restarts while on the page
 
-  const playback = joined?.playback_url || stream?.playback_url || ''
-  const playbackKind = forcedHls ? 'hls' : (joined?.playback_kind || stream?.playback_kind || 'hls')
   const watermarkText = joined?.watermark?.text || ''
 
   return (
@@ -225,41 +217,10 @@ export default function StreamLive() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <div className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg">
-                {USE_IFRAME ? (
-                  <CloudflareStreamPlayer
-                    uid={stream.cf_playback_id}
-                    subdomain={CF_SUBDOMAIN}
-                  />
-                ) : playback ? (
-                  playbackKind === 'webrtc' ? (
-                    <WebRTCPlayer
-                      src={playback}
-                      onStateChange={s => {
-                        if (s === 'playing') videoRef.current = videoRef.current
-                      }}
-                      onFallback={() => setForcedHls(true)}
-                    />
-                  ) : (
-                    <HlsPlayer
-                      src={playback}
-                      autoPlay
-                      live
-                      onReady={v => { videoRef.current = v }}
-                    />
-                  )
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 text-sm gap-3">
-                    <div className="w-8 h-8 border-2 border-white/20 border-t-white/70 rounded-full animate-spin" />
-                    <div className="text-center px-4">
-                      <p>{joined ? 'Ожидаем видеосигнал…' : 'Подключаемся к эфиру…'}</p>
-                      {joined && (
-                        <p className="text-xs text-white/40 mt-1">
-                          Тренер ещё не начал трансляцию. Страница обновится автоматически.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <CloudflareStreamPlayer
+                  uid={stream.cf_playback_id}
+                  subdomain={CF_SUBDOMAIN}
+                />
                 <Watermark text={watermarkText} />
                 <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-rose-600 text-white text-xs font-bold flex items-center gap-1.5">
                   <span className="w-2 h-2 bg-white rounded-full animate-pulse" /> LIVE
