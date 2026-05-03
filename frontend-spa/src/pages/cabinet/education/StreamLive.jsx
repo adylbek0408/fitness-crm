@@ -17,6 +17,10 @@ export default function StreamLive() {
   const [joined, setJoined] = useState(null)
   const [warning, setWarning] = useState('')
   const [error, setError] = useState('')
+  // Backend returns {stream:null, reason:'forbidden'|'not_found'} when access
+  // denied or stream missing. Surface that to the user instead of the generic
+  // "Сейчас эфиров нет" — which made them think the link was broken.
+  const [accessDenied, setAccessDenied] = useState('') // '' | 'forbidden' | 'not_found'
   const videoRef = useRef(null)
 
   useContentProtection({
@@ -40,9 +44,20 @@ export default function StreamLive() {
       nav('/cabinet'); return
     }
     api.get(activeUrl)
-      .then(r => setStream(r.data?.stream || null))
+      .then(r => {
+        const s = r.data?.stream || null
+        const reason = r.data?.reason || ''
+        setStream(s)
+        // Only flag access-denial when student opened a SPECIFIC link.
+        // Auto-detect (no ?id=) returning null just means no live stream right now.
+        if (!s && streamId && (reason === 'forbidden' || reason === 'not_found')) {
+          setAccessDenied(reason)
+        } else {
+          setAccessDenied('')
+        }
+      })
       .catch(e => setError(e.response?.data?.detail || 'Ошибка'))
-  }, [nav, activeUrl])
+  }, [nav, activeUrl, streamId])
 
   // Join + heartbeat — only when stream is actually LIVE (not scheduled)
   useEffect(() => {
@@ -86,6 +101,7 @@ export default function StreamLive() {
       api.get(pollUrl)
         .then(r => {
           const s = r.data?.stream
+          const reason = r.data?.reason || ''
           if (!s || s.status === 'ended' || s.status === 'archived') {
             // Stream ended — show "Эфир завершён" only if we were watching
             if (stream?.status === 'live') {
@@ -94,8 +110,13 @@ export default function StreamLive() {
               setStreamEnded(true)
             }
             setStream(null)
+            // Persist access-denial reason so the page keeps showing it
+            if (!s && streamId && (reason === 'forbidden' || reason === 'not_found')) {
+              setAccessDenied(reason)
+            }
           } else {
             setStream(s) // update status: scheduled → live triggers join effect
+            setAccessDenied('') // got the stream — clear any prior denial
           }
         })
         .catch(() => {})
@@ -162,7 +183,32 @@ export default function StreamLive() {
           </div>
         )}
 
-        {!stream && !streamEnded && !error && (
+        {/* Access denied / not found — distinct from "no stream right now"
+            so the student understands WHY a link they were given doesn't open. */}
+        {!stream && !streamEnded && !error && accessDenied && (
+          <div className="text-center py-20 text-gray-500">
+            <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5">
+              <AlertTriangle size={36} className="text-amber-400" />
+            </div>
+            <p className="text-xl font-semibold text-gray-700">
+              {accessDenied === 'not_found' ? 'Эфир не найден' : 'Нет доступа к эфиру'}
+            </p>
+            <p className="text-sm mt-2 text-gray-400 max-w-md mx-auto">
+              {accessDenied === 'not_found'
+                ? 'Ссылка устарела или была удалена. Попросите тренера прислать новую.'
+                : 'Этот эфир открыт другой группе. Свяжитесь с тренером для уточнения.'}
+            </p>
+            <Link
+              to="/cabinet/archive"
+              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 rounded-xl text-sm font-medium transition"
+              style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', color: '#be185d', border: '1px solid #f9a8d4' }}
+            >
+              <Archive size={15} /> Смотреть записи эфиров
+            </Link>
+          </div>
+        )}
+
+        {!stream && !streamEnded && !error && !accessDenied && (
           <div className="text-center py-20 text-gray-500">
             <div className="w-20 h-20 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-5">
               <Radio size={36} className="text-rose-300" />

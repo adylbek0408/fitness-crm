@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Radio, Copy, Square, Plus, Link2, Check,
   Users, MessageCircle, ExternalLink, AlertCircle, Trash2,
@@ -9,11 +9,16 @@ import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
+import Pagination from '../../../components/Pagination'
 import HlsPlayer from '../../../components/education/HlsPlayer'
+
+const STREAMS_PAGE_SIZE = 12
 
 export default function StreamsAdmin() {
   const { user } = useOutletContext()
   const [streams, setStreams] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
   const [groups, setGroups] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -27,11 +32,28 @@ export default function StreamsAdmin() {
   // Preview
   const [previewInfo, setPreviewInfo] = useState(null)
   const [previewTitle, setPreviewTitle] = useState('')
+  // Archive polling — when admin clicks "Создать архив", auto-retry every 15s
+  // and show progress instead of a one-shot "wait 5-10 minutes" error.
+  const [archiveJob, setArchiveJob] = useState(null) // {id, title, attempt, lastMsg, status}
+  // Refs survive across closures — needed so the "cancel" button actually
+  // stops the polling loop, and so we can clear pending timeouts on unmount.
+  const archiveCancelledRef = useRef(false)
+  const archiveTimerRef = useRef(null)
 
   const reload = () => {
     setLoading(true)
-    api.get('/education/streams/')
-      .then(r => setStreams(r.data?.results || r.data || []))
+    api.get(`/education/streams/?page=${page}&page_size=${STREAMS_PAGE_SIZE}`)
+      .then(r => {
+        // DRF paginated response: {count, next, previous, results}.
+        // Non-paginated fallback for small/dev datasets.
+        if (Array.isArray(r.data)) {
+          setStreams(r.data)
+          setTotalCount(r.data.length)
+        } else {
+          setStreams(r.data?.results || [])
+          setTotalCount(r.data?.count ?? 0)
+        }
+      })
       .catch(e => setAlertModal({
         title: 'Не удалось загрузить эфиры',
         message: e.response?.data?.detail || e.message || 'Проверьте соединение.',
@@ -42,10 +64,16 @@ export default function StreamsAdmin() {
 
   useEffect(() => {
     reload()
-    api.get('/groups/')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page])
+
+  useEffect(() => {
+    api.get('/groups/?page_size=200')
       .then(r => setGroups(r.data?.results || r.data || []))
       .catch(() => {})
   }, [])
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / STREAMS_PAGE_SIZE))
 
   const create = async () => {
     if (!form.title.trim()) {
@@ -105,19 +133,80 @@ export default function StreamsAdmin() {
     }
   }
 
-  const performManualArchive = async (id) => {
-    try {
-      await api.post(`/education/streams/${id}/manual-archive/`)
-      reload()
-      setAlertModal({
-        title: 'Архив создан',
-        message: 'Запись эфира опубликована для учеников.',
-        variant: 'success',
-      })
-    } catch (e) {
-      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+  // Auto-retry archive: keep trying every 15s for up to 10 minutes. Show
+  // live diagnostic from CF so admin understands what's happening.
+  const performManualArchive = async (id, title = '') => {
+    // Reset cancellation state for a fresh job
+    archiveCancelledRef.current = false
+    if (archiveTimerRef.current) {
+      clearTimeout(archiveTimerRef.current)
+      archiveTimerRef.current = null
     }
+    setArchiveJob({ id, title, attempt: 1, status: 'working', lastMsg: 'Запрашиваем у Cloudflare…' })
+    let attempt = 0
+    const MAX_ATTEMPTS = 40 // 40 × 15s = 10 minutes
+    const tryOnce = async () => {
+      if (archiveCancelledRef.current) return
+      attempt += 1
+      try {
+        // First, query CF status — gives us a real picture of what's available
+        const cfResp = await api.get(`/education/streams/${id}/cf-status/`).catch(() => null)
+        if (archiveCancelledRef.current) return
+        const cf = cfResp?.data || {}
+        let progressMsg = ''
+        if (cf.live_input_state === 'connected') {
+          progressMsg = 'Эфир ещё идёт в CF — дождитесь окончания.'
+        } else if (cf.recordings_count === 0) {
+          progressMsg = 'Cloudflare не получил видео. Проверьте что эфир был на HTTPS.'
+        } else if (cf.has_ready_recording) {
+          progressMsg = 'Запись готова — публикуем…'
+        } else {
+          // Has recordings but none ready yet
+          const states = (cf.recordings || []).map(r => r.state || '?').join(', ')
+          progressMsg = `Cloudflare обрабатывает запись (${states}). Обычно 1–3 минуты.`
+        }
+        setArchiveJob(j => j ? { ...j, attempt, lastMsg: progressMsg } : j)
+
+        // Try to publish
+        await api.post(`/education/streams/${id}/manual-archive/`)
+        if (archiveCancelledRef.current) return
+        setArchiveJob({ id, title, attempt, status: 'done', lastMsg: 'Архив создан ✓' })
+        reload()
+        // Auto-close after 1.5s
+        archiveTimerRef.current = setTimeout(() => {
+          if (!archiveCancelledRef.current) setArchiveJob(null)
+        }, 1500)
+      } catch (e) {
+        if (archiveCancelledRef.current) return
+        const msg = e.response?.data?.detail || e.message || 'Ошибка'
+        if (attempt >= MAX_ATTEMPTS) {
+          setArchiveJob({ id, title, attempt, status: 'failed', lastMsg: msg })
+          return
+        }
+        setArchiveJob(j => j ? { ...j, attempt, lastMsg: msg } : j)
+        archiveTimerRef.current = setTimeout(tryOnce, 15000)
+      }
+    }
+    tryOnce()
   }
+
+  // Hard-cancel the polling loop and dismiss the modal.
+  // Without setting the ref, queued setTimeouts keep firing in the background
+  // and surprise the admin with "Архив создан" toasts after they closed it.
+  const cancelArchiveJob = () => {
+    archiveCancelledRef.current = true
+    if (archiveTimerRef.current) {
+      clearTimeout(archiveTimerRef.current)
+      archiveTimerRef.current = null
+    }
+    setArchiveJob(null)
+  }
+
+  // Clean up any pending timer when the page unmounts.
+  useEffect(() => () => {
+    archiveCancelledRef.current = true
+    if (archiveTimerRef.current) clearTimeout(archiveTimerRef.current)
+  }, [])
 
   const openRecordingPreview = async (lessonId, title) => {
     try {
@@ -138,6 +227,8 @@ export default function StreamsAdmin() {
 
   const studentLink = (id) => `${window.location.origin}/cabinet/stream?id=${id}`
 
+  // Counts on the CURRENT page only — backend returns the active page slice.
+  // Total across all pages comes from `totalCount`.
   const summary = {
     live: streams.filter(s => s.status === 'live').length,
     scheduled: streams.filter(s => s.status === 'scheduled').length,
@@ -206,13 +297,23 @@ export default function StreamsAdmin() {
               stream={s}
               onEnd={() => setConfirmEnd({ id: s.id, title: s.title })}
               onDelete={() => setConfirmDelete({ id: s.id, title: s.title })}
-              onManualArchive={() => performManualArchive(s.id)}
+              onManualArchive={() => performManualArchive(s.id, s.title)}
               onPreviewRecording={() => openRecordingPreview(s.archived_lesson, s.title)}
               onCopy={copy}
               copied={copied}
               studentLink={studentLink(s.id)}
             />
           ))}
+
+          {/* Pagination — visible only when there's more than one page */}
+          {totalPages > 1 && (
+            <div className="pt-2 pb-4">
+              <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+              <p className="text-center text-xs text-gray-400 mt-2">
+                Всего эфиров: {totalCount}
+              </p>
+            </div>
+          )}
         </div>
 
       {/* Recording preview modal */}
@@ -284,6 +385,51 @@ export default function StreamsAdmin() {
         confirmText="В корзину"
         variant="danger"
       />
+
+      {/* Archive progress modal — auto-polls until ready */}
+      {archiveJob && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-3">
+              {archiveJob.status === 'working' && (
+                <div className="w-10 h-10 border-3 border-rose-200 border-t-rose-500 rounded-full animate-spin" />
+              )}
+              {archiveJob.status === 'done' && (
+                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl">✓</div>
+              )}
+              {archiveJob.status === 'failed' && (
+                <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xl">!</div>
+              )}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {archiveJob.status === 'done'
+                    ? 'Архив создан'
+                    : archiveJob.status === 'failed'
+                      ? 'Не удалось создать архив'
+                      : 'Создаём архив…'}
+                </h3>
+                {archiveJob.title && (
+                  <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[300px]">{archiveJob.title}</p>
+                )}
+              </div>
+            </div>
+            <div className="text-sm text-gray-700 mb-1 leading-snug">{archiveJob.lastMsg}</div>
+            {archiveJob.status === 'working' && (
+              <div className="text-xs text-gray-400 mt-2">
+                Попытка {archiveJob.attempt} из 40 (повтор каждые 15 секунд)
+              </div>
+            )}
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={cancelArchiveJob}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+              >
+                {archiveJob.status === 'working' ? 'Отменить' : 'Закрыть'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   )
 }

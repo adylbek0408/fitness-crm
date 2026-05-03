@@ -78,12 +78,14 @@ export default function ConsultationRoom() {
           enableUserRolesBasedOnToken: true,
           // Don't auto-make the first user a moderator
           enableLobby: false,
-          // Hide moderator-only toolbar items for students (the JWT lacks
-          // the moderator features so they wouldn't work anyway, but visible
-          // buttons confuse users).
+          // Strict toolbar: ONLY non-moderator buttons. Anything moderator-only
+          // (security, profile, recording, livestreaming, mute-everyone, settings
+          // sections, invite) is excluded. If Jitsi server still grants moderator
+          // (because mod_token_affiliation is not loaded), at least the UI won't
+          // expose those actions to the student.
           toolbarButtons: [
             'microphone', 'camera', 'fullscreen',
-            'hangup', 'chat', 'tileview', 'videoquality', 'settings',
+            'hangup', 'tileview',
           ],
           // Hard-disable recording/livestreaming/desktop sharing for the
           // student side — defence-in-depth.
@@ -92,6 +94,13 @@ export default function ConsultationRoom() {
           liveStreamingEnabled: false,
           remoteVideoMenu: { disableKick: true, disableGrantModerator: true },
           disableProfile: true,
+          hideConferenceSubject: true,
+          hideConferenceTimer: false,
+          // Block private moderation actions
+          disableModeratorIndicator: true,
+          disableSelfView: false,
+          // No security panel (which reveals lobby / e2ee / password options)
+          securityUi: { hideLobbyButton: true, disableLobbyPassword: true },
         },
         interfaceConfigOverwrite: {
           MOBILE_APP_PROMO: false,
@@ -102,6 +111,9 @@ export default function ConsultationRoom() {
           HIDE_INVITE_MORE_HEADER: true,
           // Strip moderator-only UI on the student side
           SETTINGS_SECTIONS: ['devices', 'language'],
+          TOOLBAR_BUTTONS: [
+            'microphone', 'camera', 'fullscreen', 'hangup', 'tileview',
+          ],
         },
       })
 
@@ -110,17 +122,50 @@ export default function ConsultationRoom() {
         apiRef.current = null
       })
 
-      // Defence-in-depth: when our user joins, if Jitsi accidentally gave them
-      // moderator (e.g. enableUserRolesBasedOnToken not set on server), demote
-      // ourselves immediately. The JWT is the source of truth.
-      apiRef.current.addEventListener('videoConferenceJoined', () => {
+      // Helper: aggressively strip every moderator-only affordance from the UI.
+      // Reapplied whenever role might change — defence-in-depth so the student
+      // never sees a kick/mute/grant/recording button regardless of what Jitsi thinks.
+      const lockDownToParticipantUI = () => {
         try {
-          // executeCommand('makeMeParticipant') was added in Jitsi 8.x — wrap
-          // in try-catch for older versions.
-          apiRef.current.executeCommand('overwriteConfig', {
+          apiRef.current?.executeCommand('overwriteConfig', {
             disableModeratorIndicator: true,
             remoteVideoMenu: { disableKick: true, disableGrantModerator: true },
+            toolbarButtons: [
+              'microphone', 'camera', 'fullscreen', 'hangup', 'tileview',
+            ],
+            disableInviteFunctions: true,
+            fileRecordingsEnabled: false,
+            liveStreamingEnabled: false,
+            disableProfile: true,
           })
+        } catch {}
+      }
+
+      // Defence-in-depth: when our user joins, if Jitsi accidentally gave them
+      // moderator (e.g. mod_token_affiliation not loaded), aggressively strip
+      // the UI down. The JWT is the source of truth — if it says non-moderator,
+      // we hide every moderator-only affordance regardless of what Jitsi thinks.
+      apiRef.current.addEventListener('videoConferenceJoined', () => {
+        lockDownToParticipantUI()
+        // Re-apply after 1s — Jitsi sometimes reapplies its own defaults
+        // shortly after join. Belt-and-suspenders.
+        setTimeout(lockDownToParticipantUI, 1000)
+        setTimeout(lockDownToParticipantUI, 3000)
+      })
+
+      // If the server STILL marks us as moderator (Prosody mod_token_affiliation
+      // not loaded), the role change event fires AFTER join. Re-strip the UI.
+      // The student can still talk to the trainer — but the moderator-only
+      // buttons stay hidden no matter what Jitsi grants.
+      apiRef.current.addEventListener('participantRoleChanged', (event) => {
+        try {
+          // event = {id, role: 'moderator'|'participant'}
+          // eslint-disable-next-line no-console
+          console.log('[Jitsi] role change:', event)
+          // Re-apply lockdown on EVERY role change. If somehow we got moderator,
+          // overwriteConfig hides the UI again. If a remote was promoted, we
+          // still hide our local kick/mute buttons.
+          lockDownToParticipantUI()
         } catch {}
       })
     }

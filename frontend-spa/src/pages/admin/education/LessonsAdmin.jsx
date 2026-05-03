@@ -70,7 +70,10 @@ export default function LessonsAdmin() {
 
   const reload = () => {
     setLoading(true)
-    api.get('/education/lessons/')
+    // page_size=200 = max — gets up to 200 lessons in one fetch so the
+    // client-side filter/search/pagination below all work without server
+    // round-trips on every keystroke.
+    api.get('/education/lessons/?page_size=200')
       .then(r => setLessons(r.data?.results || r.data || []))
       .catch(e => setAlertModal({
         title: 'Не удалось загрузить уроки',
@@ -82,7 +85,7 @@ export default function LessonsAdmin() {
 
   useEffect(() => {
     reload()
-    api.get('/groups/')
+    api.get('/groups/?page_size=200')
       .then(r => setGroups(r.data?.results || r.data || []))
       .catch(() => {})
   }, [])

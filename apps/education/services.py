@@ -227,13 +227,26 @@ class CloudflareStreamService:
     def find_latest_recording(cls, live_input_uid: str) -> str:
         """Query CF Stream for videos produced by a given live input.
 
-        Returns the UID of the most recent recording, or '' if none yet.
-        Used by the manual_archive endpoint as a fallback when the webhook
-        didn't fire.
+        Returns the UID of the most recent ready-to-stream recording,
+        or '' if none yet ready. Use `list_recordings()` if you need
+        full state info (e.g. for showing "still processing").
+        """
+        for v in cls.list_recordings(live_input_uid):
+            if v.get('readyToStream', False):
+                return v.get('uid', '')
+        return ''
+
+    @classmethod
+    def list_recordings(cls, live_input_uid: str) -> list:
+        """Return ALL videos for a live input with their full state.
+
+        Each item: {'uid', 'readyToStream', 'status': {'state', 'pctComplete'}, ...}
+        State values: 'queued', 'inprogress', 'ready', 'error', 'pendingupload',
+        'downloading', 'live-inprogress' (still being recorded).
         """
         import requests
         if not live_input_uid:
-            return ''
+            return []
         url = (
             f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream/live_inputs/"
             f"{live_input_uid}/videos"
@@ -242,15 +255,45 @@ class CloudflareStreamService:
             resp = requests.get(url, headers=cls._headers(), timeout=15)
             resp.raise_for_status()
         except Exception:
-            logger.warning('CF Stream find_latest_recording failed', exc_info=True)
-            return ''
-        result = resp.json().get('result') or []
-        # CF returns videos newest-first; we pick the first ready one.
-        for v in result:
-            uid = v.get('uid')
-            if uid and v.get('readyToStream', True):
-                return uid
-        return ''
+            logger.warning('CF Stream list_recordings failed', exc_info=True)
+            return []
+        return resp.json().get('result') or []
+
+    @classmethod
+    def get_live_input_status(cls, live_input_uid: str) -> dict:
+        """Get current state of a live input — whether it's actively receiving data.
+
+        Returns: {
+            'state': 'connected'|'disconnected'|'unknown',
+            'last_seen_at': iso timestamp or '',
+            'recordings_count': int,
+            'has_ready_recording': bool,
+        }
+        """
+        import requests
+        if not live_input_uid:
+            return {'state': 'unknown', 'last_seen_at': '', 'recordings_count': 0, 'has_ready_recording': False}
+        url = f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream/live_inputs/{live_input_uid}"
+        try:
+            resp = requests.get(url, headers=cls._headers(), timeout=15)
+            resp.raise_for_status()
+            r = resp.json().get('result') or {}
+        except Exception:
+            logger.warning('CF Stream get_live_input_status failed', exc_info=True)
+            return {'state': 'unknown', 'last_seen_at': '', 'recordings_count': 0, 'has_ready_recording': False}
+        # CF returns 'status' object on live input with 'current' state
+        status_obj = r.get('status') or {}
+        current = (status_obj.get('current') or {})
+        state_raw = current.get('state', '')  # 'connected', 'disconnected', etc.
+
+        recordings = cls.list_recordings(live_input_uid)
+        return {
+            'state': state_raw or 'unknown',
+            'last_seen_at': current.get('statusLastSeen', ''),
+            'recordings_count': len(recordings),
+            'has_ready_recording': any(v.get('readyToStream', False) for v in recordings),
+            'recordings': recordings,
+        }
 
     # --- Webhook signature verification ---
 

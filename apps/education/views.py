@@ -459,6 +459,47 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         viewers = stream.viewers.filter(is_active=True).select_related('client')
         return Response(StreamViewerSerializer(viewers, many=True).data)
 
+    @action(detail=True, methods=['get'], url_path='cf-status')
+    def cf_status(self, request, pk=None):
+        """Diagnostic: query CF Stream for actual state of this live input.
+
+        Used by frontend to show admin what's happening with the stream/recording
+        before/during/after broadcast. Helps debug when 'нет записи' is reported.
+        """
+        stream = self.get_object()
+        if not stream.cf_input_uid:
+            return Response({
+                'configured': False,
+                'detail': 'У эфира нет cf_input_uid. Пересоздайте эфир.',
+            })
+        try:
+            info = CloudflareStreamService.get_live_input_status(stream.cf_input_uid)
+        except ImproperlyConfigured as e:
+            return Response({'configured': False, 'detail': str(e)},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        # Sanitize recordings for frontend (just what we need for UI)
+        recordings_summary = [
+            {
+                'uid': r.get('uid', ''),
+                'state': (r.get('status') or {}).get('state', ''),
+                'pct_complete': (r.get('status') or {}).get('pctComplete', ''),
+                'ready': r.get('readyToStream', False),
+                'duration': r.get('duration', 0),
+                'created': r.get('created', ''),
+            }
+            for r in (info.get('recordings') or [])
+        ]
+        return Response({
+            'configured': True,
+            'live_input_state': info['state'],   # connected / disconnected / unknown
+            'last_seen_at': info['last_seen_at'],
+            'recordings_count': info['recordings_count'],
+            'has_ready_recording': info['has_ready_recording'],
+            'recordings': recordings_summary,
+            'stream_status': stream.status,
+            'has_archived_lesson': bool(stream.archived_lesson_id),
+        })
+
     @action(detail=True, methods=['post'], url_path='manual-archive')
     def manual_archive(self, request, pk=None):
         """Manually create an archive lesson for a completed stream (when CF webhook failed).
@@ -477,11 +518,15 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         # If we don't have a recording_uid, try to fetch the latest video
         # for this live input from CF Stream API.
         recording_uid = stream.recording_uid
+        cf_info = None
         if not recording_uid and stream.cf_input_uid:
             try:
-                recording_uid = CloudflareStreamService.find_latest_recording(
-                    live_input_uid=stream.cf_input_uid,
-                )
+                cf_info = CloudflareStreamService.get_live_input_status(stream.cf_input_uid)
+                # Pick the first ready recording
+                for r in (cf_info.get('recordings') or []):
+                    if r.get('readyToStream', False):
+                        recording_uid = r.get('uid', '')
+                        break
                 if recording_uid:
                     stream.recording_uid = recording_uid
                     stream.save(update_fields=['recording_uid', 'updated_at'])
@@ -489,9 +534,25 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                 logger.exception('Failed to query CF Stream for recording')
 
         if not recording_uid:
+            # Build a more informative error based on what CF actually sees.
+            recordings = (cf_info or {}).get('recordings', [])
+            if not recordings:
+                msg = ('Cloudflare не получил данных эфира. '
+                       'Возможно WebRTC соединение прервалось. '
+                       'Проверьте что сайт работает по HTTPS.')
+            else:
+                # There IS a recording but it's still processing
+                processing = [r for r in recordings if not r.get('readyToStream', False)]
+                if processing:
+                    states = ', '.join({(r.get('status') or {}).get('state', '?') for r in processing})
+                    msg = (f'Cloudflare ещё обрабатывает запись (состояние: {states}). '
+                           f'Обычно это занимает 1–3 минуты после окончания эфира.')
+                else:
+                    msg = 'Запись не найдена. Свяжитесь с администратором.'
             return Response({
-                'detail': 'Cloudflare ещё не обработал запись. '
-                          'Подождите 5–10 минут после завершения эфира и попробуйте снова.',
+                'detail': msg,
+                'recordings_count': len(recordings),
+                'recordings_processing': len([r for r in recordings if not r.get('readyToStream', False)]),
             }, status=status.HTTP_400_BAD_REQUEST)
 
         lesson = Lesson.objects.create(

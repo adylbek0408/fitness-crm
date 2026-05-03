@@ -9,6 +9,9 @@ import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
+import Pagination from '../../../components/Pagination'
+
+const CONSULTATIONS_PAGE_SIZE = 15
 
 /**
  * Консультации — 1-на-1 видеозвонки (Jitsi iframe, без перехода на другой сайт).
@@ -19,6 +22,8 @@ import ConfirmModal from '../../../components/ConfirmModal'
 export default function ConsultationsAdmin() {
   const { user } = useOutletContext()
   const [items, setItems] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
   const [trainers, setTrainers] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -41,8 +46,16 @@ export default function ConsultationsAdmin() {
 
   const reload = () => {
     setLoading(true)
-    api.get('/education/consultations/')
-      .then(r => setItems(r.data?.results || r.data || []))
+    api.get(`/education/consultations/?page=${page}&page_size=${CONSULTATIONS_PAGE_SIZE}`)
+      .then(r => {
+        if (Array.isArray(r.data)) {
+          setItems(r.data)
+          setTotalCount(r.data.length)
+        } else {
+          setItems(r.data?.results || [])
+          setTotalCount(r.data?.count ?? 0)
+        }
+      })
       .catch(e => setAlertModal({
         title: 'Не удалось загрузить консультации',
         message: e.response?.data?.detail || e.message,
@@ -53,9 +66,15 @@ export default function ConsultationsAdmin() {
 
   useEffect(() => {
     reload()
-    api.get('/trainers/').then(r => setTrainers(r.data?.results || r.data || [])).catch(() => {})
-    api.get('/clients/?limit=200').then(r => setClients(r.data?.results || r.data || [])).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page])
+
+  useEffect(() => {
+    api.get('/trainers/?page_size=200').then(r => setTrainers(r.data?.results || r.data || [])).catch(() => {})
+    api.get('/clients/?page_size=200').then(r => setClients(r.data?.results || r.data || [])).catch(() => {})
   }, [])
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / CONSULTATIONS_PAGE_SIZE))
 
   const create = async () => {
     if (!form.title.trim()) {
@@ -169,9 +188,9 @@ export default function ConsultationsAdmin() {
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Консультации</h1>
               <p className="text-xs text-gray-500">
-                Активных <span className="font-semibold text-violet-600">{activeCount}</span>
+                Активных (на странице) <span className="font-semibold text-violet-600">{activeCount}</span>
                 {' · '}
-                Всего <span className="font-semibold text-gray-700">{items.length}</span>
+                Всего <span className="font-semibold text-gray-700">{totalCount}</span>
               </p>
             </div>
           </div>
@@ -230,6 +249,11 @@ export default function ConsultationsAdmin() {
             />
           ))}
 
+          {totalPages > 1 && (
+            <div className="pt-2">
+              <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+            </div>
+          )}
         </div>
 
       {/* Inline Jitsi room modal */}

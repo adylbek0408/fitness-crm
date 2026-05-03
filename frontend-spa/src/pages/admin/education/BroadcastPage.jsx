@@ -29,6 +29,9 @@ export default function BroadcastPage() {
   // Real WebRTC peer-connection state — separate from `status`. Even if `status='live'`
   // the actual data may not flow if ICE failed. Surface this so admin sees the truth.
   const [connState, setConnState] = useState('') // '' | 'connecting' | 'connected' | 'failed' | 'disconnected'
+  const [cfStatus, setCfStatus] = useState(null) // {live_input_state, recordings_count, ...}
+  // Track whether the page is in a secure (HTTPS) context — surface a banner if not.
+  const insecure = typeof window !== 'undefined' && !window.isSecureContext
 
   const localVideoRef = useRef(null)
   const pcRef = useRef(null)
@@ -69,6 +72,22 @@ export default function BroadcastPage() {
     }
     pull()
     const t = setInterval(pull, 5000)
+    return () => { stopped = true; clearInterval(t) }
+  }, [status, id])
+
+  // Poll CF Stream live input status — proves video is actually reaching CF,
+  // distinct from "we set status=live in our DB". This is THE diagnostic
+  // for "broadcasting locally but students see black screen".
+  useEffect(() => {
+    if (status !== 'live' || !id) return
+    let stopped = false
+    const pull = () => {
+      api.get(`/education/streams/${id}/cf-status/`)
+        .then(r => { if (!stopped) setCfStatus(r.data) })
+        .catch(() => {})
+    }
+    pull()
+    const t = setInterval(pull, 8000)
     return () => { stopped = true; clearInterval(t) }
   }, [status, id])
 
@@ -161,6 +180,17 @@ export default function BroadcastPage() {
   const startBroadcast = async () => {
     if (!stream?.cf_webrtc_url) {
       setError('WebRTC URL не найден. Пересоздайте эфир.'); return
+    }
+    // CRITICAL: WHIP requires a secure context. On HTTP, fetch() to HTTPS WHIP
+    // endpoint may succeed but WebRTC ICE will fail silently — no video reaches
+    // CF Stream, students see eternal "Ждём сигнал". Block early with a clear msg.
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setError(
+        'Эфир требует HTTPS. Сейчас сайт открыт по HTTP — браузер заблокирует ' +
+        'передачу видео в Cloudflare. Попросите администратора настроить SSL ' +
+        'для домена (sudo certbot --nginx -d crm.aiym-syry.kg).',
+      )
+      return
     }
     setError(''); setStatus('connecting')
     try {
@@ -293,6 +323,17 @@ export default function BroadcastPage() {
 
   return (
     <div style={{ minHeight: '100dvh' }} className="bg-gray-950 text-white flex flex-col">
+      {/* HTTPS warning — covers the #1 cause of "broadcast goes nowhere" */}
+      {insecure && (
+        <div className="bg-amber-700/95 text-white px-4 py-3 text-sm flex items-center gap-3 border-b border-amber-900">
+          <span className="text-base">⚠</span>
+          <div className="flex-1">
+            <strong>Сайт работает по HTTP.</strong> Эфир не сможет передавать видео в Cloudflare —
+            браузер блокирует WebRTC. Запустите на сервере:{' '}
+            <code className="bg-black/30 px-1.5 py-0.5 rounded text-xs">sudo certbot --nginx -d crm.aiym-syry.kg</code>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-b border-gray-800">
         <Radio size={20} className="text-rose-400 shrink-0" />
@@ -363,6 +404,29 @@ export default function BroadcastPage() {
         <div className="flex-1 flex flex-col items-center justify-center gap-3 sm:gap-4 min-h-0">
           {error && (
             <div className="w-full max-w-2xl p-4 bg-rose-900/60 rounded-xl text-rose-200 text-sm">{error}</div>
+          )}
+
+          {/* CF Stream live diagnostic — proves whether CF is actually receiving video */}
+          {status === 'live' && cfStatus && (
+            <div className={`w-full max-w-2xl px-4 py-2 rounded-xl text-xs flex items-center gap-3 ${
+              cfStatus.live_input_state === 'connected'
+                ? 'bg-emerald-900/40 text-emerald-200 border border-emerald-700/40'
+                : 'bg-amber-900/50 text-amber-100 border border-amber-700/40'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${
+                cfStatus.live_input_state === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+              }`} />
+              <div className="flex-1">
+                {cfStatus.live_input_state === 'connected' ? (
+                  <>Cloudflare получает видео ✓ — ученики видят эфир.</>
+                ) : (
+                  <>Cloudflare НЕ получает видео ({cfStatus.live_input_state || '—'}). Возможно WebRTC не подключился.</>
+                )}
+              </div>
+              {cfStatus.recordings_count > 0 && (
+                <span className="text-[10px] opacity-80">записей: {cfStatus.recordings_count}</span>
+              )}
+            </div>
           )}
 
           {/* Preview */}

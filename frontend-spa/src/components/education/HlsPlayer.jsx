@@ -51,6 +51,10 @@ export default function HlsPlayer({
   const [currentLevel, setCurrentLevel] = useState(-1) // -1 = auto
   const [showQualityMenu, setShowQualityMenu] = useState(false)
   const [diag, setDiag] = useState('loading')
+  // After ~20s of waiting on a live stream, probe the manifest URL directly
+  // to surface CF Stream's actual response. "Waiting forever" usually means
+  // the live input on CF isn't actually receiving video — show that to the user.
+  const [waitProbe, setWaitProbe] = useState('') // '' | '404' | '5xx' | 'cors' | 'ok'
 
   const [playing, setPlaying] = useState(false)
   const [muted, setMuted] = useState(false)
@@ -195,6 +199,30 @@ export default function HlsPlayer({
     return () => document.removeEventListener('fullscreenchange', onFs)
   }, [])
 
+  // ── Diagnostic probe for live streams stuck in 'waiting' ─────────────────
+  // After 18s with no playback, hit the manifest URL directly so we can tell
+  // the user WHY: 404 (CF input idle), 5xx (CF outage), CORS, or it's actually OK
+  // (in which case the issue is HLS.js / browser).
+  useEffect(() => {
+    if (!live || !src || kind !== 'hls') return
+    if (diag !== 'loading' && diag !== 'waiting') {
+      setWaitProbe('')
+      return
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const r = await fetch(src, { method: 'GET', cache: 'no-store' })
+        if (r.status === 404) setWaitProbe('404')
+        else if (r.status >= 500) setWaitProbe('5xx')
+        else if (r.ok) setWaitProbe('ok')
+        else setWaitProbe(String(r.status))
+      } catch (e) {
+        setWaitProbe('cors')
+      }
+    }, 18000)
+    return () => clearTimeout(timer)
+  }, [src, kind, live, diag])
+
   // ── Auto-hide controls when playing ──────────────────────────────────────
   const showControls = useCallback(() => {
     setControlsVisible(true)
@@ -329,11 +357,33 @@ export default function HlsPlayer({
       {/* Loading spinner */}
       {(diag === 'loading' || diag === 'waiting') && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="flex flex-col items-center gap-2 text-white/80 text-xs">
+          <div className="flex flex-col items-center gap-2 text-white/80 text-xs max-w-[80%] text-center">
             <div className="w-9 h-9 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
             <div className="px-2.5 py-1 rounded-md bg-black/50">
               {diag === 'loading' ? 'Загружаем поток…' : 'Ждём сигнал от тренера…'}
             </div>
+            {/* Diagnostic message after 18s — tells the user what's actually wrong */}
+            {waitProbe === '404' && (
+              <div className="mt-2 px-3 py-2 rounded-lg bg-rose-900/80 text-rose-100 text-[11px] leading-snug">
+                Cloudflare пока не получает видео от тренера.<br/>
+                Возможно эфир запустился, но WebRTC не подключился (HTTP вместо HTTPS).
+              </div>
+            )}
+            {waitProbe === '5xx' && (
+              <div className="mt-2 px-3 py-2 rounded-lg bg-rose-900/80 text-rose-100 text-[11px] leading-snug">
+                Сервис Cloudflare сейчас недоступен. Подождите минуту.
+              </div>
+            )}
+            {waitProbe === 'cors' && (
+              <div className="mt-2 px-3 py-2 rounded-lg bg-amber-900/80 text-amber-100 text-[11px] leading-snug">
+                Не удаётся достучаться до Cloudflare. Проверьте интернет.
+              </div>
+            )}
+            {waitProbe === 'ok' && diag === 'waiting' && (
+              <div className="mt-2 px-3 py-2 rounded-lg bg-amber-900/70 text-amber-100 text-[11px] leading-snug">
+                Поток есть, но видеоданных мало. Подождите 10-20 секунд.
+              </div>
+            )}
           </div>
         </div>
       )}
