@@ -89,6 +89,18 @@
        ARIA-pressed на toggle-кнопках)
 - [x] **6.10** Иконкам добавлен `aria-hidden`, кнопкам без текста — `aria-label`
 
+## Спринт 8 — Bugfixes (2026-05-04)
+- [x] **8.1** WebRTC playback для учеников (WHEP вместо HLS)
+       - добавлено поле `cf_webrtc_playback_url` в LiveStream
+       - создан компонент `WebRTCPlayer.jsx`
+       - обновлён `StreamLive.jsx` для использования WebRTC при live
+- [x] **8.2** Ученики не видели эфир — диагностика и полный фикс (см. HANDOFF)
+       - 6 взаимосвязанных багов, корень: WHEP flow в WebRTCPlayer был reversed
+       - Добавлен iframe-плеер (CloudflareStreamPlayer) с откатом через USE_IFRAME
+       - Исправлен 500 на /join/ (MultipleObjectsReturned в StreamViewer)
+       - Исправлен бесконечный polling (3+3+2 интервала → 1 стабильный)
+       - Docker auto-reload: gunicorn → runserver
+
 ---
 
 ## Решения по ходу

@@ -256,7 +256,13 @@ class CabinetStreamView(APIView):
                 return Response({'stream': None})
 
         data = LiveStreamSerializer(stream).data
-        data['playback_url'] = _build_stream_playback_url(stream)
+        webrtc_url = stream.cf_webrtc_playback_url or ''
+        if stream.status == 'live' and '/webRTC/play' in webrtc_url:
+            data['playback_url'] = webrtc_url
+            data['playback_kind'] = 'webrtc'
+        else:
+            data['playback_url'] = _build_stream_playback_url(stream)
+            data['playback_kind'] = 'hls'
         return Response({'stream': data})
 
 
@@ -278,13 +284,22 @@ class CabinetStreamJoinView(APIView):
         ):
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
-        viewer, _ = StreamViewer.objects.update_or_create(
-            stream=stream, client=client,
-            defaults={'is_active': True, 'left_at': None},
-        )
+        qs = StreamViewer.objects.filter(stream=stream, client=client)
+        qs.update(is_active=True, left_at=None)
+        viewer = qs.first()
+        if not viewer:
+            viewer = StreamViewer.objects.create(stream=stream, client=client, is_active=True)
+        webrtc_url = stream.cf_webrtc_playback_url or ''
+        if '/webRTC/play' in webrtc_url:
+            playback_url = webrtc_url
+            playback_kind = 'webrtc'
+        else:
+            playback_url = _build_stream_playback_url(stream)
+            playback_kind = 'hls'
         return Response({
             'viewer': StreamViewerSerializer(viewer).data,
-            'playback_url': _build_stream_playback_url(stream),
+            'playback_url': playback_url,
+            'playback_kind': playback_kind,
             'watermark': {
                 'text': f"{client.first_name or ''} {client.last_name or ''}".strip(),
             },

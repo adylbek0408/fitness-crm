@@ -88,14 +88,14 @@ class LiveStreamSerializer(serializers.ModelSerializer):
         model = LiveStream
         fields = [
             'id', 'title', 'description',
-            'cf_playback_id', 'recording_uid',
+            'cf_playback_id', 'cf_webrtc_playback_url', 'recording_uid',
             'groups', 'trainer',
             'scheduled_at', 'started_at', 'ended_at', 'status',
             'archived_lesson',
             'created_at', 'updated_at',
         ]
         read_only_fields = (
-            'id', 'cf_playback_id', 'recording_uid',
+            'id', 'cf_playback_id', 'cf_webrtc_playback_url', 'recording_uid',
             'started_at', 'ended_at', 'archived_lesson',
             'created_at', 'updated_at',
         )

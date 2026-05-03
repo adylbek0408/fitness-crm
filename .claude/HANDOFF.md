@@ -1,3 +1,123 @@
+# HANDOFF — 2026-05-04 (сессия — фикс: ученики не видели эфир)
+
+## Корневая проблема и все баги
+
+**Симптом:** ученик заходит на страницу эфира → бесконечная загрузка «Ждём сигнал от тренера».
+Админ при этом видит «Cloudflare получает видео ✓».
+
+### Баг 1 — WHEP flow reversed в WebRTCPlayer (корень)
+`WebRTCPlayer.jsx` реализовывал WHEP протокол задом наперёд:
+- **Было (неверно):** `GET src` → ждёт SDP offer от сервера → создаёт answer → `POST answer`
+- **Правильный WHEP:** клиент сам `createOffer()` → `POST offer` на endpoint → сервер отвечает `201 + SDP answer`
+
+Из-за этого Cloudflare возвращал 405 на GET-запрос к `/webRTC/play`.
+
+### Баг 2 — `cf_webrtc_playback_url` содержал HLS URL
+В БД поле `cf_webrtc_playback_url` у части стримов содержало `/manifest/video.m3u8` вместо `/webRTC/play`.
+`cabinet_views.py` видел непустое поле → отдавал `playback_kind: 'webrtc'` с HLS URL →
+`WebRTCPlayer` делал POST на HLS endpoint → `405 Method Not Allowed`.
+**Фикс:** добавлена проверка `'/webRTC/play' in url` перед выбором kind.
+
+### Баг 3 — `CabinetStreamJoinView` всегда возвращал HLS URL
+`/join/` endpoint всегда вызывал `_build_stream_playback_url()` → отдавал HLS URL.
+Фронтенд брал `joined.playback_url` приоритетно, но `playback_kind` из `stream` → WebRTC kind + HLS URL.
+**Фикс:** join теперь возвращает правильный URL и `playback_kind` в зависимости от `cf_webrtc_playback_url`.
+
+### Баг 4 — 3 параллельных интервала (active + viewers + heartbeat)
+Эффекты в `StreamLive.jsx` имели `[stream?.id, stream?.status]` в deps.
+Каждый раз когда polling обновлял `stream` — все 3 эффекта перезапускались,
+накапливая интервалы. В DevTools: active(×3), viewers(×3), heartbeat(×2).
+**Фикс:** один стабильный интервал (8с) с `deps: [streamId]`, state через `useRef`.
+
+### Баг 5 — 500 на `/join/` (MultipleObjectsReturned)
+`StreamViewer.objects.update_or_create(stream=s, client=c)` падал потому что
+в БД накопились дублирующиеся записи `StreamViewer` для одной пары (stream, client).
+Нет `unique_together` на модели.
+**Фикс:** `filter().update()` + `first()` вместо `update_or_create`.
+
+### Баг 6 — iframe embed URL неверный формат
+Путь `/embed/{uid}` работает только для VOD-видео.
+Для live input правильный формат: `/{uid}/iframe` (подтверждено docs.cloudflare.com/stream).
+Это же подтверждено через context7.
+
+### Решение — переход на Cloudflare iframe плеер
+Вместо кастомного WebRTC/HLS плеера — официальный Cloudflare iframe.
+Он сам выбирает WebRTC или HLS в зависимости от браузера и состояния стрима.
+
+**Откат:** `StreamLive.jsx` строка ~15: `const USE_IFRAME = false`
+
+## Новые файлы
+- `frontend-spa/src/components/education/CloudflareStreamPlayer.jsx` — iframe-обёртка
+
+## Изменённые файлы
+- `apps/education/cabinet_views.py` — валидация WHEP URL, фикс join (MultipleObjectsReturned)
+- `frontend-spa/src/components/education/WebRTCPlayer.jsx` — правильный WHEP flow + fallback
+- `frontend-spa/src/pages/cabinet/education/StreamLive.jsx` — один интервал, iframe режим
+- `docker-compose.yml` — gunicorn → runserver (auto-reload в dev)
+
+## Следующий шаг
+1. Проверить что iframe показывает эфир у ученика
+2. Если работает — можно удалить `WebRTCPlayer.jsx` или оставить как запасной вариант
+3. Добавить `unique_together = ('stream', 'client')` в `StreamViewer` + миграцию (чтобы закрыть баг 5 навсегда)
+
+---
+
+# HANDOFF — 2026-05-04 (сессия — WebRTC playback для учеников)
+
+## Что сделано в этой сессии
+
+### 1. WebRTC playback для учеников (WHEP вместо HLS)
+
+**Проблема:** При стриме из браузера через WebRTC (WHIP) — ученики не видели эфир (бесконечная загрузка "Ждём сигнал от тренера"). HLS playback возвращал 204 No Content.
+
+**Решение:** Добавлен WebRTC playback (WHEP protocol) для учеников.
+
+**Файлы:**
+- `apps/education/models.py` — добавлено поле `cf_webrtc_playback_url`
+- `apps/education/services.py` — генерация WHEP URL при создании live input
+- `apps/education/views.py` — сохранение `cf_webrtc_playback_url` при создании эфира
+- `apps/education/serializers.py` — добавление поля в `LiveStreamSerializer`
+- `apps/education/cabinet_views.py` — возврат `playback_kind: 'webrtc'` для live стримов
+- `frontend-spa/src/components/education/WebRTCPlayer.jsx` — **новый компонент** WHEP-плеер
+- `frontend-spa/src/pages/cabinet/education/StreamLive.jsx` — выбор плеера по `playback_kind`
+
+---
+
+## Что нужно сделать на сервере
+
+```bash
+# 1. Стянуть изменения
+cd /var/www/fitness-crm
+git pull origin main
+
+# 2. Миграция
+source venv/bin/activate
+python manage.py migrate
+
+# 3. Пересобрать frontend
+cd frontend-spa
+npm run build
+cd ..
+
+# 4. Перезапустить gunicorn
+sudo systemctl restart fitness-crm.service
+```
+
+**После этого:**
+- Пересоздать эфир (чтобы получить новый `cf_webrtc_playback_url`)
+- Запустить стрим из студии эфира ("Начать эфир" в браузере)
+- Проверить в кабинете ученика — должен работать WebRTC playback
+
+---
+
+## Следующий шаг
+
+1. Проверить что WebRTC playback работает (ученик видит эфир)
+2. Проверить запись эфира (после завершения — появляется архив)
+3. Проверить консультации (проблема с модератором — нужно проверить JWT)
+
+---
+
 # HANDOFF — 2026-05-03 (сессия 8 — business-logic bugs)
 
 ## Что сделано в этой сессии

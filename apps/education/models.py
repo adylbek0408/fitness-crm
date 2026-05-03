@@ -129,9 +129,11 @@ class LiveStream(UUIDTimestampedModel):
     # secret — surfaces only to the streaming trainer/admin in admin UI
     cf_stream_key = models.CharField(max_length=512, blank=True)
     cf_playback_id = models.CharField(max_length=64, blank=True)
-    # WebRTC publish URL (browser / mobile streaming — WHIP protocol)
+# WebRTC publish URL (browser / mobile streaming — WHIP protocol)
     cf_webrtc_url = models.CharField(max_length=512, blank=True)
-    # SRT (for Larix Broadcaster or similar mobile apps)
+    # WebRTC playback URL (WHEP protocol — for students to watch live)
+    cf_webrtc_playback_url = models.CharField(max_length=512, blank=True)
+    # SRT (Larix Broadcaster etc.)
     cf_srt_url = models.CharField(max_length=256, blank=True)
     cf_srt_passphrase = models.CharField(max_length=512, blank=True)
     # Recording video UID (set by Cloudflare webhook when recording is ready)

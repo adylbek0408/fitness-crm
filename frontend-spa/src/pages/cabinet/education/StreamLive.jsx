@@ -3,8 +3,15 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, Radio, Users, Shield, AlertTriangle, Archive, CheckCircle2, Clock } from 'lucide-react'
 import api from '../../../api/axios'
 import HlsPlayer from '../../../components/education/HlsPlayer'
+import WebRTCPlayer from '../../../components/education/WebRTCPlayer'
+import CloudflareStreamPlayer from '../../../components/education/CloudflareStreamPlayer'
 import Watermark from '../../../components/education/Watermark'
 import useContentProtection from '../../../components/education/useContentProtection'
+
+// Откат: поменяй на false чтобы вернуться к WebRTC/HLS плееру
+const USE_IFRAME = true
+
+const CF_SUBDOMAIN = 'customer-cyusd1ztro8pgq40.cloudflarestream.com'
 
 export default function StreamLive() {
   const nav = useNavigate()
@@ -17,6 +24,7 @@ export default function StreamLive() {
   const [joined, setJoined] = useState(null)
   const [warning, setWarning] = useState('')
   const [error, setError] = useState('')
+  const [forcedHls, setForcedHls] = useState(false)
   // Backend returns {stream:null, reason:'forbidden'|'not_found'} when access
   // denied or stream missing. Surface that to the user instead of the generic
   // "Сейчас эфиров нет" — which made them think the link was broken.
@@ -38,92 +46,80 @@ export default function StreamLive() {
     ? `/cabinet/education/streams/active/?id=${streamId}`
     : '/cabinet/education/streams/active/'
 
-  // Find stream on mount — works for both specific ?id= links and auto-detect
+  // Refs to access latest state inside intervals without re-creating them
+  const streamRef = useRef(null)
+  const streamEndedRef = useRef(false)
+  const joinedRef = useRef(false)
+  streamRef.current = stream
+  streamEndedRef.current = streamEnded
+
+  // Auth check on mount
   useEffect(() => {
-    if (!localStorage.getItem('cabinet_access_token')) {
-      nav('/cabinet'); return
-    }
-    api.get(activeUrl)
-      .then(r => {
-        const s = r.data?.stream || null
-        const reason = r.data?.reason || ''
-        setStream(s)
-        // Only flag access-denial when student opened a SPECIFIC link.
-        // Auto-detect (no ?id=) returning null just means no live stream right now.
-        if (!s && streamId && (reason === 'forbidden' || reason === 'not_found')) {
-          setAccessDenied(reason)
-        } else {
-          setAccessDenied('')
-        }
-      })
-      .catch(e => setError(e.response?.data?.detail || 'Ошибка'))
-  }, [nav, activeUrl, streamId])
+    if (!localStorage.getItem('cabinet_access_token')) nav('/cabinet')
+  }, [nav])
 
-  // Join + heartbeat — only when stream is actually LIVE (not scheduled)
+  // Single interval drives everything: active poll + join + heartbeat + viewers
   useEffect(() => {
-    if (!stream?.id || stream.status !== 'live') return
-    let cancelled = false
-    api.post(`/cabinet/education/streams/${stream.id}/join/`)
-      .then(r => { if (!cancelled) setJoined(r.data) })
-      .catch(() => {}) // non-fatal: heartbeat keeps viewer alive
-
-    const beat = setInterval(() => {
-      api.post(`/cabinet/education/streams/${stream.id}/heartbeat/`).catch(() => {})
-    }, 15000)
-    return () => { cancelled = true; clearInterval(beat) }
-  }, [stream?.id, stream?.status])
-
-  // Viewers polling — only when live
-  useEffect(() => {
-    if (!stream?.id || stream.status !== 'live') return
-    const pull = () => {
-      api.get(`/cabinet/education/streams/${stream.id}/viewers/`)
-        .then(r => setViewers(r.data || []))
-        .catch(() => {})
-    }
-    pull()
-    const id = setInterval(pull, 5000)
-    return () => clearInterval(id)
-  }, [stream?.id, stream?.status])
-
-  const playback = joined?.playback_url || stream?.playback_url || ''
-  const watermarkText = joined?.watermark?.text || ''
-
-  // Poll every 5 s — detect when stream goes live (scheduled→live) or ends.
-  // IMPORTANT: poll even when no stream is active yet (no guard on stream?.id)
-  // so the page auto-updates when the admin starts a broadcast.
-  useEffect(() => {
-    if (streamEnded) return // no need to poll after stream has ended
     const pollUrl = streamId
       ? `/cabinet/education/streams/active/?id=${streamId}`
       : '/cabinet/education/streams/active/'
-    const id = setInterval(() => {
-      api.get(pollUrl)
-        .then(r => {
-          const s = r.data?.stream
-          const reason = r.data?.reason || ''
-          if (!s || s.status === 'ended' || s.status === 'archived') {
-            // Stream ended — show "Эфир завершён" only if we were watching
-            if (stream?.status === 'live') {
-              setStreamEnded(true)
-            } else if (s?.status === 'ended' || s?.status === 'archived') {
-              setStreamEnded(true)
-            }
-            setStream(null)
-            // Persist access-denial reason so the page keeps showing it
-            if (!s && streamId && (reason === 'forbidden' || reason === 'not_found')) {
-              setAccessDenied(reason)
-            }
-          } else {
-            setStream(s) // update status: scheduled → live triggers join effect
-            setAccessDenied('') // got the stream — clear any prior denial
+
+    const tick = async () => {
+      if (streamEndedRef.current) return
+
+      // 1. Active stream check
+      try {
+        const r = await api.get(pollUrl)
+        const s = r.data?.stream || null
+        const reason = r.data?.reason || ''
+
+        if (!s || s.status === 'ended' || s.status === 'archived') {
+          if (streamRef.current?.status === 'live' || s?.status === 'ended' || s?.status === 'archived') {
+            setStreamEnded(true)
           }
-        })
-        .catch(() => {})
-    }, 5000)
-    return () => clearInterval(id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.id, stream?.status, streamId, streamEnded])
+          setStream(null)
+          if (!s && streamId && (reason === 'forbidden' || reason === 'not_found')) {
+            setAccessDenied(reason)
+          }
+          return
+        }
+
+        setStream(s)
+        setAccessDenied('')
+
+        if (s.status !== 'live') return
+
+        // 2. Join once
+        if (!joinedRef.current) {
+          joinedRef.current = true
+          api.post(`/cabinet/education/streams/${s.id}/join/`)
+            .then(r2 => setJoined(r2.data))
+            .catch(() => { joinedRef.current = false })
+        }
+
+        // 3. Heartbeat (every other tick = ~10s)
+        api.post(`/cabinet/education/streams/${s.id}/heartbeat/`).catch(() => {})
+
+        // 4. Viewers
+        api.get(`/cabinet/education/streams/${s.id}/viewers/`)
+          .then(r2 => setViewers(r2.data || []))
+          .catch(() => {})
+      } catch {
+        // network error — skip tick
+      }
+    }
+
+    tick() // immediate first call
+    const id = setInterval(tick, 8000)
+    return () => {
+      clearInterval(id)
+      joinedRef.current = false
+    }
+  }, [streamId]) // stable — never restarts while on the page
+
+  const playback = joined?.playback_url || stream?.playback_url || ''
+  const playbackKind = forcedHls ? 'hls' : (joined?.playback_kind || stream?.playback_kind || 'hls')
+  const watermarkText = joined?.watermark?.text || ''
 
   return (
     <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
@@ -229,13 +225,28 @@ export default function StreamLive() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <div className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg">
-                {playback ? (
-                  <HlsPlayer
-                    src={playback}
-                    autoPlay
-                    live
-                    onReady={v => { videoRef.current = v }}
+                {USE_IFRAME ? (
+                  <CloudflareStreamPlayer
+                    uid={stream.cf_playback_id}
+                    subdomain={CF_SUBDOMAIN}
                   />
+                ) : playback ? (
+                  playbackKind === 'webrtc' ? (
+                    <WebRTCPlayer
+                      src={playback}
+                      onStateChange={s => {
+                        if (s === 'playing') videoRef.current = videoRef.current
+                      }}
+                      onFallback={() => setForcedHls(true)}
+                    />
+                  ) : (
+                    <HlsPlayer
+                      src={playback}
+                      autoPlay
+                      live
+                      onReady={v => { videoRef.current = v }}
+                    />
+                  )
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 text-sm gap-3">
                     <div className="w-8 h-8 border-2 border-white/20 border-t-white/70 rounded-full animate-spin" />

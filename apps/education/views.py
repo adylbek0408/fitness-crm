@@ -415,6 +415,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             cf_stream_key=payload['stream_key'],
             cf_playback_id=payload['playback_id'],
             cf_webrtc_url=payload.get('webrtc_url', ''),
+            cf_webrtc_playback_url=payload.get('webrtc_playback_url', ''),
             cf_srt_url=payload.get('srt_url', ''),
             cf_srt_passphrase=payload.get('srt_passphrase', ''),
             created_by=self.request.user if self.request.user.is_authenticated else None,

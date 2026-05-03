@@ -209,6 +209,11 @@ class CloudflareStreamService:
         rtmps = result.get('rtmps', {}) or {}
         srt = result.get('srt', {}) or {}
         webrtc = result.get('webRTC', {}) or {}
+        # Build WHEP playback URL for students (WebRTC instead of HLS)
+        sub = getattr(settings, 'CF_STREAM_CUSTOMER', '').strip()
+        webrtc_playback_url = ''
+        if sub and uid:
+            webrtc_playback_url = f'https://{sub}.cloudflarestream.com/{uid}/webRTC/play'
         return {
             'uid': uid,
             'rtmp_url': rtmps.get('url', ''),
@@ -216,6 +221,8 @@ class CloudflareStreamService:
             'playback_id': uid,  # for live, the input UID is the playback id
             # Browser / mobile streaming (WHIP protocol)
             'webrtc_url': webrtc.get('url', ''),
+            # WebRTC playback URL (WHEP protocol — for students to watch live)
+            'webrtc_playback_url': webrtc_playback_url,
             # SRT (Larix Broadcaster etc.)
             'srt_url': srt.get('url', ''),
             'srt_passphrase': srt.get('passphrase', ''),
