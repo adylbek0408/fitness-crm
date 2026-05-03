@@ -385,6 +385,12 @@ class JitsiService:
         secret = cls._config_value('JITSI_APP_SECRET')
 
         now = datetime.now(dt_timezone.utc)
+        # Modern Jitsi (8.x+) reads moderator status from `context.user.affiliation`
+        # ('owner' = moderator, 'member' = participant). Older versions used
+        # `moderator: 'true'/'false'`. We set BOTH fields for compatibility.
+        # We also add `kicked: 'true'`-equivalent restrictions via features so
+        # students can't take moderator-only actions even if Jitsi misroutes.
+        affiliation = 'owner' if is_moderator else 'member'
         payload = {
             'aud': 'jitsi',
             'iss': app_id,
@@ -399,12 +405,20 @@ class JitsiService:
                     'email': email,
                     'avatar': avatar_url or '',
                     'moderator': 'true' if is_moderator else 'false',
+                    'affiliation': affiliation,
+                    'role': 'moderator' if is_moderator else 'participant',
                 },
                 'features': {
-                    'recording': 'false',
-                    'livestreaming': 'false',
+                    # Moderator-only features — explicitly disabled for students
+                    'recording': 'true' if is_moderator else 'false',
+                    'livestreaming': 'true' if is_moderator else 'false',
+                    'transcription': 'false',
+                    'outbound-call': 'false',
+                    # Allowed for everyone
                     'screen-sharing': 'true',
                 },
             },
+            # Top-level `moderator` claim (some Jitsi forks check here)
+            'moderator': is_moderator,
         }
         return jwt.encode(payload, secret, algorithm='HS256')

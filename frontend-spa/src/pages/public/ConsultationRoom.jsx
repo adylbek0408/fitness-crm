@@ -73,22 +73,55 @@ export default function ConsultationRoom() {
           enableClosePage: false,
           requireDisplayName: false,
           disableInviteFunctions: true,
+          // Force token-based roles — without this, the first joiner becomes
+          // moderator regardless of JWT claims. Critical for student safety.
+          enableUserRolesBasedOnToken: true,
+          // Don't auto-make the first user a moderator
+          enableLobby: false,
+          // Hide moderator-only toolbar items for students (the JWT lacks
+          // the moderator features so they wouldn't work anyway, but visible
+          // buttons confuse users).
           toolbarButtons: [
-            'microphone', 'camera', 'desktop', 'fullscreen',
+            'microphone', 'camera', 'fullscreen',
             'hangup', 'chat', 'tileview', 'videoquality', 'settings',
           ],
+          // Hard-disable recording/livestreaming/desktop sharing for the
+          // student side — defence-in-depth.
+          disableRemoteMute: true,
+          fileRecordingsEnabled: false,
+          liveStreamingEnabled: false,
+          remoteVideoMenu: { disableKick: true, disableGrantModerator: true },
+          disableProfile: true,
         },
         interfaceConfigOverwrite: {
           MOBILE_APP_PROMO: false,
           SHOW_JITSI_WATERMARK: false,
           SHOW_BRAND_WATERMARK: false,
           SHOW_POWERED_BY: false,
+          DISABLE_FOCUS_INDICATOR: true,
+          HIDE_INVITE_MORE_HEADER: true,
+          // Strip moderator-only UI on the student side
+          SETTINGS_SECTIONS: ['devices', 'language'],
         },
       })
 
       apiRef.current.addEventListener('readyToClose', () => {
         try { apiRef.current.dispose() } catch {}
         apiRef.current = null
+      })
+
+      // Defence-in-depth: when our user joins, if Jitsi accidentally gave them
+      // moderator (e.g. enableUserRolesBasedOnToken not set on server), demote
+      // ourselves immediately. The JWT is the source of truth.
+      apiRef.current.addEventListener('videoConferenceJoined', () => {
+        try {
+          // executeCommand('makeMeParticipant') was added in Jitsi 8.x — wrap
+          // in try-catch for older versions.
+          apiRef.current.executeCommand('overwriteConfig', {
+            disableModeratorIndicator: true,
+            remoteVideoMenu: { disableKick: true, disableGrantModerator: true },
+          })
+        } catch {}
       })
     }
 

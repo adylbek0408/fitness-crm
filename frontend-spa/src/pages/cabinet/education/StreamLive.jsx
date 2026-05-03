@@ -187,6 +187,7 @@ export default function StreamLive() {
                   <HlsPlayer
                     src={playback}
                     autoPlay
+                    live
                     onReady={v => { videoRef.current = v }}
                   />
                 ) : (
