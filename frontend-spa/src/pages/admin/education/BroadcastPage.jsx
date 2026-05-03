@@ -38,6 +38,7 @@ export default function BroadcastPage() {
   const localStreamRef = useRef(null)
   const elapsedTimerRef = useRef(null)
   const statusRef = useRef(status) // keep ref in sync so cleanup sees latest status
+  const whipResourceRef = useRef(null) // WHIP resource URL for DELETE on session end
 
   // Quality presets — width × height × fps × max video bitrate (kbps).
   // Without setting maxBitrate explicitly, WebRTC defaults to ~300kbps which
@@ -128,6 +129,9 @@ export default function BroadcastPage() {
       if (statusRef.current === 'live') {
         api.post(`/education/streams/${id}/end/`).catch(() => {})
       }
+      // DELETE the WHIP resource so Cloudflare creates the recording immediately
+      const whipUrl = whipResourceRef.current
+      if (whipUrl) { try { fetch(whipUrl, { method: 'DELETE' }).catch(() => {}) } catch {} }
       localStreamRef.current?.getTracks().forEach(t => t.stop())
       pcRef.current?.close()
     }
@@ -146,6 +150,8 @@ export default function BroadcastPage() {
         const fresh = list.find(s => s.id === id)
         if (fresh && fresh.status !== 'live') {
           // Stream ended externally → stop local broadcast immediately
+          const whipUrl = whipResourceRef.current
+          if (whipUrl) { whipResourceRef.current = null; try { fetch(whipUrl, { method: 'DELETE' }).catch(() => {}) } catch {} }
           localStreamRef.current?.getTracks().forEach(t => t.stop())
           pcRef.current?.close()
           if (localVideoRef.current) localVideoRef.current.srcObject = null
@@ -281,6 +287,9 @@ export default function BroadcastPage() {
       })
       if (!resp.ok) throw new Error(`WHIP error: ${resp.status} ${await resp.text()}`)
       const answer = await resp.text()
+      // Save WHIP resource URL — required to send DELETE when ending the session
+      // so Cloudflare closes the input and triggers recording creation immediately.
+      whipResourceRef.current = resp.headers.get('Location') || null
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
 
       // AUTO go-live in backend so students can see the stream
@@ -299,7 +308,18 @@ export default function BroadcastPage() {
     }
   }
 
+  // Send WHIP DELETE so Cloudflare closes the live input session immediately
+  // and starts creating the recording. Without this CF waits for ICE timeout
+  // (~60s) before starting to process the recording.
+  const closeWhipSession = () => {
+    const url = whipResourceRef.current
+    if (!url) return
+    whipResourceRef.current = null
+    try { fetch(url, { method: 'DELETE' }).catch(() => {}) } catch {}
+  }
+
   const stopBroadcast = async () => {
+    closeWhipSession()
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     setBroadcasting(false)
