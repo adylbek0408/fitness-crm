@@ -345,6 +345,8 @@ export default function BroadcastPage() {
   }
 
   const stopBroadcast = async () => {
+    // Capture WHIP resource URL BEFORE closeWhipSession nulls the ref.
+    const whipUrl = whipResourceRef.current
     closeWhipSession()
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
@@ -352,9 +354,10 @@ export default function BroadcastPage() {
     setStatus('ended')
     if (localVideoRef.current) localVideoRef.current.srcObject = null
 
-    // AUTO end backend stream
+    // AUTO end backend stream — also pass WHIP resource URL so the backend
+    // proxies the DELETE to Cloudflare (avoids browser CORS/network issues).
     try {
-      await api.post(`/education/streams/${id}/end/`)
+      await api.post(`/education/streams/${id}/end/`, whipUrl ? { whip_resource_url: whipUrl } : {})
     } catch {}
   }
 

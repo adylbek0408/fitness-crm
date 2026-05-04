@@ -451,6 +451,22 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         StreamViewer.objects.filter(stream=stream, is_active=True).update(
             is_active=False, left_at=timezone.now(),
         )
+
+        # Proxy WHIP DELETE to Cloudflare so recording is triggered reliably.
+        # Browser fetch() for DELETE may be silently blocked by CORS or network;
+        # doing it server-side guarantees delivery and lets us log the result.
+        whip_resource_url = (request.data or {}).get('whip_resource_url', '')
+        if whip_resource_url:
+            try:
+                import requests as _req
+                del_resp = _req.delete(whip_resource_url, timeout=10)
+                logger.info(
+                    'WHIP DELETE stream=%s url=%s status=%s',
+                    stream.id, whip_resource_url, del_resp.status_code,
+                )
+            except Exception:
+                logger.warning('WHIP DELETE failed for stream=%s', stream.id, exc_info=True)
+
         return Response(LiveStreamAdminSerializer(stream).data)
 
     @action(detail=True, methods=['get'])
