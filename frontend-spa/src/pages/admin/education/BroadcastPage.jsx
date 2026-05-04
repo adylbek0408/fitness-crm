@@ -288,13 +288,33 @@ export default function BroadcastPage() {
       if (!resp.ok) throw new Error(`WHIP error: ${resp.status} ${await resp.text()}`)
       const answer = await resp.text()
       // Save WHIP resource URL for DELETE on session end.
-      // CF returns Location as a relative path like /token/webRTC/publish/sessionId.
-      // We extract just the sessionId and append to the known absolute CF WHIP URL
-      // to avoid URL resolution issues (relative path would resolve to our nginx).
+      // CF returns Location header with the session resource path.
+      // NOTE: browsers may block Location via CORS if CF doesn't expose it —
+      // log all headers so we can debug when DELETE isn't firing.
       const location = resp.headers.get('Location') || ''
-      const sessionId = location.split('/').pop()
-      if (sessionId && sessionId.length > 10) {
-        whipResourceRef.current = stream.cf_webrtc_url.replace(/\/$/, '') + '/' + sessionId
+      // eslint-disable-next-line no-console
+      console.log('[WHIP] Location header:', location)
+      // eslint-disable-next-line no-console
+      console.log('[WHIP] Response headers:', Object.fromEntries([...resp.headers.entries()]))
+      if (location) {
+        // Resolve relative or absolute Location against the WHIP endpoint origin
+        try {
+          const resolved = new URL(location, stream.cf_webrtc_url).href
+          whipResourceRef.current = resolved
+          // eslint-disable-next-line no-console
+          console.log('[WHIP] DELETE resource URL:', resolved)
+        } catch {
+          // fallback: extract last segment as sessionId
+          const sessionId = location.split('/').pop()
+          if (sessionId && sessionId.length > 4) {
+            whipResourceRef.current = stream.cf_webrtc_url.replace(/\/$/, '') + '/' + sessionId
+            // eslint-disable-next-line no-console
+            console.log('[WHIP] DELETE resource URL (fallback):', whipResourceRef.current)
+          }
+        }
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('[WHIP] Location header missing — DELETE will not be sent. Check CORS on CF endpoint.')
       }
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
 
