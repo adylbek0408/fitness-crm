@@ -460,9 +460,9 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             try:
                 import requests as _req
                 del_resp = _req.delete(whip_resource_url, timeout=10)
-                logger.info(
-                    'WHIP DELETE stream=%s url=%s status=%s',
-                    stream.id, whip_resource_url, del_resp.status_code,
+                logger.warning(
+                    'WHIP DELETE stream=%s status=%s body=%s',
+                    stream.id, del_resp.status_code, del_resp.text[:200],
                 )
             except Exception:
                 logger.warning('WHIP DELETE failed for stream=%s', stream.id, exc_info=True)
