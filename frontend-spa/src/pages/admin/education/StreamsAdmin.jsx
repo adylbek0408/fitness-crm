@@ -615,34 +615,40 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
 
         {/* Actions */}
         {!selectMode && (
-          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+          <div className="flex items-center gap-1 shrink-0">
             {isLive && (
-              <button onClick={onEnd} className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-medium flex items-center gap-1 hover:bg-rose-600">
-                <Square size={12} /> Завершить
+              <button onClick={onEnd} title="Завершить эфир"
+                className="p-2 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition active:scale-95">
+                <Square size={15} />
               </button>
             )}
             {!isArchived && (
               <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
-                className="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-xs font-medium flex items-center gap-1 hover:bg-rose-200">
-                <ExternalLink size={12} /> {isLive ? 'Студия' : 'Начать эфир'}
+                title={isLive ? 'Открыть студию' : 'Начать эфир'}
+                className="p-2 rounded-xl bg-rose-100 text-rose-700 hover:bg-rose-200 transition flex items-center active:scale-95">
+                <ExternalLink size={15} />
               </a>
             )}
             {hasRecording && (
-              <button onClick={onPreviewRecording} className="px-3 py-1.5 rounded-lg bg-violet-100 text-violet-700 text-xs font-medium flex items-center gap-1 hover:bg-violet-200">
-                <Eye size={12} /> Запись
+              <button onClick={onPreviewRecording} title="Просмотр записи"
+                className="p-2 rounded-xl bg-violet-100 text-violet-700 hover:bg-violet-200 transition active:scale-95">
+                <Eye size={15} />
               </button>
             )}
             {isArchived && !hasRecording && (
-              <button onClick={onManualArchive} className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-xs font-medium flex items-center gap-1 border border-amber-200 hover:bg-amber-100">
-                <BookMarked size={12} /> Создать архив
+              <button onClick={onManualArchive} title="Создать архив из записи CF"
+                className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition active:scale-95">
+                <BookMarked size={15} />
               </button>
             )}
             {isArchived && (
-              <button onClick={onEdit} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition" title="Редактировать">
+              <button onClick={onEdit} title="Редактировать"
+                className="p-2 rounded-xl text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition active:scale-95">
                 <Pencil size={15} />
               </button>
             )}
-            <button onClick={onDelete} className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition" title="В корзину">
+            <button onClick={onDelete} title="В корзину"
+              className="p-2 rounded-xl text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition active:scale-95">
               <Trash2 size={15} />
             </button>
           </div>

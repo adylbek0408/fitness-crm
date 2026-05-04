@@ -388,25 +388,24 @@ function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl,
 
         {/* Actions */}
         {!selectMode && (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             {isActive && (
               <>
-                <button
-                  onClick={onJoinRoom}
-                  disabled={isJoining}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500 hover:bg-violet-600 text-white text-xs font-semibold shadow-sm disabled:opacity-60"
-                >
+                <button onClick={onJoinRoom} disabled={isJoining} title="Войти в комнату"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500 hover:bg-violet-600 text-white text-xs font-semibold shadow-sm disabled:opacity-60 transition active:scale-95">
                   {isJoining
                     ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : <LogIn size={13} />}
+                    : <LogIn size={14} />}
                   <span className="hidden sm:inline">{isJoining ? 'Подкл…' : 'Войти'}</span>
                 </button>
-                <button onClick={onStop} className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 border border-rose-100" title="Завершить">
+                <button onClick={onStop} title="Завершить консультацию"
+                  className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 border border-rose-100 transition active:scale-95">
                   <StopCircle size={15} />
                 </button>
               </>
             )}
-            <button onClick={onDelete} className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition" title="В корзину">
+            <button onClick={onDelete} title="В корзину"
+              className="p-2 rounded-xl text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition active:scale-95">
               <Trash2 size={15} />
             </button>
           </div>
