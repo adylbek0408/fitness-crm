@@ -222,28 +222,24 @@ export default function BroadcastPage() {
     setUploadState('uploading')
     setUploadProgress(0)
     try {
-      const { data } = await api.get(`/education/streams/${id}/recording-upload-url/`)
       const blob = new Blob(chunks, { type: 'video/webm' })
       // eslint-disable-next-line no-console
-      console.log('[Recording] uploading', (blob.size / 1024 / 1024).toFixed(1), 'MB to CF Stream')
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.upload.onprogress = e => {
-          if (e.lengthComputable) setUploadProgress(Math.round(e.loaded / e.total * 100))
-        }
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve()
-          else reject(new Error(`CF upload HTTP ${xhr.status}: ${xhr.responseText?.slice(0, 200)}`))
-        }
-        xhr.onerror = () => reject(new Error('Network error during upload'))
-        xhr.open('PUT', data.upload_url)
-        xhr.setRequestHeader('Content-Type', 'video/webm')
-        xhr.send(blob)
+      console.log('[Recording] uploading', (blob.size / 1024 / 1024).toFixed(1), 'MB via server proxy')
+      const formData = new FormData()
+      formData.append('file', new File([blob], 'recording.webm', { type: 'video/webm' }))
+      // POST to Django — Django proxies to CF server-side (avoids CORS on CF upload endpoint)
+      await api.post(`/education/streams/${id}/upload-recording/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: e => {
+          // 0-90%: browser→server; server→CF happens after (response arrives = 100%)
+          if (e.total) setUploadProgress(Math.min(90, Math.round(e.loaded / e.total * 90)))
+        },
+        timeout: 0, // no axios timeout — large files can take minutes
       })
-      await api.post(`/education/streams/${id}/save-recording/`, { video_uid: data.video_uid })
+      setUploadProgress(100)
       setUploadState('done')
       // eslint-disable-next-line no-console
-      console.log('[Recording] upload complete, video_uid:', data.video_uid)
+      console.log('[Recording] upload complete')
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[Recording] upload failed:', e)
@@ -613,7 +609,9 @@ export default function BroadcastPage() {
                 <div className="w-full bg-gray-900 rounded-2xl border border-gray-700 p-5">
                   <div className="flex items-center gap-3 mb-3">
                     <Upload size={20} className="text-blue-400 animate-bounce shrink-0" />
-                    <div className="text-sm font-medium">Загружаем запись эфира…</div>
+                    <div className="text-sm font-medium">
+                      {uploadProgress < 90 ? 'Загружаем запись на сервер…' : 'Сервер отправляет в Cloudflare…'}
+                    </div>
                     <span className="ml-auto text-xs text-gray-400 font-mono">{uploadProgress}%</span>
                   </div>
                   <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">

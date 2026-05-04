@@ -594,42 +594,59 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         stream.save(update_fields=['archived_lesson', 'status', 'ended_at', 'updated_at'])
         return Response(LiveStreamAdminSerializer(stream).data)
 
-    @action(detail=True, methods=['get'], url_path='recording-upload-url')
-    def recording_upload_url(self, request, pk=None):
-        """Return a Cloudflare Stream direct-upload URL for browser-side recording.
+    @action(detail=True, methods=['post'], url_path='upload-recording')
+    def upload_recording(self, request, pk=None):
+        """Receive a WebM recording from the browser, upload it to CF Stream, create lesson archive.
 
-        Called by BroadcastPage right after the broadcast ends so the browser can
-        upload the MediaRecorder blob directly to CF Stream without routing the
-        (potentially large) file through Django.
+        Browser → Django (multipart, field='file') → CF Stream (server-to-server PUT).
+        Server-side upload avoids the CORS limitation that blocks direct browser PUT to
+        upload.cloudflarestream.com.
+
+        Requires nginx: client_max_body_size 2g (see deploy/nginx.conf).
         """
         stream = self.get_object()
+        if stream.archived_lesson_id:
+            return Response({'detail': 'У эфира уже есть запись.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        video_file = request.FILES.get('file')
+        if not video_file:
+            return Response({'detail': 'Нет файла (поле: file).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1) Get a one-time CF Stream direct-upload URL
         try:
-            result = CloudflareStreamService.create_direct_upload_url(
+            upload_info = CloudflareStreamService.create_direct_upload_url(
                 max_duration_sec=3 * 3600,
                 name=f'Эфир: {stream.title}',
             )
         except ImproperlyConfigured as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except Exception as e:
-            logger.warning('CF direct upload URL failed for stream=%s: %s', stream.id, e)
+            logger.warning('CF upload URL error stream=%s: %s', stream.id, e)
             return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        return Response(result)
 
-    @action(detail=True, methods=['post'], url_path='save-recording')
-    def save_recording(self, request, pk=None):
-        """Attach an uploaded CF Stream video to this broadcast and create a Lesson archive.
+        upload_url = upload_info['upload_url']
+        video_uid = upload_info['video_uid']
 
-        Called by BroadcastPage after successfully uploading the MediaRecorder blob
-        to the CF direct-upload URL obtained from recording_upload_url.
-        Body: { "video_uid": "<cf_video_uid>" }
-        """
-        stream = self.get_object()
-        video_uid = ((request.data or {}).get('video_uid') or '').strip()
-        if not video_uid:
-            return Response({'detail': 'video_uid обязателен.'}, status=status.HTTP_400_BAD_REQUEST)
-        if stream.archived_lesson_id:
-            return Response({'detail': 'У эфира уже есть запись.'}, status=status.HTTP_400_BAD_REQUEST)
+        # 2) Stream file to CF (server-to-server — no CORS limitations)
+        try:
+            import requests as _req
+            content_type = video_file.content_type or 'video/webm'
+            resp = _req.put(
+                upload_url,
+                data=video_file,
+                headers={'Content-Type': content_type},
+                timeout=600,  # 10 min ceiling for very long sessions
+            )
+            resp.raise_for_status()
+            logger.warning('CF upload OK stream=%s video_uid=%s size=%s', stream.id, video_uid, video_file.size)
+        except Exception as e:
+            logger.warning('CF upload failed stream=%s: %s', stream.id, e, exc_info=True)
+            return Response(
+                {'detail': f'Ошибка загрузки в Cloudflare: {e}'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
+        # 3) Create lesson archive
         from django.db import transaction
         with transaction.atomic():
             lesson = Lesson.objects.filter(stream_uid=video_uid).first()
@@ -655,7 +672,6 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                 stream.ended_at = timezone.now()
             stream.save(update_fields=['archived_lesson', 'recording_uid', 'status', 'ended_at', 'updated_at'])
 
-        logger.warning('Browser recording saved: stream=%s video_uid=%s', stream.id, video_uid)
         return Response(LiveStreamAdminSerializer(stream).data)
 
     @action(detail=False, methods=['get'])
