@@ -7,9 +7,11 @@ User=www-data
 Group=www-data
 WorkingDirectory=/var/www/fitness-crm
 EnvironmentFile=/var/www/fitness-crm/.env
+RuntimeDirectory=fitness-crm
+RuntimeDirectoryMode=0755
 ExecStart=/var/www/fitness-crm/venv/bin/gunicorn \
     --workers 3 \
-    --bind unix:/run/fitness-crm.sock \
+    --bind unix:/run/fitness-crm/gunicorn.sock \
     --access-logfile /var/log/fitness-crm/access.log \
     --error-logfile /var/log/fitness-crm/error.log \
     --timeout 600 \
