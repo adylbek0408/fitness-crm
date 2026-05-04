@@ -216,6 +216,7 @@ class CloudflareStreamService:
         import logging
         logger = logging.getLogger(__name__)
         logger.info('CF live_input response keys: %s', list(result.keys()))
+        logger.info('CF live_input recording: %s', result.get('recording'))
         logger.info('webRTCPlayback: %s', webrtc_playback)
 
         if not webrtc_playback_url and uid:
