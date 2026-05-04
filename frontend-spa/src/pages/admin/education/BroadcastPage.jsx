@@ -384,7 +384,7 @@ export default function BroadcastPage() {
           )}
 
           {/* ── Top bar ── */}
-          <div className="absolute top-0 left-0 right-0 flex items-center gap-3 px-4 pt-5 pb-2">
+          <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 pt-5 pb-2">
             <button onClick={() => nav('/admin/education/streams')}
               className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/70 active:scale-90 transition shrink-0">
               <ChevronLeft size={20} />
@@ -432,7 +432,7 @@ export default function BroadcastPage() {
           )}
 
           {/* ── Bottom control bar ── */}
-          <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-3 px-4 pb-10">
+          <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-3 px-4 pb-10">
             {/* mirror label */}
             <button onClick={() => setMirrored(m => !m)}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition active:scale-95 ${mirrored ? 'bg-white/25 text-white border border-white/30' : 'bg-black/30 text-white/40 border border-white/10'}`}>

@@ -432,28 +432,28 @@ export default function StreamsAdmin() {
 
       {/* Recording preview modal */}
       {previewInfo && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setPreviewInfo(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-rose-100">
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4" onClick={() => setPreviewInfo(null)}>
+          <div className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col" style={{ maxHeight: '92dvh' }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 shrink-0">
               <div>
-                <h3 className="font-semibold text-lg">{previewTitle}</h3>
-                <p className="text-sm text-gray-500">Запись эфира</p>
+                <h3 className="font-semibold text-white">{previewTitle}</h3>
+                <p className="text-xs text-white/40">Запись эфира</p>
               </div>
-              <button onClick={() => setPreviewInfo(null)} className="p-2 rounded-xl hover:bg-rose-50"><X size={20} /></button>
+              <button onClick={() => setPreviewInfo(null)} className="p-2 rounded-xl text-white/60 hover:bg-white/10 hover:text-white transition"><X size={20} /></button>
             </div>
-            <div className="p-6">
-              {!previewInfo.playback_url ? (
-                <div className="flex flex-col items-center py-12 text-gray-500 gap-3">
-                  <AlertCircle size={36} className="text-amber-400" />
-                  <p className="font-medium text-gray-700">Видеозапись ещё обрабатывается</p>
-                  <p className="text-xs text-gray-400 text-center max-w-sm">Cloudflare Stream обычно тратит 5–15 минут. Закройте это окно и попробуйте позже.</p>
-                </div>
-              ) : (
-                <div className="aspect-video bg-black rounded-2xl overflow-hidden">
-                  <HlsPlayer src={previewInfo.playback_url} kind={previewInfo.video_kind || 'hls'} autoPlay />
-                </div>
-              )}
-            </div>
+            {/* Player — fills available height, works for landscape AND portrait */}
+            {!previewInfo.playback_url ? (
+              <div className="flex flex-col items-center py-14 text-gray-500 gap-3 px-4">
+                <AlertCircle size={36} className="text-amber-400" />
+                <p className="font-medium text-white/70">Видеозапись ещё обрабатывается</p>
+                <p className="text-xs text-white/40 text-center max-w-xs">Cloudflare Stream обычно тратит 5–15 минут. Попробуйте позже.</p>
+              </div>
+            ) : (
+              <div className="bg-black flex-1 overflow-hidden" style={{ minHeight: '200px', maxHeight: '75dvh' }}>
+                <HlsPlayer src={previewInfo.playback_url} kind={previewInfo.video_kind || 'hls'} autoPlay />
+              </div>
+            )}
           </div>
         </div>
       )}
