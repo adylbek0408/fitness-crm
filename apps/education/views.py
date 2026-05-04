@@ -628,13 +628,14 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         video_uid = upload_info['video_uid']
 
         # 2) Stream file to CF (server-to-server — no CORS limitations)
+        # CF direct_upload URL expects POST multipart/form-data with field 'file',
+        # NOT a raw PUT (which returns 400 Bad Request).
         try:
             import requests as _req
             content_type = video_file.content_type or 'video/webm'
-            resp = _req.put(
+            resp = _req.post(
                 upload_url,
-                data=video_file,
-                headers={'Content-Type': content_type},
+                files={'file': ('recording.webm', video_file, content_type)},
                 timeout=600,  # 10 min ceiling for very long sessions
             )
             resp.raise_for_status()
