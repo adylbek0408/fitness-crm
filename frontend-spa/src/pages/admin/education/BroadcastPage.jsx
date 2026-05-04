@@ -287,14 +287,14 @@ export default function BroadcastPage() {
       })
       if (!resp.ok) throw new Error(`WHIP error: ${resp.status} ${await resp.text()}`)
       const answer = await resp.text()
-      // Save WHIP resource URL — required to send DELETE when ending the session
-      // so Cloudflare closes the input and triggers recording creation immediately.
-      // CF returns Location as a relative path — resolve it against the WHIP
-      // endpoint origin so the DELETE goes to Cloudflare, not to our nginx.
-      const location = resp.headers.get('Location')
-      if (location) {
-        try { whipResourceRef.current = new URL(location, stream.cf_webrtc_url).href }
-        catch { whipResourceRef.current = location }
+      // Save WHIP resource URL for DELETE on session end.
+      // CF returns Location as a relative path like /token/webRTC/publish/sessionId.
+      // We extract just the sessionId and append to the known absolute CF WHIP URL
+      // to avoid URL resolution issues (relative path would resolve to our nginx).
+      const location = resp.headers.get('Location') || ''
+      const sessionId = location.split('/').pop()
+      if (sessionId && sessionId.length > 10) {
+        whipResourceRef.current = stream.cf_webrtc_url.replace(/\/$/, '') + '/' + sessionId
       }
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
 
