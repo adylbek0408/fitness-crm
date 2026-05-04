@@ -195,10 +195,24 @@ export default function StreamsAdmin() {
         const cfResp = await api.get(`/education/streams/${id}/cf-status/`).catch(() => null)
         if (archiveCancelledRef.current) return
         const cf = cfResp?.data || {}
-        let msg = cf.live_input_state === 'connected' ? 'Эфир ещё идёт в CF — дождитесь окончания.'
-          : cf.recordings_count === 0 ? 'Cloudflare не получил видео. Проверьте HTTPS.'
-          : cf.has_ready_recording ? 'Запись готова — публикуем…'
-          : `Cloudflare обрабатывает (${(cf.recordings || []).map(r => r.state || '?').join(', ')}). 1–3 мин.`
+
+        // CF has no recording and stream is not live → video was never received,
+        // retrying won't help; stop immediately and show a clear explanation.
+        if (cf.recordings_count === 0 && cf.live_input_state !== 'connected') {
+          setArchiveJob({
+            id, title, attempt, status: 'failed',
+            lastMsg: 'Cloudflare не получил видеоданных этого эфира. '
+              + 'Это бывает, если эфир вёлся через страницу «Начать эфир» и запись не была '
+              + 'загружена. Откройте тот эфир через кнопку «Студия» и используйте загрузку записи вручную.',
+          })
+          return
+        }
+
+        let msg = cf.live_input_state === 'connected'
+          ? 'Эфир ещё идёт в CF — дождитесь окончания.'
+          : cf.has_ready_recording
+            ? 'Запись готова — публикуем…'
+            : `Cloudflare обрабатывает (${(cf.recordings || []).map(r => r.state || '?').join(', ')}). 1–3 мин.`
         setArchiveJob(j => j ? { ...j, attempt, lastMsg: msg } : j)
         await api.post(`/education/streams/${id}/manual-archive/`)
         if (archiveCancelledRef.current) return

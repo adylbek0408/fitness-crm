@@ -29,10 +29,9 @@ const fmtDuration = sec => {
 }
 
 const STATUS_TABS = [
-  { key: 'all',       label: 'Все' },
-  { key: 'active',    label: 'Активные' },
-  { key: 'used',      label: 'Завершённые' },
-  { key: 'expired',   label: 'Истекшие' },
+  { key: 'all',    label: 'Все' },
+  { key: 'active', label: 'Активные' },
+  { key: 'used',   label: 'Завершённые' },
 ]
 
 const STATUS_MAP = {
