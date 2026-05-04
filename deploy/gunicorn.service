@@ -12,7 +12,7 @@ ExecStart=/var/www/fitness-crm/venv/bin/gunicorn \
     --bind unix:/run/fitness-crm.sock \
     --access-logfile /var/log/fitness-crm/access.log \
     --error-logfile /var/log/fitness-crm/error.log \
-    --timeout 120 \
+    --timeout 600 \
     config.wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed
