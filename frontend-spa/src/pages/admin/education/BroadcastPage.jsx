@@ -289,7 +289,13 @@ export default function BroadcastPage() {
       const answer = await resp.text()
       // Save WHIP resource URL — required to send DELETE when ending the session
       // so Cloudflare closes the input and triggers recording creation immediately.
-      whipResourceRef.current = resp.headers.get('Location') || null
+      // CF returns Location as a relative path — resolve it against the WHIP
+      // endpoint origin so the DELETE goes to Cloudflare, not to our nginx.
+      const location = resp.headers.get('Location')
+      if (location) {
+        try { whipResourceRef.current = new URL(location, stream.cf_webrtc_url).href }
+        catch { whipResourceRef.current = location }
+      }
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
 
       // AUTO go-live in backend so students can see the stream
