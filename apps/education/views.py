@@ -580,8 +580,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             duration_sec=0,
             thumbnail_url='',
             trainer=stream.trainer,
-            is_published=True,
-            published_at=timezone.now(),
+            is_published=False,
             created_by=request.user if request.user.is_authenticated else None,
         )
         if stream.groups.exists():
@@ -592,6 +591,18 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         if not stream.ended_at:
             stream.ended_at = timezone.now()
         stream.save(update_fields=['archived_lesson', 'status', 'ended_at', 'updated_at'])
+        return Response(LiveStreamAdminSerializer(stream).data)
+
+    @action(detail=True, methods=['post'], url_path='publish-recording')
+    def publish_recording(self, request, pk=None):
+        """Publish the archived lesson so students can watch the recording."""
+        stream = self.get_object()
+        if not stream.archived_lesson_id:
+            return Response({'detail': 'У эфира нет записи.'}, status=status.HTTP_400_BAD_REQUEST)
+        lesson = stream.archived_lesson
+        lesson.is_published = True
+        lesson.published_at = timezone.now()
+        lesson.save(update_fields=['is_published', 'published_at', 'updated_at'])
         return Response(LiveStreamAdminSerializer(stream).data)
 
     @action(detail=True, methods=['post'], url_path='upload-recording')
@@ -660,8 +671,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                     duration_sec=0,
                     thumbnail_url='',
                     trainer=stream.trainer,
-                    is_published=True,
-                    published_at=timezone.now(),
+                    is_published=False,
                     created_by=request.user if request.user.is_authenticated else None,
                 )
                 if stream.groups.exists():
@@ -918,8 +928,7 @@ class CFStreamWebhookView(APIView):
                             duration_sec=int(duration or 0),
                             thumbnail_url=thumbnail or '',
                             trainer=stream.trainer,
-                            is_published=True,
-                            published_at=timezone.now(),
+                            is_published=False,
                         )
                         # propagate group access
                         if stream.groups.exists():

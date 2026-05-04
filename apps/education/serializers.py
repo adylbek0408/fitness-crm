@@ -103,11 +103,25 @@ class LiveStreamSerializer(serializers.ModelSerializer):
 
 class LiveStreamAdminSerializer(LiveStreamSerializer):
     """Admin-only — surfaces RTMP, SRT, WebRTC credentials for streaming."""
+    archived_lesson_published = serializers.SerializerMethodField()
+    duration_sec = serializers.SerializerMethodField()
+
     class Meta(LiveStreamSerializer.Meta):
         fields = LiveStreamSerializer.Meta.fields + [
             'cf_input_uid', 'cf_rtmp_url', 'cf_stream_key',
             'cf_webrtc_url', 'cf_srt_url', 'cf_srt_passphrase',
+            'archived_lesson_published', 'duration_sec',
         ]
+
+    def get_archived_lesson_published(self, obj):
+        if obj.archived_lesson_id:
+            return obj.archived_lesson.is_published
+        return None
+
+    def get_duration_sec(self, obj):
+        if obj.started_at and obj.ended_at:
+            return max(0, int((obj.ended_at - obj.started_at).total_seconds()))
+        return None
 
 
 class StreamViewerSerializer(serializers.ModelSerializer):

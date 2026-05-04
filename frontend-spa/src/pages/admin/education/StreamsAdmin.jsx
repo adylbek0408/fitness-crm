@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Radio, Copy, Square, Plus, Link2, Check,
   Users, MessageCircle, ExternalLink, AlertCircle, Trash2,
-  Eye, X, BookMarked,
+  Eye, X, BookMarked, Clock, Globe,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -227,6 +227,15 @@ export default function StreamsAdmin() {
 
   const studentLink = (id) => `${window.location.origin}/cabinet/stream?id=${id}`
 
+  const publishRecording = async (id) => {
+    try {
+      const r = await api.post(`/education/streams/${id}/publish-recording/`)
+      setStreams(prev => prev.map(s => s.id === id ? r.data : s))
+    } catch (e) {
+      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
+    }
+  }
+
   // Counts on the CURRENT page only — backend returns the active page slice.
   // Total across all pages comes from `totalCount`.
   const summary = {
@@ -299,6 +308,7 @@ export default function StreamsAdmin() {
               onDelete={() => setConfirmDelete({ id: s.id, title: s.title })}
               onManualArchive={() => performManualArchive(s.id, s.title)}
               onPreviewRecording={() => openRecordingPreview(s.archived_lesson, s.title)}
+              onPublishRecording={() => publishRecording(s.id)}
               onCopy={copy}
               copied={copied}
               studentLink={studentLink(s.id)}
@@ -526,7 +536,21 @@ function StreamCreateModal({ form, setForm, groups, creating, onClose, onSubmit 
 // ───────────────────────────────────────────────────────────────────────────
 // Stream card — single big CTA, no double action
 // ───────────────────────────────────────────────────────────────────────────
-function StreamCard({ stream: s, onEnd, onDelete, onManualArchive, onPreviewRecording, onCopy, copied, studentLink }) {
+const fmtDate = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+const fmtDuration = (sec) => {
+  if (!sec || sec <= 0) return ''
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  if (h > 0) return `${h} ч ${m} мин`
+  return `${m} мин`
+}
+
+function StreamCard({ stream: s, onEnd, onDelete, onManualArchive, onPreviewRecording, onPublishRecording, onCopy, copied, studentLink }) {
   const [viewers, setViewers] = useState([])
 
   useEffect(() => {
@@ -546,6 +570,7 @@ function StreamCard({ stream: s, onEnd, onDelete, onManualArchive, onPreviewReco
   const isScheduled = s.status === 'scheduled'
   const isArchived = ['ended', 'archived'].includes(s.status)
   const hasRecording = isArchived && s.archived_lesson
+  const isPublished = s.archived_lesson_published === true
 
   const wa = encodeURIComponent(`Прямой эфир «${s.title}» — заходи по ссылке: ${studentLink}`)
 
@@ -581,8 +606,10 @@ function StreamCard({ stream: s, onEnd, onDelete, onManualArchive, onPreviewReco
               </span>
             )}
             {hasRecording && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 font-semibold flex items-center gap-1">
-                <BookMarked size={11} /> Запись готова
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 ${
+                isPublished ? 'bg-emerald-50 text-emerald-700' : 'bg-violet-50 text-violet-600'
+              }`}>
+                <BookMarked size={11} /> {isPublished ? 'Запись опубликована' : 'Запись не опубликована'}
               </span>
             )}
           </div>
@@ -591,6 +618,19 @@ function StreamCard({ stream: s, onEnd, onDelete, onManualArchive, onPreviewReco
               <Users size={11} /> {viewers.length} {viewers.length === 1 ? 'зритель' : 'зрителей'} в эфире
             </div>
           )}
+          <div className="flex items-center gap-3 flex-wrap mt-1">
+            {(s.scheduled_at || s.started_at || s.created_at) && (
+              <span className="flex items-center gap-1 text-xs text-gray-400">
+                <Clock size={11} />
+                {fmtDate(s.started_at || s.scheduled_at || s.created_at)}
+              </span>
+            )}
+            {s.duration_sec > 0 && (
+              <span className="flex items-center gap-1 text-xs text-gray-400">
+                · {fmtDuration(s.duration_sec)}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           {isLive && (
@@ -608,6 +648,20 @@ function StreamCard({ stream: s, onEnd, onDelete, onManualArchive, onPreviewReco
             >
               <Eye size={14} /> Смотреть запись
             </button>
+          )}
+          {hasRecording && !isPublished && (
+            <button
+              onClick={onPublishRecording}
+              className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm flex items-center gap-1.5 font-medium shadow"
+              title="Опубликовать — ученики смогут смотреть запись"
+            >
+              <Globe size={14} /> Опубликовать
+            </button>
+          )}
+          {hasRecording && isPublished && (
+            <span className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-sm flex items-center gap-1.5 font-medium border border-emerald-200">
+              <Check size={14} /> Опубликовано
+            </span>
           )}
           {isArchived && !hasRecording && (
             <button
