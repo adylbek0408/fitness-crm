@@ -594,6 +594,70 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         stream.save(update_fields=['archived_lesson', 'status', 'ended_at', 'updated_at'])
         return Response(LiveStreamAdminSerializer(stream).data)
 
+    @action(detail=True, methods=['get'], url_path='recording-upload-url')
+    def recording_upload_url(self, request, pk=None):
+        """Return a Cloudflare Stream direct-upload URL for browser-side recording.
+
+        Called by BroadcastPage right after the broadcast ends so the browser can
+        upload the MediaRecorder blob directly to CF Stream without routing the
+        (potentially large) file through Django.
+        """
+        stream = self.get_object()
+        try:
+            result = CloudflareStreamService.create_direct_upload_url(
+                max_duration_sec=3 * 3600,
+                name=f'Эфир: {stream.title}',
+            )
+        except ImproperlyConfigured as e:
+            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception as e:
+            logger.warning('CF direct upload URL failed for stream=%s: %s', stream.id, e)
+            return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(result)
+
+    @action(detail=True, methods=['post'], url_path='save-recording')
+    def save_recording(self, request, pk=None):
+        """Attach an uploaded CF Stream video to this broadcast and create a Lesson archive.
+
+        Called by BroadcastPage after successfully uploading the MediaRecorder blob
+        to the CF direct-upload URL obtained from recording_upload_url.
+        Body: { "video_uid": "<cf_video_uid>" }
+        """
+        stream = self.get_object()
+        video_uid = ((request.data or {}).get('video_uid') or '').strip()
+        if not video_uid:
+            return Response({'detail': 'video_uid обязателен.'}, status=status.HTTP_400_BAD_REQUEST)
+        if stream.archived_lesson_id:
+            return Response({'detail': 'У эфира уже есть запись.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.db import transaction
+        with transaction.atomic():
+            lesson = Lesson.objects.filter(stream_uid=video_uid).first()
+            if not lesson:
+                lesson = Lesson.objects.create(
+                    title=f"Эфир: {stream.title}",
+                    description=stream.description or '',
+                    lesson_type='video',
+                    stream_uid=video_uid,
+                    duration_sec=0,
+                    thumbnail_url='',
+                    trainer=stream.trainer,
+                    is_published=True,
+                    published_at=timezone.now(),
+                    created_by=request.user if request.user.is_authenticated else None,
+                )
+                if stream.groups.exists():
+                    lesson.groups.set(list(stream.groups.values_list('id', flat=True)))
+            stream.archived_lesson = lesson
+            stream.recording_uid = video_uid
+            stream.status = 'archived'
+            if not stream.ended_at:
+                stream.ended_at = timezone.now()
+            stream.save(update_fields=['archived_lesson', 'recording_uid', 'status', 'ended_at', 'updated_at'])
+
+        logger.warning('Browser recording saved: stream=%s video_uid=%s', stream.id, video_uid)
+        return Response(LiveStreamAdminSerializer(stream).data)
+
     @action(detail=False, methods=['get'])
     def trash(self, request):
         qs = LiveStream.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')

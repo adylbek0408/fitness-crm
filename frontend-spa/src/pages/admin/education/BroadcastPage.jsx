@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Radio, Mic, Video, MicOff, VideoOff, Square, Users, Settings, CheckCircle2,
+  Upload, AlertCircle,
 } from 'lucide-react'
 import api from '../../../api/axios'
 
@@ -9,8 +10,9 @@ import api from '../../../api/axios'
  * Browser-based live streaming via WebRTC (WHIP protocol → Cloudflare Stream).
  * Route: /admin/education/broadcast/:id
  *
- * Auto-flips backend stream status to 'live' when broadcasting starts,
- * and to 'ended' when it stops. No separate "Готов" button needed.
+ * Records the local MediaStream during broadcast with MediaRecorder, then uploads
+ * the recording directly to Cloudflare Stream via a direct-upload URL after the
+ * broadcast ends. This bypasses Cloudflare's broken automatic WHIP recording.
  */
 export default function BroadcastPage() {
   const { id } = useParams()
@@ -25,32 +27,30 @@ export default function BroadcastPage() {
   const [quality, setQuality] = useState('720p')
   const [showSettings, setShowSettings] = useState(false)
   const [elapsed, setElapsed] = useState(0)
-  const [redirectIn, setRedirectIn] = useState(null) // countdown seconds
-  // Real WebRTC peer-connection state — separate from `status`. Even if `status='live'`
-  // the actual data may not flow if ICE failed. Surface this so admin sees the truth.
-  const [connState, setConnState] = useState('') // '' | 'connecting' | 'connected' | 'failed' | 'disconnected'
-  const [cfStatus, setCfStatus] = useState(null) // {live_input_state, recordings_count, ...}
-  // Track whether the page is in a secure (HTTPS) context — surface a banner if not.
+  const [redirectIn, setRedirectIn] = useState(null)
+  const [connState, setConnState] = useState('')
+  const [cfStatus, setCfStatus] = useState(null)
+  // Recording upload state: null | 'uploading' | 'done' | 'error'
+  const [uploadState, setUploadState] = useState(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const insecure = typeof window !== 'undefined' && !window.isSecureContext
 
   const localVideoRef = useRef(null)
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
   const elapsedTimerRef = useRef(null)
-  const statusRef = useRef(status) // keep ref in sync so cleanup sees latest status
-  const whipResourceRef = useRef(null) // WHIP resource URL for DELETE on session end
+  const statusRef = useRef(status)
+  const whipResourceRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const recordedChunksRef = useRef([])
 
-  // Quality presets — width × height × fps × max video bitrate (kbps).
-  // Without setting maxBitrate explicitly, WebRTC defaults to ~300kbps which
-  // is what causes the "blurry / laggy" complaint.
   const QUALITIES = {
     '480p':  { width: 854,  height: 480,  frameRate: 30, videoKbps: 1200, label: 'SD 480p' },
     '720p':  { width: 1280, height: 720,  frameRate: 30, videoKbps: 2500, label: 'HD 720p' },
     '1080p': { width: 1920, height: 1080, frameRate: 30, videoKbps: 4500, label: 'Full HD 1080p' },
   }
-  const AUDIO_KBPS = 128 // Opus stereo
+  const AUDIO_KBPS = 128
 
-  // Load stream info
   useEffect(() => {
     api.get('/education/streams/')
       .then(r => {
@@ -62,7 +62,6 @@ export default function BroadcastPage() {
       .catch(() => setError('Ошибка загрузки'))
   }, [id])
 
-  // Poll viewers when live
   useEffect(() => {
     if (status !== 'live' || !id) return
     let stopped = false
@@ -76,9 +75,6 @@ export default function BroadcastPage() {
     return () => { stopped = true; clearInterval(t) }
   }, [status, id])
 
-  // Poll CF Stream live input status — proves video is actually reaching CF,
-  // distinct from "we set status=live in our DB". This is THE diagnostic
-  // for "broadcasting locally but students see black screen".
   useEffect(() => {
     if (status !== 'live' || !id) return
     let stopped = false
@@ -92,7 +88,6 @@ export default function BroadcastPage() {
     return () => { stopped = true; clearInterval(t) }
   }, [status, id])
 
-  // Elapsed counter
   useEffect(() => {
     if (status !== 'live') {
       clearInterval(elapsedTimerRef.current)
@@ -103,12 +98,11 @@ export default function BroadcastPage() {
     return () => clearInterval(elapsedTimerRef.current)
   }, [status])
 
-  // Keep statusRef in sync
   useEffect(() => { statusRef.current = status }, [status])
 
-  // Auto-redirect to streams list after broadcast ends (3 second countdown)
+  // Auto-redirect after broadcast ends — pause while upload is in progress
   useEffect(() => {
-    if (status !== 'ended') return
+    if (status !== 'ended' || uploadState === 'uploading') return
     setRedirectIn(3)
     const interval = setInterval(() => {
       setRedirectIn(prev => {
@@ -121,15 +115,13 @@ export default function BroadcastPage() {
       })
     }, 1000)
     return () => clearInterval(interval)
-  }, [status, nav])
+  }, [status, uploadState, nav])
 
-  // Cleanup on unmount: end the stream if still live
   useEffect(() => {
     return () => {
       if (statusRef.current === 'live') {
         api.post(`/education/streams/${id}/end/`).catch(() => {})
       }
-      // DELETE the WHIP resource so Cloudflare creates the recording immediately
       const whipUrl = whipResourceRef.current
       if (whipUrl) { try { fetch(whipUrl, { method: 'DELETE' }).catch(() => {}) } catch {} }
       localStreamRef.current?.getTracks().forEach(t => t.stop())
@@ -138,8 +130,6 @@ export default function BroadcastPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Poll backend status — if stream was ended elsewhere (admin list), stop
-  // the local WebRTC sender so two pages don't fight each other.
   useEffect(() => {
     if (status !== 'live' || !id) return
     let stopped = false
@@ -149,7 +139,6 @@ export default function BroadcastPage() {
         const list = r.data?.results || r.data || []
         const fresh = list.find(s => s.id === id)
         if (fresh && fresh.status !== 'live') {
-          // Stream ended externally → stop local broadcast immediately
           const whipUrl = whipResourceRef.current
           if (whipUrl) { whipResourceRef.current = null; try { fetch(whipUrl, { method: 'DELETE' }).catch(() => {}) } catch {} }
           localStreamRef.current?.getTracks().forEach(t => t.stop())
@@ -163,7 +152,6 @@ export default function BroadcastPage() {
     return () => { stopped = true; clearInterval(t) }
   }, [status, id])
 
-  // beforeunload — warn user if leaving while live
   useEffect(() => {
     if (status !== 'live') return
     const handler = (e) => {
@@ -175,6 +163,18 @@ export default function BroadcastPage() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [status])
 
+  // Warn user not to close tab while recording is uploading
+  useEffect(() => {
+    if (uploadState !== 'uploading') return
+    const handler = (e) => {
+      e.preventDefault()
+      e.returnValue = 'Запись ещё загружается. Не закрывайте вкладку!'
+      return e.returnValue
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [uploadState])
+
   const fmtElapsed = sec => {
     const h = Math.floor(sec / 3600)
     const m = Math.floor((sec % 3600) / 60)
@@ -183,13 +183,85 @@ export default function BroadcastPage() {
     return `${m}:${String(s).padStart(2, '0')}`
   }
 
+  // --- Local recording helpers (MediaRecorder) ---
+
+  const startLocalRecording = (localStream, q) => {
+    try {
+      const mimeType = [
+        'video/webm;codecs=h264,opus',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+      ].find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm'
+      recordedChunksRef.current = []
+      const mr = new MediaRecorder(localStream, {
+        mimeType,
+        videoBitsPerSecond: q.videoKbps * 1000,
+      })
+      mr.ondataavailable = e => { if (e.data?.size > 0) recordedChunksRef.current.push(e.data) }
+      mediaRecorderRef.current = mr
+      mr.start(10000) // collect a chunk every 10 s
+      // eslint-disable-next-line no-console
+      console.log('[MediaRecorder] started, mimeType:', mimeType)
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[MediaRecorder] failed to start:', e)
+    }
+  }
+
+  const stopLocalRecording = () => new Promise(resolve => {
+    const mr = mediaRecorderRef.current
+    if (!mr || mr.state === 'inactive') { resolve(); return }
+    mr.addEventListener('stop', resolve, { once: true })
+    mr.stop()
+  })
+
+  const uploadLocalRecording = async () => {
+    const chunks = recordedChunksRef.current
+    if (!chunks?.length) return
+    setUploadState('uploading')
+    setUploadProgress(0)
+    try {
+      const { data } = await api.get(`/education/streams/${id}/recording-upload-url/`)
+      const blob = new Blob(chunks, { type: 'video/webm' })
+      // eslint-disable-next-line no-console
+      console.log('[Recording] uploading', (blob.size / 1024 / 1024).toFixed(1), 'MB to CF Stream')
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.onprogress = e => {
+          if (e.lengthComputable) setUploadProgress(Math.round(e.loaded / e.total * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`CF upload HTTP ${xhr.status}: ${xhr.responseText?.slice(0, 200)}`))
+        }
+        xhr.onerror = () => reject(new Error('Network error during upload'))
+        xhr.open('PUT', data.upload_url)
+        xhr.setRequestHeader('Content-Type', 'video/webm')
+        xhr.send(blob)
+      })
+      await api.post(`/education/streams/${id}/save-recording/`, { video_uid: data.video_uid })
+      setUploadState('done')
+      // eslint-disable-next-line no-console
+      console.log('[Recording] upload complete, video_uid:', data.video_uid)
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[Recording] upload failed:', e)
+      setUploadState('error')
+    }
+  }
+
+  const retryUpload = () => {
+    setUploadState(null)
+    uploadLocalRecording()
+  }
+
+  // --- Broadcast controls ---
+
   const startBroadcast = async () => {
     if (!stream?.cf_webrtc_url) {
       setError('WebRTC URL не найден. Пересоздайте эфир.'); return
     }
-    // CRITICAL: WHIP requires a secure context. On HTTP, fetch() to HTTPS WHIP
-    // endpoint may succeed but WebRTC ICE will fail silently — no video reaches
-    // CF Stream, students see eternal "Ждём сигнал". Block early with a clear msg.
     if (typeof window !== 'undefined' && !window.isSecureContext) {
       setError(
         'Эфир требует HTTPS. Сейчас сайт открыт по HTTP — браузер заблокирует ' +
@@ -200,7 +272,6 @@ export default function BroadcastPage() {
     }
     setError(''); setStatus('connecting')
     try {
-      // Get camera + mic with chosen quality
       const q = QUALITIES[quality]
       const local = await navigator.mediaDevices.getUserMedia({
         video: { width: q.width, height: q.height, frameRate: q.frameRate },
@@ -209,14 +280,14 @@ export default function BroadcastPage() {
       localStreamRef.current = local
       if (localVideoRef.current) localVideoRef.current.srcObject = local
 
-      // Create peer connection
+      // Start local recording immediately so nothing is missed
+      startLocalRecording(local, q)
+
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
       })
       pcRef.current = pc
 
-      // Surface ICE / connection state to UI so admin (and us) can see when
-      // WHIP actually works vs camera-only-locally.
       pc.addEventListener('iceconnectionstatechange', () => {
         setConnState(pc.iceConnectionState)
         // eslint-disable-next-line no-console
@@ -227,7 +298,6 @@ export default function BroadcastPage() {
         console.log('[WHIP] connectionState:', pc.connectionState)
       })
 
-      // Add tracks + force high bitrate (default WebRTC = ~300 kbps → blurry)
       local.getTracks().forEach(t => {
         const sender = pc.addTrack(t, local)
         try {
@@ -244,7 +314,6 @@ export default function BroadcastPage() {
         } catch {}
       })
 
-      // Prefer H.264 (better Safari/iOS compatibility) then VP9 then VP8
       try {
         const transceivers = pc.getTransceivers()
         const videoTransceiver = transceivers.find(t => t.sender?.track?.kind === 'video')
@@ -262,11 +331,9 @@ export default function BroadcastPage() {
         }
       } catch {}
 
-      // Create offer
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
 
-      // Wait for ICE gathering
       await new Promise(resolve => {
         if (pc.iceGatheringState === 'complete') { resolve(); return }
         const check = () => {
@@ -276,10 +343,9 @@ export default function BroadcastPage() {
           }
         }
         pc.addEventListener('icegatheringstatechange', check)
-        setTimeout(resolve, 3000) // fallback
+        setTimeout(resolve, 3000)
       })
 
-      // Send offer to Cloudflare WHIP endpoint
       const resp = await fetch(stream.cf_webrtc_url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/sdp' },
@@ -287,38 +353,29 @@ export default function BroadcastPage() {
       })
       if (!resp.ok) throw new Error(`WHIP error: ${resp.status} ${await resp.text()}`)
       const answer = await resp.text()
-      // Save WHIP resource URL for DELETE on session end.
-      // CF returns Location header with the session resource path.
-      // NOTE: browsers may block Location via CORS if CF doesn't expose it —
-      // log all headers so we can debug when DELETE isn't firing.
       const location = resp.headers.get('Location') || ''
       // eslint-disable-next-line no-console
       console.log('[WHIP] Location header:', location)
       // eslint-disable-next-line no-console
       console.log('[WHIP] Response headers:', Object.fromEntries([...resp.headers.entries()]))
       if (location) {
-        // Resolve relative or absolute Location against the WHIP endpoint origin
         try {
           const resolved = new URL(location, stream.cf_webrtc_url).href
           whipResourceRef.current = resolved
           // eslint-disable-next-line no-console
           console.log('[WHIP] DELETE resource URL:', resolved)
         } catch {
-          // fallback: extract last segment as sessionId
           const sessionId = location.split('/').pop()
           if (sessionId && sessionId.length > 4) {
             whipResourceRef.current = stream.cf_webrtc_url.replace(/\/$/, '') + '/' + sessionId
-            // eslint-disable-next-line no-console
-            console.log('[WHIP] DELETE resource URL (fallback):', whipResourceRef.current)
           }
         }
       } else {
         // eslint-disable-next-line no-console
-        console.warn('[WHIP] Location header missing — DELETE will not be sent. Check CORS on CF endpoint.')
+        console.warn('[WHIP] Location header missing — DELETE will not be sent.')
       }
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
 
-      // AUTO go-live in backend so students can see the stream
       try {
         await api.post(`/education/streams/${id}/start/`)
       } catch (e) {
@@ -334,9 +391,6 @@ export default function BroadcastPage() {
     }
   }
 
-  // Send WHIP DELETE so Cloudflare closes the live input session immediately
-  // and starts creating the recording. Without this CF waits for ICE timeout
-  // (~60s) before starting to process the recording.
   const closeWhipSession = () => {
     const url = whipResourceRef.current
     if (!url) return
@@ -345,20 +399,20 @@ export default function BroadcastPage() {
   }
 
   const stopBroadcast = async () => {
-    // Capture WHIP resource URL BEFORE closeWhipSession nulls the ref.
     const whipUrl = whipResourceRef.current
+    // Stop MediaRecorder first to collect the final chunk before tracks are killed
+    await stopLocalRecording()
     closeWhipSession()
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     setBroadcasting(false)
     setStatus('ended')
     if (localVideoRef.current) localVideoRef.current.srcObject = null
-
-    // AUTO end backend stream — also pass WHIP resource URL so the backend
-    // proxies the DELETE to Cloudflare (avoids browser CORS/network issues).
     try {
       await api.post(`/education/streams/${id}/end/`, whipUrl ? { whip_resource_url: whipUrl } : {})
     } catch {}
+    // Upload recording to CF Stream in the background (non-blocking UI)
+    uploadLocalRecording()
   }
 
   const toggleMic = () => {
@@ -372,7 +426,6 @@ export default function BroadcastPage() {
 
   return (
     <div style={{ minHeight: '100dvh' }} className="bg-gray-950 text-white flex flex-col">
-      {/* HTTPS warning — covers the #1 cause of "broadcast goes nowhere" */}
       {insecure && (
         <div className="bg-amber-700/95 text-white px-4 py-3 text-sm flex items-center gap-3 border-b border-amber-900">
           <span className="text-base">⚠</span>
@@ -396,7 +449,6 @@ export default function BroadcastPage() {
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> LIVE
             </span>
             <span className="text-xs sm:text-sm font-mono text-gray-300 shrink-0">{fmtElapsed(elapsed)}</span>
-            {/* Real WebRTC state — distinct from "LIVE" (which only flips backend status). */}
             {connState && connState !== 'connected' && connState !== 'completed' && (
               <span
                 className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-md shrink-0 ${
@@ -455,7 +507,6 @@ export default function BroadcastPage() {
             <div className="w-full max-w-2xl p-4 bg-rose-900/60 rounded-xl text-rose-200 text-sm">{error}</div>
           )}
 
-          {/* CF Stream live diagnostic — proves whether CF is actually receiving video */}
           {status === 'live' && cfStatus && (
             <div className={`w-full max-w-2xl px-4 py-2 rounded-xl text-xs flex items-center gap-3 ${
               cfStatus.live_input_state === 'connected'
@@ -554,24 +605,70 @@ export default function BroadcastPage() {
               Разрешите доступ к камере и микрофону. Эфир пойдёт в Cloudflare Stream — ученики увидят вас в кабинете.
             </p>
           )}
+
           {status === 'ended' && (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                <CheckCircle2 size={32} className="text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-white font-semibold text-lg">Эфир завершён</p>
-                <p className="text-gray-400 text-sm mt-1">
-                  Переход к списку эфиров через{' '}
-                  <span className="text-rose-400 font-bold">{redirectIn}</span> сек…
-                </p>
-              </div>
-              <button
-                onClick={() => nav('/admin/education/streams')}
-                className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-medium transition"
-              >
-                Перейти сейчас
-              </button>
+            <div className="flex flex-col items-center gap-4 text-center w-full max-w-md">
+              {/* Upload progress */}
+              {uploadState === 'uploading' && (
+                <div className="w-full bg-gray-900 rounded-2xl border border-gray-700 p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Upload size={20} className="text-blue-400 animate-bounce shrink-0" />
+                    <div className="text-sm font-medium">Загружаем запись эфира…</div>
+                    <span className="ml-auto text-xs text-gray-400 font-mono">{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">Не закрывайте вкладку до завершения загрузки</p>
+                </div>
+              )}
+
+              {uploadState === 'done' && (
+                <div className="w-full flex items-center gap-3 bg-emerald-900/40 border border-emerald-700/40 rounded-xl px-4 py-3 text-sm text-emerald-200">
+                  <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+                  Запись сохранена — она появится в разделе «Уроки»
+                </div>
+              )}
+
+              {uploadState === 'error' && (
+                <div className="w-full bg-rose-900/50 border border-rose-700/40 rounded-xl px-4 py-3 text-sm text-rose-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle size={16} className="shrink-0" />
+                    Ошибка загрузки записи
+                  </div>
+                  <button
+                    onClick={retryUpload}
+                    className="text-xs underline text-rose-300 hover:text-rose-100"
+                  >
+                    Повторить попытку
+                  </button>
+                </div>
+              )}
+
+              {/* Success block + redirect countdown (shown when upload is done or there was no recording) */}
+              {uploadState !== 'uploading' && (
+                <>
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                    <CheckCircle2 size={32} className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold text-lg">Эфир завершён</p>
+                    <p className="text-gray-400 text-sm mt-1">
+                      Переход к списку эфиров через{' '}
+                      <span className="text-rose-400 font-bold">{redirectIn}</span> сек…
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => nav('/admin/education/streams')}
+                    className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-medium transition"
+                  >
+                    Перейти сейчас
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
