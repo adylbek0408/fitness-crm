@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Radio, Copy, Square, Plus, Link2, Check,
   Users, MessageCircle, ExternalLink, AlertCircle, Trash2,
-  Eye, X, BookMarked, Clock, Globe,
+  Eye, X, BookMarked, Clock,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -227,14 +227,6 @@ export default function StreamsAdmin() {
 
   const studentLink = (id) => `${window.location.origin}/cabinet/stream?id=${id}`
 
-  const publishRecording = async (id) => {
-    try {
-      const r = await api.post(`/education/streams/${id}/publish-recording/`)
-      setStreams(prev => prev.map(s => s.id === id ? r.data : s))
-    } catch (e) {
-      setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
-    }
-  }
 
   // Counts on the CURRENT page only — backend returns the active page slice.
   // Total across all pages comes from `totalCount`.
@@ -648,20 +640,6 @@ function StreamCard({ stream: s, onEnd, onDelete, onManualArchive, onPreviewReco
             >
               <Eye size={14} /> Смотреть запись
             </button>
-          )}
-          {hasRecording && !isPublished && (
-            <button
-              onClick={onPublishRecording}
-              className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm flex items-center gap-1.5 font-medium shadow"
-              title="Опубликовать — ученики смогут смотреть запись"
-            >
-              <Globe size={14} /> Опубликовать
-            </button>
-          )}
-          {hasRecording && isPublished && (
-            <span className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-sm flex items-center gap-1.5 font-medium border border-emerald-200">
-              <Check size={14} /> Опубликовано
-            </span>
           )}
           {isArchived && !hasRecording && (
             <button

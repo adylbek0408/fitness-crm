@@ -580,7 +580,8 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             duration_sec=0,
             thumbnail_url='',
             trainer=stream.trainer,
-            is_published=False,
+            is_published=True,
+            published_at=timezone.now(),
             created_by=request.user if request.user.is_authenticated else None,
         )
         if stream.groups.exists():
@@ -671,7 +672,8 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                     duration_sec=0,
                     thumbnail_url='',
                     trainer=stream.trainer,
-                    is_published=False,
+                    is_published=True,
+                    published_at=timezone.now(),
                     created_by=request.user if request.user.is_authenticated else None,
                 )
                 if stream.groups.exists():
@@ -928,7 +930,8 @@ class CFStreamWebhookView(APIView):
                             duration_sec=int(duration or 0),
                             thumbnail_url=thumbnail or '',
                             trainer=stream.trainer,
-                            is_published=False,
+                            is_published=True,
+                            published_at=timezone.now(),
                         )
                         # propagate group access
                         if stream.groups.exists():
