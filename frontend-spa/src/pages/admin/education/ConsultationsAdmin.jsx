@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Video, Copy, MessageCircle, Plus, Check,
-  Clock, Users, AlertCircle,
+  Clock, Users, AlertCircle, Search,
   StopCircle, LogIn, Calendar, Trash2, X,
+  CheckSquare, Square as SquareIcon,
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -11,14 +12,36 @@ import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import Pagination from '../../../components/Pagination'
 
-const CONSULTATIONS_PAGE_SIZE = 15
+const PAGE_SIZE = 15
 
-/**
- * Консультации — 1-на-1 видеозвонки (Jitsi iframe, без перехода на другой сайт).
- *
- * Тренер нажимает «Войти» → Jitsi открывается прямо в окне поверх страницы.
- * Ученик открывает /room/{uuid} — тот же Jitsi в его браузере.
- */
+const fmtDate = iso => {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+const fmtDuration = sec => {
+  if (!sec || sec <= 0) return null
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${m} мин ${s} с`
+}
+
+const STATUS_TABS = [
+  { key: 'all',       label: 'Все' },
+  { key: 'active',    label: 'Активные' },
+  { key: 'used',      label: 'Завершённые' },
+  { key: 'expired',   label: 'Истекшие' },
+]
+
+const STATUS_MAP = {
+  active:    { label: 'Активна',   cls: 'bg-emerald-100 text-emerald-700' },
+  cancelled: { label: 'Завершена', cls: 'bg-gray-100 text-gray-600' },
+  expired:   { label: 'Истекла',   cls: 'bg-amber-100 text-amber-700' },
+  used:      { label: 'Завершена', cls: 'bg-gray-100 text-gray-600' },
+}
+
 export default function ConsultationsAdmin() {
   const { user } = useOutletContext()
   const [items, setItems] = useState([])
@@ -27,59 +50,72 @@ export default function ConsultationsAdmin() {
   const [trainers, setTrainers] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ title: '', trainer: '', client: '' })
   const [creating, setCreating] = useState(false)
   const [copied, setCopied] = useState('')
-  const [form, setForm] = useState({ title: '', trainer: '', client: '' })
 
   const [alertModal, setAlertModal] = useState(null)
   const [confirmStop, setConfirmStop] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
-  // Form open/close
-  const [showForm, setShowForm] = useState(false)
+  // Bulk select
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const toggleSelected = id => setSelectedIds(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+  const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()) }
 
-  // Inline Jitsi
+  // Jitsi
   const [jitsiInfo, setJitsiInfo] = useState(null)
   const [jitsiConsultationId, setJitsiConsultationId] = useState(null)
   const [joiningId, setJoiningId] = useState(null)
 
-
   const reload = () => {
     setLoading(true)
-    api.get(`/education/consultations/?page=${page}&page_size=${CONSULTATIONS_PAGE_SIZE}`)
+    api.get(`/education/consultations/?page=${page}&page_size=${PAGE_SIZE}`)
       .then(r => {
-        if (Array.isArray(r.data)) {
-          setItems(r.data)
-          setTotalCount(r.data.length)
-        } else {
-          setItems(r.data?.results || [])
-          setTotalCount(r.data?.count ?? 0)
-        }
+        if (Array.isArray(r.data)) { setItems(r.data); setTotalCount(r.data.length) }
+        else { setItems(r.data?.results || []); setTotalCount(r.data?.count ?? 0) }
       })
-      .catch(e => setAlertModal({
-        title: 'Не удалось загрузить консультации',
-        message: e.response?.data?.detail || e.message,
-        variant: 'error',
-      }))
+      .catch(e => setAlertModal({ title: 'Не удалось загрузить', message: e.response?.data?.detail || e.message, variant: 'error' }))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => {
-    reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page])
-
+  useEffect(() => { reload() }, [page]) // eslint-disable-line
   useEffect(() => {
     api.get('/trainers/?page_size=200').then(r => setTrainers(r.data?.results || r.data || [])).catch(() => {})
     api.get('/clients/?page_size=200').then(r => setClients(r.data?.results || r.data || [])).catch(() => {})
   }, [])
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / CONSULTATIONS_PAGE_SIZE))
+  // Client-side filter
+  const filtered = items.filter(item => {
+    const matchSearch = !search || (item.title || '').toLowerCase().includes(search.toLowerCase())
+      || (item.trainer_name || '').toLowerCase().includes(search.toLowerCase())
+    const matchStatus = statusFilter === 'all'
+      || (statusFilter === 'used' && ['used', 'cancelled'].includes(item.status))
+      || item.status === statusFilter
+    return matchSearch && matchStatus
+  })
 
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+
+  const counts = {
+    active:  items.filter(i => i.status === 'active').length,
+    used:    items.filter(i => ['used', 'cancelled'].includes(i.status)).length,
+    expired: items.filter(i => i.status === 'expired').length,
+  }
+
+  // Create
   const create = async () => {
     if (!form.title.trim()) {
-      setAlertModal({ title: 'Заполните название', message: 'Напишите тему консультации.', variant: 'error' })
-      return
+      setAlertModal({ title: 'Заполните название', message: 'Напишите тему консультации.', variant: 'error' }); return
     }
     setCreating(true)
     try {
@@ -88,175 +124,188 @@ export default function ConsultationsAdmin() {
         trainer: form.trainer || null,
         client: form.client || null,
       })
-      setForm({ title: '', trainer: '', client: '' })
-      setShowForm(false)
-      reload()
+      setForm({ title: '', trainer: '', client: '' }); setShowForm(false); reload()
     } catch (e) {
-      setAlertModal({
-        title: 'Ошибка создания',
-        message: e.response?.data?.detail || e.message,
-        variant: 'error',
-      })
-    } finally {
-      setCreating(false)
-    }
+      setAlertModal({ title: 'Ошибка создания', message: e.response?.data?.detail || e.message, variant: 'error' })
+    } finally { setCreating(false) }
   }
 
-  const joinAsTrainer = async (id) => {
+  // Join
+  const joinAsTrainer = async id => {
     setJoiningId(id)
     try {
       const r = await api.get(`/education/consultations/${id}/join-as-trainer/`)
       if (!r.data?.valid) {
-        setAlertModal({ title: 'Не удалось войти', message: r.data?.reason || 'Консультация недоступна.', variant: 'error' })
-        return
+        setAlertModal({ title: 'Не удалось войти', message: r.data?.reason || 'Консультация недоступна.', variant: 'error' }); return
       }
-      setJitsiConsultationId(id)
-      setJitsiInfo(r.data)
+      setJitsiConsultationId(id); setJitsiInfo(r.data)
     } catch (e) {
       setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
-    } finally {
-      setJoiningId(null)
-    }
+    } finally { setJoiningId(null) }
   }
 
+  // Stop
   const performStop = async () => {
     if (!confirmStop) return
     try {
       await api.post(`/education/consultations/${confirmStop.id}/stop/`)
-      setConfirmStop(null)
-      reload()
-      setAlertModal({
-        title: 'Консультация завершена',
-        message: 'Комната закрыта. Ученик увидит сообщение о завершении в течение 10 секунд.',
-        variant: 'success',
-      })
+      setConfirmStop(null); reload()
+      setAlertModal({ title: 'Консультация завершена', message: 'Комната закрыта. Ученик увидит сообщение в течение 10 секунд.', variant: 'success' })
     } catch (e) {
       setConfirmStop(null)
       setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
     }
   }
 
+  // Single delete
   const performDelete = async () => {
     if (!confirmDelete) return
-    try {
-      await api.delete(`/education/consultations/${confirmDelete.id}/`)
-      setConfirmDelete(null)
-      reload()
-    } catch (e) {
+    try { await api.delete(`/education/consultations/${confirmDelete.id}/`); setConfirmDelete(null); reload() }
+    catch (e) {
       setConfirmDelete(null)
       setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
     }
+  }
+
+  // Bulk delete
+  const performBulkDelete = async () => {
+    setBulkDeleting(true)
+    try {
+      await Promise.all([...selectedIds].map(id => api.delete(`/education/consultations/${id}/`)))
+      exitSelectMode(); setConfirmBulkDelete(false); reload()
+    } catch (e) {
+      setAlertModal({ title: 'Ошибка удаления', message: e.response?.data?.detail || e.message, variant: 'error' })
+    } finally { setBulkDeleting(false) }
   }
 
   const copy = (text, key) => {
-    navigator.clipboard?.writeText(text).then(() => {
-      setCopied(key)
-      setTimeout(() => setCopied(''), 2000)
-    })
+    navigator.clipboard?.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(''), 2000) })
   }
 
   const roomUrl = uuid => `${window.location.origin}/room/${uuid}`
-  const wa = (uuid, title) =>
+  const waLink = (uuid, title) =>
     `https://wa.me/?text=${encodeURIComponent(`Онлайн-консультация «${title}» — открывай по ссылке прямо в браузере: ${roomUrl(uuid)}`)}`
-
-  const fmtDate = iso => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleString('ru', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    })
-  }
-
-  const fmtDuration = sec => {
-    if (!sec) return null
-    const m = Math.floor(sec / 60)
-    const s = sec % 60
-    return `${m} мин ${s} с`
-  }
-
-  const activeCount = items.filter(i => i.status === 'active').length
 
   return (
     <AdminLayout user={user}>
-
-        {/* Compact header */}
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4 sm:mb-5">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center text-white shadow-md shrink-0">
-              <Video size={20} />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Консультации</h1>
-              <p className="text-xs text-gray-500">
-                Активных (на странице) <span className="font-semibold text-violet-600">{activeCount}</span>
-                {' · '}
-                Всего <span className="font-semibold text-gray-700">{totalCount}</span>
-              </p>
-            </div>
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center text-white shadow-md shrink-0">
+            <Video size={20} />
           </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Консультации</h1>
+            <p className="text-xs text-gray-500 flex gap-2">
+              <span className="text-violet-600 font-semibold">{counts.active} активных</span>·
+              <span>{counts.used} завершено</span>·
+              <span>{counts.expired} истекло</span>
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md hover:shadow-lg transition"
+        >
+          <Plus size={18} /> Новая консультация
+        </button>
+      </div>
+
+      {/* Search + filter bar */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Поиск по теме или тренеру…"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+          />
+        </div>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 shrink-0">
+          {STATUS_TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => { setStatusFilter(t.key); setPage(1) }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${statusFilter === t.key ? 'bg-white shadow text-violet-600' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => { selectMode ? exitSelectMode() : setSelectMode(true) }}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition ${selectMode ? 'bg-violet-50 text-violet-600 border-violet-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
+        >
+          <CheckSquare size={14} /> {selectMode ? 'Отменить' : 'Выбрать'}
+        </button>
+      </div>
+
+      {/* Bulk action bar */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="mb-3 flex items-center gap-3 px-4 py-2.5 bg-violet-50 border border-violet-200 rounded-xl">
+          <span className="text-sm font-medium text-violet-700">Выбрано: {selectedIds.size}</span>
           <button
-            onClick={() => setShowForm(true)}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md hover:shadow-lg transition focus:outline-none focus:ring-2 focus:ring-violet-300"
+            onClick={() => setConfirmBulkDelete(true)}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-medium hover:bg-rose-600"
           >
-            <Plus size={18} /> Новая консультация
+            <Trash2 size={13} /> Удалить выбранные
+          </button>
+          <button onClick={exitSelectMode} className="p-1 text-gray-400 hover:text-gray-600">
+            <X size={16} />
           </button>
         </div>
+      )}
 
-        {/* Create modal */}
-        {showForm && (
-          <ConsultationCreateModal
-            form={form}
-            setForm={setForm}
-            trainers={trainers}
-            clients={clients}
-            creating={creating}
-            onClose={() => { setShowForm(false); setForm({ title: '', trainer: '', client: '' }) }}
-            onSubmit={create}
-          />
+      {/* List */}
+      <div className="space-y-3">
+        {loading && (
+          <div className="p-10 text-center text-gray-400">
+            <div className="w-8 h-8 border-2 border-violet-200 border-t-violet-500 rounded-full animate-spin mx-auto mb-2" />
+            Загрузка…
+          </div>
         )}
+        {!loading && filtered.length === 0 && (
+          <div className="bg-white rounded-2xl border border-violet-100 py-14 text-center">
+            <Video size={40} className="mx-auto text-violet-200 mb-3" />
+            <p className="text-gray-500 font-medium">{items.length === 0 ? 'Консультаций ещё нет' : 'Ничего не найдено'}</p>
+          </div>
+        )}
+        {filtered.map(item => (
+          <ConsultationCard
+            key={item.id}
+            item={item}
+            selectMode={selectMode}
+            selected={selectedIds.has(item.id)}
+            onToggleSelect={() => toggleSelected(item.id)}
+            roomUrl={roomUrl(item.room_uuid)}
+            waLink={waLink(item.room_uuid, item.title || 'Консультация')}
+            copied={copied}
+            onCopy={copy}
+            onJoinRoom={() => joinAsTrainer(item.id)}
+            joiningId={joiningId}
+            onStop={() => setConfirmStop({ id: item.id, title: item.title || 'Консультация' })}
+            onDelete={() => setConfirmDelete({ id: item.id, title: item.title || 'Консультация' })}
+          />
+        ))}
+        {totalPages > 1 && (
+          <div className="pt-2">
+            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+          </div>
+        )}
+      </div>
 
-        {/* List */}
-        <div className="space-y-3">
-          {loading && (
-            <div className="p-8 text-center text-gray-400">
-              <div className="w-8 h-8 border-2 border-violet-200 border-t-violet-500 rounded-full animate-spin mx-auto mb-2" />
-              Загрузка…
-            </div>
-          )}
+      {/* Create modal */}
+      {showForm && (
+        <ConsultationCreateModal
+          form={form} setForm={setForm} trainers={trainers} clients={clients}
+          creating={creating}
+          onClose={() => { setShowForm(false); setForm({ title: '', trainer: '', client: '' }) }}
+          onSubmit={create}
+        />
+      )}
 
-          {!loading && items.length === 0 && (
-            <div className="bg-white rounded-3xl border border-violet-100 shadow-sm py-16 text-center">
-              <Video size={48} className="mx-auto text-violet-200 mb-3" />
-              <p className="text-gray-500 font-medium">Консультаций ещё нет</p>
-              <p className="text-xs text-gray-400 mt-1">Создайте первую — заполните форму выше.</p>
-            </div>
-          )}
-
-          {items.map(item => (
-            <ConsultationCard
-              key={item.id}
-              item={item}
-              roomUrl={roomUrl(item.room_uuid)}
-              waLink={wa(item.room_uuid, item.title || 'Консультация')}
-              copied={copied}
-              onCopy={copy}
-              onJoinRoom={() => joinAsTrainer(item.id)}
-              joiningId={joiningId}
-              onStop={() => setConfirmStop({ id: item.id, title: item.title || 'Консультация' })}
-              onDelete={() => setConfirmDelete({ id: item.id, title: item.title || 'Консультация' })}
-              fmtDate={fmtDate}
-              fmtDuration={fmtDuration}
-            />
-          ))}
-
-          {totalPages > 1 && (
-            <div className="pt-2">
-              <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-            </div>
-          )}
-        </div>
-
-      {/* Inline Jitsi room modal */}
+      {/* Inline Jitsi */}
       {jitsiInfo && (
         <JitsiRoomModal
           info={jitsiInfo}
@@ -265,33 +314,24 @@ export default function ConsultationsAdmin() {
         />
       )}
 
-      <AlertModal
-        open={!!alertModal}
-        onClose={() => setAlertModal(null)}
-        title={alertModal?.title || ''}
-        message={alertModal?.message || ''}
-        variant={alertModal?.variant || 'info'}
-      />
-      <ConfirmModal
-        open={!!confirmStop}
-        onClose={() => setConfirmStop(null)}
-        onConfirm={performStop}
+      <AlertModal open={!!alertModal} onClose={() => setAlertModal(null)} title={alertModal?.title || ''} message={alertModal?.message || ''} variant={alertModal?.variant || 'info'} />
+      <ConfirmModal open={!!confirmStop} onClose={() => setConfirmStop(null)} onConfirm={performStop}
         title="Завершить консультацию?"
-        message={confirmStop
-          ? `Консультация «${confirmStop.title}» будет завершена.\nУченик увидит сообщение о завершении и комната закроется.`
-          : ''}
-        confirmText="Завершить"
-        variant="danger"
+        message={confirmStop ? `Консультация «${confirmStop.title}» будет завершена.\nУченик увидит сообщение об окончании.` : ''}
+        confirmText="Завершить" variant="danger"
+      />
+      <ConfirmModal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} onConfirm={performDelete}
+        title="Удалить консультацию?"
+        message={confirmDelete ? `«${confirmDelete.title}» переместится в корзину.` : ''}
+        confirmText="В корзину" variant="danger"
       />
       <ConfirmModal
-        open={!!confirmDelete}
-        onClose={() => setConfirmDelete(null)}
-        onConfirm={performDelete}
-        title="Удалить консультацию?"
-        message={confirmDelete
-          ? `Консультация «${confirmDelete.title}» переместится в корзину. Восстановить можно из раздела «Корзина».`
-          : ''}
-        confirmText="В корзину"
+        open={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={performBulkDelete}
+        title={`Удалить ${selectedIds.size} консультац.?`}
+        message="Выбранные консультации переместятся в корзину."
+        confirmText={bulkDeleting ? 'Удаляем…' : 'Удалить'}
         variant="danger"
       />
     </AdminLayout>
@@ -299,140 +339,47 @@ export default function ConsultationsAdmin() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Create modal
-// ─────────────────────────────────────────────────────────────────────────────
-function ConsultationCreateModal({ form, setForm, trainers, clients, creating, onClose, onSubmit }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="px-5 py-4 border-b border-violet-100 flex items-center justify-between bg-gradient-to-r from-violet-50 to-purple-50 rounded-t-3xl">
-          <h2 className="font-semibold flex items-center gap-2 text-violet-700">
-            <Plus size={18} /> Новая консультация
-          </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-white">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-xs text-gray-500 font-medium mb-1">Тема / название</label>
-            <input
-              type="text"
-              placeholder="Например, Разбор питания"
-              value={form.title}
-              onChange={e => setForm({ ...form, title: e.target.value })}
-              onKeyDown={e => e.key === 'Enter' && onSubmit()}
-              autoFocus
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 font-medium mb-1">Тренер (необязательно)</label>
-            <select
-              value={form.trainer}
-              onChange={e => setForm({ ...form, trainer: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
-            >
-              <option value="">Не указан</option>
-              {trainers.map(t => (
-                <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 font-medium mb-1">Ученик (необязательно)</label>
-            <select
-              value={form.client}
-              onChange={e => setForm({ ...form, client: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
-            >
-              <option value="">Открытая ссылка</option>
-              {clients.map(c => (
-                <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            onClick={onSubmit}
-            disabled={creating}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 transition"
-          >
-            {creating ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Создание…
-              </>
-            ) : (
-              <>
-                <Plus size={16} /> Создать ссылку
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Consultation card
-// ─────────────────────────────────────────────────────────────────────────────
-function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onJoinRoom, joiningId, onStop, onDelete, fmtDate, fmtDuration }) {
+function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl, waLink, copied, onCopy, onJoinRoom, joiningId, onStop, onDelete }) {
   const isActive = item.status === 'active'
-  const isCancelled = item.status === 'cancelled'
-  const isExpired = item.status === 'expired'
-  const isUsed = item.status === 'used'
-
-  const statusBadge = {
-    active:    { label: 'Активна',   cls: 'bg-emerald-100 text-emerald-700' },
-    cancelled: { label: 'Завершена', cls: 'bg-gray-100 text-gray-600'       },
-    expired:   { label: 'Истекла',   cls: 'bg-amber-100 text-amber-700'     },
-    used:      { label: 'Завершена', cls: 'bg-gray-100 text-gray-600'       },
-  }[item.status] || { label: item.status, cls: 'bg-gray-100 text-gray-500' }
-
+  const badge = STATUS_MAP[item.status] || { label: item.status, cls: 'bg-gray-100 text-gray-500' }
   const isJoining = joiningId === item.id
 
   return (
-    <div className={`bg-white rounded-2xl shadow-sm overflow-hidden transition border ${
-      isActive ? 'border-violet-200' : 'border-gray-100'
-    }`}>
-      {/* Top row: icon + meta + primary actions */}
-      <div className="p-4 flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-          isActive
-            ? 'bg-gradient-to-br from-violet-500 to-purple-500 text-white shadow shadow-violet-200'
-            : 'bg-gray-100 text-gray-400'
-        }`}>
-          <Video size={18} />
+    <div
+      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition ${selected ? 'border-violet-400 ring-2 ring-violet-200' : isActive ? 'border-violet-200' : 'border-gray-100'}`}
+      onClick={selectMode ? onToggleSelect : undefined}
+      style={selectMode ? { cursor: 'pointer' } : {}}
+    >
+      <div className="p-4 flex items-start gap-3">
+        {/* Checkbox or icon */}
+        <div className="shrink-0 mt-0.5" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
+          {selectMode
+            ? selected
+              ? <CheckSquare size={20} className="text-violet-500" />
+              : <SquareIcon size={20} className="text-gray-300" />
+            : (
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isActive ? 'bg-gradient-to-br from-violet-500 to-purple-500 text-white shadow shadow-violet-200' : 'bg-gray-100 text-gray-400'}`}>
+                <Video size={18} />
+              </div>
+            )
+          }
         </div>
 
+        {/* Meta */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <h3 className="font-semibold text-gray-900 truncate">{item.title || 'Консультация'}</h3>
-            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-semibold ${statusBadge.cls}`}>
-              {statusBadge.label}
-            </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-gray-900 truncate">{item.title || 'Консультация'}</span>
+            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-semibold ${badge.cls}`}>{badge.label}</span>
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-gray-500">
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500">
             {item.trainer_name && (
-              <span className="flex items-center gap-1"><Users size={11} />{item.trainer_name}</span>
+              <span className="flex items-center gap-1"><Users size={10} />{item.trainer_name}</span>
             )}
-            {item.started_at && (
-              <span className="flex items-center gap-1">
-                <Calendar size={11} />{fmtDate(item.started_at)}
-              </span>
+            {(item.started_at || item.created_at) && (
+              <span className="flex items-center gap-1"><Calendar size={10} />{fmtDate(item.started_at || item.created_at)}</span>
             )}
             {item.duration_sec > 0 && (
-              <span className="flex items-center gap-1">
-                <Clock size={11} />{fmtDuration(item.duration_sec)}
-              </span>
+              <span className="flex items-center gap-1"><Clock size={10} />{fmtDuration(item.duration_sec)}</span>
             )}
             {!item.started_at && isActive && (
               <span className="text-violet-500">Ожидает участников</span>
@@ -440,82 +387,62 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onJoinRoom, j
           </div>
         </div>
 
-        {/* Primary actions, right side */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {isActive && (
-            <>
-              <button
-                onClick={onJoinRoom}
-                disabled={isJoining}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-500 hover:bg-violet-600 text-white text-sm font-semibold shadow-sm disabled:opacity-60"
-              >
-                {isJoining
-                  ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  : <LogIn size={14} />}
-                <span className="hidden sm:inline">{isJoining ? 'Подключение…' : 'Войти'}</span>
-              </button>
-              <button
-                onClick={onStop}
-                className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition border border-rose-100"
-                title="Завершить"
-              >
-                <StopCircle size={16} />
-              </button>
-            </>
-          )}
-          <button
-            onClick={onDelete}
-            className="p-2 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition"
-            title="В корзину"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
+        {/* Actions */}
+        {!selectMode && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isActive && (
+              <>
+                <button
+                  onClick={onJoinRoom}
+                  disabled={isJoining}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500 hover:bg-violet-600 text-white text-xs font-semibold shadow-sm disabled:opacity-60"
+                >
+                  {isJoining
+                    ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <LogIn size={13} />}
+                  <span className="hidden sm:inline">{isJoining ? 'Подкл…' : 'Войти'}</span>
+                </button>
+                <button onClick={onStop} className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 border border-rose-100" title="Завершить">
+                  <StopCircle size={15} />
+                </button>
+              </>
+            )}
+            <button onClick={onDelete} className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition" title="В корзину">
+              <Trash2 size={15} />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Link section — slim sub-bar, only for active */}
-      {isActive && (
+      {/* Link bar — only for active */}
+      {isActive && !selectMode && (
         <div className="px-4 pb-3 -mt-1">
           <div className="flex items-center gap-1.5 bg-violet-50/70 border border-violet-100 rounded-xl p-1 pl-3">
-            <code className="flex-1 min-w-0 text-xs text-violet-900/80 truncate font-mono">
-              {roomUrl}
-            </code>
+            <code className="flex-1 min-w-0 text-xs text-violet-900/80 truncate font-mono">{roomUrl}</code>
             <button
               onClick={() => onCopy(roomUrl, `link-${item.id}`)}
-              className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white text-violet-700 text-xs font-medium hover:bg-violet-100 border border-violet-100 transition"
-              title="Копировать ссылку"
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white text-violet-700 text-xs font-medium hover:bg-violet-100 border border-violet-100"
             >
-              {copied === `link-${item.id}` ? <Check size={13} /> : <Copy size={13} />}
-              <span className="hidden sm:inline">
-                {copied === `link-${item.id}` ? 'Готово' : 'Копировать'}
-              </span>
+              {copied === `link-${item.id}` ? <><Check size={12} /> Готово</> : <><Copy size={12} /> Копировать</>}
             </button>
             <a
-              href={waLink}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600 transition"
-              title="Отправить в WhatsApp"
+              href={waLink} target="_blank" rel="noreferrer"
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600"
             >
-              <MessageCircle size={13} />
+              <MessageCircle size={12} />
               <span className="hidden sm:inline">WhatsApp</span>
             </a>
           </div>
         </div>
       )}
 
-      {/* Finished state */}
-      {!isActive && (
-        <div className="p-5">
-          <div className="flex items-start gap-3 p-4 rounded-2xl bg-gray-50 border border-gray-100">
-            <AlertCircle size={18} className="text-gray-400 shrink-0 mt-0.5" />
-            <div className="text-sm text-gray-600">
-              {isCancelled || isUsed
-                ? `Консультация завершена${item.ended_at ? ` — ${fmtDate(item.ended_at)}` : ''}${item.duration_sec > 0 ? `. Продолжительность: ${fmtDuration(item.duration_sec)}` : ''}.`
-                : isExpired
-                  ? 'Ссылка истекла.'
-                  : 'Консультация закрыта.'}
-            </div>
+      {/* Finished info */}
+      {!isActive && !selectMode && (item.ended_at || item.duration_sec > 0) && (
+        <div className="px-4 pb-4 -mt-1">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-500">
+            <AlertCircle size={14} className="shrink-0 text-gray-400" />
+            {item.ended_at ? `Завершена ${fmtDate(item.ended_at)}` : ''}
+            {item.duration_sec > 0 ? `${item.ended_at ? ' · ' : ''}Длительность: ${fmtDuration(item.duration_sec)}` : ''}
           </div>
         </div>
       )}
@@ -524,30 +451,66 @@ function ConsultationCard({ item, roomUrl, waLink, copied, onCopy, onJoinRoom, j
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Inline Jitsi modal — trainer joins the room directly in the admin panel.
-// JWT token is passed both to the embedded External API and to the "open in
-// browser" URL so the trainer is always recognized as moderator without any
-// extra Jitsi login.
+function ConsultationCreateModal({ form, setForm, trainers, clients, creating, onClose, onSubmit }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-violet-100 flex items-center justify-between bg-violet-50 rounded-t-3xl">
+          <h2 className="font-semibold flex items-center gap-2 text-violet-700"><Plus size={18} /> Новая консультация</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-white"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Тема / название</label>
+            <input
+              type="text" placeholder="Например, Разбор питания"
+              value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
+              onKeyDown={e => e.key === 'Enter' && onSubmit()} autoFocus
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Тренер (необязательно)</label>
+            <select value={form.trainer} onChange={e => setForm({ ...form, trainer: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
+              <option value="">Не указан</option>
+              {trainers.map(t => <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Ученик (необязательно)</label>
+            <select value={form.client} onChange={e => setForm({ ...form, client: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
+              <option value="">Открытая ссылка</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
+            </select>
+          </div>
+          <button onClick={onSubmit} disabled={creating}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md disabled:opacity-50 flex items-center justify-center gap-2">
+            {creating ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Создание…</> : <><Plus size={16} /> Создать ссылку</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 function JitsiRoomModal({ info, consultationId, onClose }) {
   const containerRef = useRef(null)
   const apiRef = useRef(null)
   const stoppedRef = useRef(false)
 
-  // ── beforeunload — fire-and-forget (no async in unload handlers) ──────────
   useEffect(() => {
-    const id = consultationId // capture in closure
-    const handleBeforeUnload = (e) => {
+    const id = consultationId
+    const handleBeforeUnload = e => {
       if (id && !stoppedRef.current) {
         stoppedRef.current = true
         const token = localStorage.getItem('access_token')
         try {
           fetch(`/api/education/consultations/${id}/stop/`, {
             method: 'POST', keepalive: true,
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
+            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
             body: '{}',
           }).catch(() => {})
         } catch {}
@@ -560,18 +523,13 @@ function JitsiRoomModal({ info, consultationId, onClose }) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [consultationId])
 
-  // ── Confirm + awaited stop → parent reload reflects updated status ────────
   const handleClose = useCallback(async () => {
-    const confirmed = window.confirm(
-      'Вы уверены, что хотите закрыть?\nКонсультация завершится и ученик увидит сообщение об окончании.'
-    )
+    const confirmed = window.confirm('Вы уверены, что хотите закрыть?\nКонсультация завершится и ученик увидит сообщение об окончании.')
     if (!confirmed) return
-
     if (consultationId && !stoppedRef.current) {
       stoppedRef.current = true
       try { await api.post(`/education/consultations/${consultationId}/stop/`) } catch {}
     }
-
     if (apiRef.current) {
       try { apiRef.current.dispose() } catch {}
       apiRef.current = null
@@ -579,73 +537,47 @@ function JitsiRoomModal({ info, consultationId, onClose }) {
     onClose()
   }, [consultationId, onClose])
 
-  // JWT token goes into the URL for the "open in browser" fallback so Jitsi
-  // recognises the trainer as moderator without showing a login dialog.
   const roomUrl = info?.jitsi_domain && info?.room_name
     ? `https://${info.jitsi_domain}/${info.room_name}${info.jitsi_token ? `?jwt=${info.jitsi_token}` : ''}`
     : null
 
-  // ── Embedded External API ─────────────────────────────────────────────────
   useEffect(() => {
     if (!info?.jitsi_domain || !info?.room_name) return
     const domain = info.jitsi_domain
     const scriptId = 'jitsi-external-api'
-
     const init = () => {
-      if (!window.JitsiMeetExternalAPI || !containerRef.current) return
-      if (apiRef.current) return
-
+      if (!window.JitsiMeetExternalAPI || !containerRef.current || apiRef.current) return
       apiRef.current = new window.JitsiMeetExternalAPI(domain, {
         roomName: info.room_name,
         parentNode: containerRef.current,
-        width: '100%',
-        height: '100%',
+        width: '100%', height: '100%',
         userInfo: { displayName: info.display_name || 'Тренер' },
-        // JWT token → trainer joins as moderator, no Prosody login dialog
         ...(info.jitsi_token ? { jwt: info.jitsi_token } : {}),
         configOverwrite: {
-          startWithAudioMuted: false,
-          startWithVideoMuted: false,
-          prejoinPageEnabled: false,
-          prejoinConfig: { enabled: false },
+          startWithAudioMuted: false, startWithVideoMuted: false,
+          prejoinPageEnabled: false, prejoinConfig: { enabled: false },
           lobby: { autoKnock: false, enableChat: false },
-          disableDeepLinking: true,
-          enableWelcomePage: false,
-          enableClosePage: false,
-          requireDisplayName: false,
+          disableDeepLinking: true, enableWelcomePage: false,
+          enableClosePage: false, requireDisplayName: false,
           disableInviteFunctions: true,
-          toolbarButtons: [
-            'microphone', 'camera', 'desktop', 'fullscreen',
-            'hangup', 'chat', 'tileview', 'videoquality', 'settings',
-          ],
+          toolbarButtons: ['microphone', 'camera', 'desktop', 'fullscreen', 'hangup', 'chat', 'tileview', 'videoquality', 'settings'],
         },
         interfaceConfigOverwrite: {
-          MOBILE_APP_PROMO: false,
-          SHOW_JITSI_WATERMARK: false,
-          SHOW_BRAND_WATERMARK: false,
-          SHOW_POWERED_BY: false,
+          MOBILE_APP_PROMO: false, SHOW_JITSI_WATERMARK: false,
+          SHOW_BRAND_WATERMARK: false, SHOW_POWERED_BY: false,
         },
       })
-
       apiRef.current.addEventListener('readyToClose', handleClose)
     }
-
     if (!document.getElementById(scriptId)) {
       const s = document.createElement('script')
-      s.id = scriptId
-      s.src = `https://${domain}/external_api.js`
-      s.async = true
-      s.onload = init
+      s.id = scriptId; s.src = `https://${domain}/external_api.js`; s.async = true; s.onload = init
       document.body.appendChild(s)
     } else {
       init()
     }
-
     return () => {
-      if (apiRef.current) {
-        try { apiRef.current.dispose() } catch {}
-        apiRef.current = null
-      }
+      if (apiRef.current) { try { apiRef.current.dispose() } catch {}; apiRef.current = null }
     }
   }, [info, handleClose])
 
@@ -657,20 +589,13 @@ function JitsiRoomModal({ info, consultationId, onClose }) {
         </span>
         <div className="flex items-center gap-2 ml-auto">
           {roomUrl && (
-            <a
-              href={roomUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/80 text-white hover:bg-violet-500 text-xs font-medium"
-              title="Открыть в новой вкладке (если встроенный Jitsi не работает)"
-            >
+            <a href={roomUrl} target="_blank" rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/80 text-white hover:bg-violet-500 text-xs font-medium">
               <LogIn size={13} /> Открыть в браузере
             </a>
           )}
-          <button
-            onClick={handleClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/80 text-white hover:bg-rose-600 text-xs font-medium"
-          >
+          <button onClick={handleClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/80 text-white hover:bg-rose-600 text-xs font-medium">
             <X size={14} /> Завершить и закрыть
           </button>
         </div>
