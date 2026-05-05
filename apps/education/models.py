@@ -206,6 +206,10 @@ class StreamViewer(UUIDTimestampedModel):
     is_active = models.BooleanField(default=True)
 
     class Meta:
+        # One row per (stream, client). The pre-existing schema allowed
+        # duplicates which caused MultipleObjectsReturned on update_or_create.
+        # Migration 0007 deduplicates legacy rows before adding this constraint.
+        unique_together = [('stream', 'client')]
         indexes = [
             models.Index(fields=['stream', 'is_active']),
             models.Index(fields=['client']),

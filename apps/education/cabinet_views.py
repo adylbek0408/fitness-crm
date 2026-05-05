@@ -311,24 +311,29 @@ class CabinetStreamHeartbeatView(APIView):
     permission_classes = [IsCabinetClient]
 
     def post(self, request, pk):
+        client = request.user.client
         viewer = StreamViewer.objects.filter(
-            stream_id=pk, client=request.user.client, is_active=True,
+            stream_id=pk, client=client, is_active=True,
         ).first()
         if not viewer:
-            # Recreate viewer record if stream still live.
+            # No active viewer — try to revive an inactive one or create afresh.
+            # Stream must still be live and the client must have access.
             try:
                 stream = LiveStream.objects.get(pk=pk, status='live', deleted_at__isnull=True)
             except LiveStream.DoesNotExist:
                 return Response({'detail': 'Not joined.'},
                                 status=status.HTTP_404_NOT_FOUND)
-            client = request.user.client
             if stream.groups.exists() and (
                 not client.group_id
                 or not stream.groups.filter(id=client.group_id).exists()
             ):
                 return Response({'detail': 'Forbidden.'},
                                 status=status.HTTP_403_FORBIDDEN)
-            StreamViewer.objects.create(stream=stream, client=client, is_active=True)
+            # update_or_create is safe now that (stream, client) is unique.
+            StreamViewer.objects.update_or_create(
+                stream=stream, client=client,
+                defaults={'is_active': True, 'left_at': None},
+            )
             return Response({'ok': True, 'recreated': True})
         viewer.save(update_fields=['last_heartbeat_at', 'updated_at'])
         return Response({'ok': True})
