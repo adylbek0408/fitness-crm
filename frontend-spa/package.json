@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.2.5",
+    "@vidstack/react": "^0.6.15",
     "axios": "^1.7.0",
     "date-fns": "^4.1.0",
     "hls.js": "^1.6.16",

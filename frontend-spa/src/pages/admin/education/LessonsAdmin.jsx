@@ -10,7 +10,7 @@ import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
-import HlsPlayer from '../../../components/education/HlsPlayer'
+import VodPlayer from '../../../components/education/VodPlayer'
 
 const PAGE_SIZE = 12
 
@@ -1350,7 +1350,7 @@ function PreviewModal({ lesson, onClose }) {
 
           {!loading && info?.playback_url && !isAudio && (
             <div className="aspect-video bg-black rounded-2xl overflow-hidden">
-              <HlsPlayer
+              <VodPlayer
                 src={info.playback_url}
                 kind={info.video_kind || 'hls'}
                 autoPlay

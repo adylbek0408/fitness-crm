@@ -11,7 +11,7 @@ import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import Pagination from '../../../components/Pagination'
-import HlsPlayer from '../../../components/education/HlsPlayer'
+import VodPlayer from '../../../components/education/VodPlayer'
 
 const PAGE_SIZE = 12
 
@@ -451,7 +451,7 @@ export default function StreamsAdmin() {
               </div>
             ) : (
               <div className="bg-black flex-1 overflow-hidden" style={{ minHeight: '200px', maxHeight: '75dvh' }}>
-                <HlsPlayer src={previewInfo.playback_url} kind={previewInfo.video_kind || 'hls'} autoPlay />
+                <VodPlayer src={previewInfo.playback_url} kind={previewInfo.video_kind || 'hls'} autoPlay />
               </div>
             )}
           </div>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, AlertTriangle, Shield, Play, Headphones } from 'lucide-react'
 import api from '../../../api/axios'
-import HlsPlayer from '../../../components/education/HlsPlayer'
+import VodPlayer from '../../../components/education/VodPlayer'
 import AudioPlayer from '../../../components/education/AudioPlayer'
 import Watermark from '../../../components/education/Watermark'
 import useContentProtection from '../../../components/education/useContentProtection'
@@ -116,19 +116,21 @@ export default function LessonView() {
             {lesson.lesson_type === 'video' ? (
               <div className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg">
                 {lesson.playback_url ? (
-                  <HlsPlayer
+                  <VodPlayer
                     src={lesson.playback_url}
                     kind={lesson.video_kind || 'hls'}
                     onTimeUpdate={handleProgress}
                     onReady={v => { videoRef.current = v }}
                     startAt={startAt}
-                  />
+                    poster={lesson.thumbnail_url || ''}
+                  >
+                    <Watermark text={watermarkText} />
+                  </VodPlayer>
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">
                     Видео ещё обрабатывается. Попробуйте позже.
                   </div>
                 )}
-                <Watermark text={watermarkText} />
               </div>
             ) : (
               <div className="relative">
