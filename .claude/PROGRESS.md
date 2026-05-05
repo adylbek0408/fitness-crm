@@ -101,6 +101,24 @@
        - Исправлен бесконечный polling (3+3+2 интервала → 1 стабильный)
        - Docker auto-reload: gunicorn → runserver
 
+## Спринт 9 — Player + mobile-first ЛК (2026-05-05)
+- [x] **9.1** Заменили кастомный HlsPlayer на @vidstack/react (community skin).
+       Новый `VodPlayer.jsx` используется в LessonView + LessonsAdmin
+       preview + StreamsAdmin preview. HlsPlayer.jsx остался в репо до
+       подтверждения работы vidstack в проде.
+- [x] **9.2** Mobile-first редизайн CabinetProfile: max-w-md, LIVE-баннер,
+       компактные плитки, stats-row, dot-strip посещаемости, свёрнутые
+       секции для второстепенных данных.
+- [x] **9.3** StreamLive (cabinet) full-bleed layout для live, EmptyState
+       компонент для non-live состояний, bottom-sheet drawer зрителей.
+- [x] **9.4** LessonsList + StreamArchive — sticky-header, плотные тайлы,
+       active:scale-[0.99] для тач-feedback.
+- [x] **9.5** Migration 0007: dedup StreamViewer + unique (stream, client).
+       Heartbeat использует update_or_create вместо create.
+- [ ] **9.6** Raise-hand (1 ученик из 100+ говорит с тренером в эфире) —
+       НА ПАУЗЕ. Требует выбора SFU (CF Realtime / Jitsi / LiveKit) +
+       1-2 дня работы. Согласовано с пользователем.
+
 ---
 
 ## Решения по ходу

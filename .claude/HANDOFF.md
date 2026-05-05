@@ -1,3 +1,85 @@
+# HANDOFF — 2026-05-05 (сессия — vidstack player + mobile-first ЛК + dedup StreamViewer)
+
+## Что сделано в этой сессии
+
+### 1. Заменили кастомный HlsPlayer на @vidstack/react VodPlayer
+**Файлы:** `frontend-spa/src/components/education/VodPlayer.jsx` (новый),
+LessonView, LessonsAdmin, StreamsAdmin (preview-модалка).
+
+- Vidstack community skin (Plyr-style минимализм) даёт нормальные mobile-жесты
+  (тап-чтобы-сикнуть, fullscreen orientation, нормальный громкость UI на iOS).
+- HLS работает через hls.js (динамически подгружается vidstack'ом).
+- Watermark + content-protection остались внешними слоями — поверх плеера.
+- HlsPlayer.jsx ОСТАВЛЕН в репо (не удалён) до подтверждения, что vidstack
+  работает в проде. Удалить можно после прогона.
+- Bundle: VodPlayer chunk = 189KB (58KB gzip), lazy-load.
+
+### 2. Mobile-first редизайн CabinetProfile
+**Файл:** `frontend-spa/src/pages/cabinet/CabinetProfile.jsx`
+
+- max-w-md контейнер (телефонная ширина), компактный hero с аватаром.
+- LIVE-баннер прибит к шапке когда стрим идёт (не маленький бейджик в плитке).
+- Плитки 2-up (Уроки + Архив); плитка «Эфир» появляется только когда нет live.
+- Stats-row: бонусы + посещаемость % — то, что студент чаще всего смотрит.
+- Посещаемость теперь точечная лента (последние 21 урока) вместо
+  горизонтально-скроллящейся таблицы.
+- Группа / личные данные / завершённые потоки / детальный лог — в свёрнутых
+  секциях.
+
+### 3. Mobile-polish для LessonsList, StreamLive, StreamArchive
+- **StreamLive (live):** полноэкранный layout — чёрный фон, top bar с LIVE
+  пилюлей и кнопкой счётчика зрителей, видео заполняет экран, заголовок снизу.
+  Список зрителей — bottom-sheet drawer (вместо колонки сбоку).
+- **StreamLive (non-live):** общий EmptyState компонент для всех 4 состояний
+  (ended/scheduled/no-stream/access-denied).
+- **LessonsList:** поиск отдельной строкой над табами, табы flex-1 на мобиле.
+- **StreamArchive:** одинаковая ширина и spacing с LessonsList.
+
+### 4. Bugfix: StreamViewer dedup + unique constraint
+**Файлы:** `apps/education/models.py`,
+`apps/education/migrations/0007_streamviewer_unique_together.py`,
+`apps/education/cabinet_views.py`
+
+- В таблице `StreamViewer` копились дубликаты (stream, client) — это вызывало
+  `MultipleObjectsReturned` на `update_or_create` (уже было в HANDOFF).
+- Heartbeat-эндпоинт делал `.create()` без проверки → продолжал плодить дубли.
+- **Migration 0007:** для каждой пары (stream, client) оставляет только
+  самую свежую запись (по updated_at), затем добавляет unique_together.
+- Heartbeat теперь использует `update_or_create` (безопасно при наличии
+  constraint).
+
+---
+
+## Что нужно сделать на сервере
+
+```bash
+cd /var/www/fitness-crm
+git pull origin main
+source venv/bin/activate
+python manage.py migrate education     # применит 0007
+cd frontend-spa && npm install         # vidstack уже зафиксирован в lock
+npm run build && cd ..
+sudo systemctl restart fitness-crm.service
+```
+
+После деплоя:
+- Открыть кабинет на телефоне → проверить новый layout.
+- Открыть урок → плеер vidstack (Plyr-skin), HLS должен подхватываться.
+- Запустить эфир в студии → ученик должен видеть полноэкранный layout.
+- Если плеер где-то даёт сбой — откат до HlsPlayer тривиален: 3 импорта
+  заменить обратно (компонент в репо остался).
+
+## Следующий шаг — НЕ сделанное в этой сессии
+
+**Raise-hand → ученик в эфире (один из 100+ → говорит с тренером).**
+Архитектурная развилка: CF Realtime SFU vs Jitsi vs LiveKit. Пользователь
+поставил на паузу. Когда вернёмся: подтвердить выбор, потом 1-2 дня работы:
+backend модели (Room, ParticipantInvite, RaiseHand), WS-сигналинг для
+тренера, SFU client на фронте, переключение публикации с CF Stream Live
+на выбранный SFU.
+
+---
+
 # HANDOFF — 2026-05-04 (сессия — фикс: ученики не видели эфир)
 
 ## Корневая проблема и все баги
