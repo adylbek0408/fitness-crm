@@ -291,7 +291,13 @@ export default function BroadcastPage() {
   // ── render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 bg-black overflow-hidden" style={{ WebkitUserSelect: 'none' }}>
+    <div
+      className="fixed inset-0 overflow-hidden"
+      style={{
+        WebkitUserSelect: 'none',
+        background: 'radial-gradient(120% 120% at 50% 0%, #171824 0%, #0b0d16 55%, #06070d 100%)',
+      }}
+    >
 
       {/* ── Camera ── */}
       <video ref={videoRef} autoPlay muted playsInline
@@ -301,70 +307,64 @@ export default function BroadcastPage() {
 
       {/* ── IDLE / READY LOBBY ── */}
       {!broadcasting && !isEnded && (
-        <div className="absolute inset-0 flex flex-col" style={{
-          background: 'linear-gradient(160deg,#0f0715 0%,#1a0a1e 40%,#0d0d1a 100%)'
-        }}>
+        <div className="absolute inset-0 flex flex-col">
           {/* back */}
           <button onClick={() => nav('/admin/education/streams')}
-            className="absolute top-5 left-5 z-10 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition active:scale-90">
+            className="absolute top-5 left-5 z-10 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center text-white transition active:scale-90">
             <ChevronLeft size={22} />
           </button>
 
           {/* center content */}
-          <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8 text-center">
-            {/* Icon ring */}
-            <div className="relative">
-              <div className="absolute inset-0 rounded-full bg-rose-500/20 scale-125 animate-pulse" />
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-rose-500/30 to-pink-600/20 border border-rose-500/30 flex items-center justify-center relative">
-                <Radio size={40} className="text-rose-400" />
+          <div className="flex-1 flex items-center justify-center px-5">
+            <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-black/35 backdrop-blur-xl p-6 sm:p-8 text-center shadow-2xl">
+              <div className="mx-auto mb-5 w-16 h-16 rounded-2xl bg-rose-500/15 border border-rose-400/30 flex items-center justify-center">
+                <Radio size={30} className="text-rose-300" />
               </div>
-            </div>
 
-            <div>
-              <p className="text-white/50 text-sm font-medium tracking-wide uppercase mb-1">Студия</p>
-              <h1 className="text-2xl font-bold text-white leading-tight">{stream?.title || '…'}</h1>
-            </div>
+              <p className="text-white/60 text-[11px] font-semibold tracking-[0.18em] uppercase mb-1">Студия эфира</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">{stream?.title || 'Без названия'}</h1>
+              <p className="text-sm text-white/55 mb-5">Проверьте кадр, звук и качество перед запуском прямого эфира</p>
 
-            {/* Quality selector */}
-            <div className="flex gap-2">
-              {Object.entries({ '480p': 'SD', '720p': 'HD', '1080p': 'FHD' }).map(([k, label]) => (
-                <button key={k} onClick={() => setQuality(k)}
-                  className={`px-5 py-2 rounded-full text-sm font-semibold transition active:scale-95 ${quality === k ? 'bg-rose-500 text-white shadow-lg shadow-rose-900/50' : 'bg-white/10 text-white/60 hover:bg-white/15 border border-white/10'}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {error && (
-              <div className="w-full max-w-xs bg-rose-900/60 border border-rose-700/50 rounded-2xl px-4 py-3 text-rose-200 text-sm">
-                {error}
+              {/* Quality selector */}
+              <div className="flex gap-2 justify-center mb-5">
+                {Object.entries({ '480p': 'SD', '720p': 'HD', '1080p': 'FHD' }).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setQuality(k)}
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition active:scale-95 border ${
+                      quality === k
+                        ? 'bg-rose-500 text-white border-rose-400 shadow-lg shadow-rose-900/30'
+                        : 'bg-white/5 text-white/70 hover:bg-white/10 border-white/15'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            )}
-            {insecure && (
-              <div className="w-full max-w-xs bg-amber-900/60 border border-amber-700/50 rounded-2xl px-4 py-3 text-amber-200 text-sm">
-                ⚠ Нужен HTTPS для эфира
-              </div>
-            )}
-          </div>
 
-          {/* Start button */}
-          <div className="flex justify-center pb-16">
-            <button onClick={startBroadcast} disabled={status === 'connecting' || !stream?.cf_webrtc_url}
-              className="group relative disabled:opacity-50 active:scale-95 transition-transform">
-              {/* outer glow ring */}
-              <div className="absolute inset-0 rounded-full bg-rose-500/25 scale-125 group-hover:scale-150 transition-transform duration-300" />
-              <div className="absolute inset-0 rounded-full bg-rose-500/10 scale-[1.6] group-hover:scale-[1.8] transition-transform duration-500" />
-              {/* button */}
-              <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-rose-500 to-rose-700 flex flex-col items-center justify-center shadow-[0_0_50px_rgba(244,63,94,0.5)] border-2 border-rose-400/40">
+              {error && (
+                <div className="w-full bg-rose-900/50 border border-rose-700/40 rounded-2xl px-4 py-3 text-rose-200 text-sm mb-3">
+                  {error}
+                </div>
+              )}
+              {insecure && (
+                <div className="w-full bg-amber-900/50 border border-amber-700/40 rounded-2xl px-4 py-3 text-amber-100 text-sm mb-3">
+                  ⚠ Нужен HTTPS для доступа к камере и микрофону
+                </div>
+              )}
+
+              {/* Start button */}
+              <button
+                onClick={startBroadcast}
+                disabled={status === 'connecting' || !stream?.cf_webrtc_url}
+                className="w-full sm:w-auto mx-auto min-w-56 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-xl shadow-rose-900/30 hover:shadow-rose-900/50 disabled:opacity-50 transition active:scale-[0.99] flex items-center justify-center gap-2"
+              >
                 {status === 'connecting'
-                  ? <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  : <>
-                      <Radio size={28} className="text-white" />
-                      <span className="text-[10px] font-black tracking-widest text-white mt-0.5">LIVE</span>
-                    </>
-                }
-              </div>
-            </button>
+                  ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : <Radio size={18} />}
+                <span>{status === 'connecting' ? 'Подключаемся…' : 'Начать эфир'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -384,21 +384,23 @@ export default function BroadcastPage() {
           )}
 
           {/* ── Top bar ── */}
-          <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-3 px-4 pt-5 pb-2">
+          <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 sm:px-4 pt-4">
             <button onClick={() => nav('/admin/education/streams')}
-              className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/70 active:scale-90 transition shrink-0">
+              className="w-9 h-9 rounded-xl bg-black/45 backdrop-blur-sm border border-white/10 flex items-center justify-center text-white hover:bg-black/60 active:scale-90 transition shrink-0">
               <ChevronLeft size={20} />
             </button>
-            <p className="font-semibold text-white text-sm truncate flex-1 drop-shadow">{stream?.title}</p>
+            <div className="flex-1 min-w-0 rounded-xl bg-black/35 backdrop-blur-sm border border-white/10 px-3 py-2">
+              <p className="font-semibold text-white text-sm truncate">{stream?.title}</p>
+            </div>
             {/* CF dot */}
             {cfStatus && (
               <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfStatus.live_input_state === 'connected' ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-amber-400 animate-pulse'}`}
                 title={cfStatus.live_input_state === 'connected' ? 'CF получает видео' : 'CF не получает видео'} />
             )}
-            <span className="flex items-center gap-1.5 bg-rose-600 px-3 py-1 rounded-full text-xs font-black tracking-wider shrink-0 shadow-lg shadow-rose-900/50">
+            <span className="flex items-center gap-1.5 bg-rose-600 px-3 py-1.5 rounded-xl text-xs font-black tracking-wider shrink-0 shadow-lg shadow-rose-900/40">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
             </span>
-            <span className="font-mono text-sm text-white/90 shrink-0 tabular-nums drop-shadow">{fmt(elapsed)}</span>
+            <span className="font-mono text-sm text-white/90 shrink-0 tabular-nums drop-shadow rounded-xl bg-black/35 backdrop-blur-sm border border-white/10 px-2.5 py-1.5">{fmt(elapsed)}</span>
           </div>
 
           {/* connection warning */}
@@ -432,13 +434,13 @@ export default function BroadcastPage() {
           )}
 
           {/* ── Bottom control bar ── */}
-          <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-3 px-4 pb-10">
+          <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-3 px-4 pb-8">
             <div className="px-3 py-1 rounded-full text-[11px] font-medium bg-black/30 text-white/75 border border-white/10">
               {previewMirrored ? 'Передняя камера: зеркальное превью' : 'Основная камера: обычное превью'}
             </div>
 
             {/* main pill */}
-            <div className="bg-black/55 backdrop-blur-2xl border border-white/[0.12] rounded-[2rem] px-5 py-4 flex items-center gap-4 shadow-2xl">
+            <div className="bg-black/55 backdrop-blur-2xl border border-white/[0.12] rounded-3xl px-4 py-3 flex items-center gap-3 shadow-2xl">
 
               {/* Mic */}
               <CtrlBtn on={micOn} onClick={toggleMic} onIcon={<Mic size={20}/>} offIcon={<MicOff size={20}/>} label={micOn ? 'Микрофон вкл.' : 'Микрофон выкл.'} />
@@ -448,7 +450,7 @@ export default function BroadcastPage() {
 
               {/* STOP */}
               <button onClick={stopBroadcast} title="Завершить эфир"
-                className="w-16 h-16 rounded-full bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center shadow-[0_0_30px_rgba(244,63,94,0.55)] border-[3px] border-rose-400/30 active:scale-90 hover:from-rose-400 hover:to-rose-600 transition">
+                className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center shadow-[0_0_30px_rgba(244,63,94,0.45)] border border-rose-300/40 active:scale-90 hover:from-rose-400 hover:to-rose-600 transition">
                 <Square size={22} fill="white" className="text-white" />
               </button>
 

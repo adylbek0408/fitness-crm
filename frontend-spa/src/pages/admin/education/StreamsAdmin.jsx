@@ -566,11 +566,11 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
 
   return (
     <div
-      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition ${selected ? 'border-rose-400 ring-2 ring-rose-200' : 'border-rose-100'}`}
+      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition hover:shadow-md ${selected ? 'border-rose-400 ring-2 ring-rose-200' : 'border-gray-200'}`}
       onClick={selectMode ? onToggleSelect : undefined}
       style={selectMode ? { cursor: 'pointer' } : {}}
     >
-      <div className="p-4 flex items-start gap-3">
+      <div className="p-4 sm:p-5 flex items-start gap-3">
         {/* Checkbox or icon */}
         <div className="shrink-0 mt-0.5" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
           {selectMode
@@ -578,7 +578,7 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
               ? <CheckSquare size={20} className="text-rose-500" />
               : <SquareIcon size={20} className="text-gray-300" />
             : (
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isLive ? 'bg-gradient-to-br from-rose-500 to-pink-500 text-white shadow-md' : isScheduled ? 'bg-rose-100 text-rose-600' : 'bg-gray-100 text-gray-400'}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${isLive ? 'bg-rose-500 text-white shadow-md border-rose-400/30' : isScheduled ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
                 <Radio size={18} className={isLive ? 'animate-pulse' : ''} />
               </div>
             )
@@ -589,9 +589,9 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900 truncate">{s.title}</span>
-            {isLive && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-600 text-white"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE</span>}
-            {isScheduled && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold">Готов к эфиру</span>}
-            {isArchived && <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-semibold">{s.status === 'archived' ? 'Архив' : 'Завершён'}</span>}
+            {isLive && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-600 text-white"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE</span>}
+            {isScheduled && <span className="text-[11px] px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-100">Готов к эфиру</span>}
+            {isArchived && <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold border border-gray-200">{s.status === 'archived' ? 'Архив' : 'Завершён'}</span>}
             {hasRecording && (
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 font-semibold flex items-center gap-1">
                 <BookMarked size={10} /> Запись
@@ -618,20 +618,20 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
           <div className="flex items-center gap-1 shrink-0">
             {isLive && (
               <button onClick={onEnd} title="Завершить эфир"
-                className="p-2 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition active:scale-95">
+                className="p-2 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition active:scale-95 shadow-sm">
                 <Square size={15} />
               </button>
             )}
             {!isArchived && (
               <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
                 title={isLive ? 'Открыть студию' : 'Начать эфир'}
-                className="p-2 rounded-xl bg-rose-100 text-rose-700 hover:bg-rose-200 transition flex items-center active:scale-95">
+                className="p-2 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 hover:bg-rose-100 transition flex items-center active:scale-95">
                 <ExternalLink size={15} />
               </a>
             )}
             {hasRecording && (
               <button onClick={onPreviewRecording} title="Просмотр записи"
-                className="p-2 rounded-xl bg-violet-100 text-violet-700 hover:bg-violet-200 transition active:scale-95">
+                className="p-2 rounded-xl bg-violet-50 border border-violet-100 text-violet-700 hover:bg-violet-100 transition active:scale-95">
                 <Eye size={15} />
               </button>
             )}
@@ -657,10 +657,10 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
 
       {/* Student link row — only for active streams */}
       {!isArchived && !selectMode && (
-        <div className="px-4 pb-4 flex items-center gap-2">
+        <div className="px-4 sm:px-5 pb-4 flex items-center gap-2">
           <Link2 size={12} className="text-gray-400 shrink-0" />
-          <code className="text-xs text-gray-500 truncate flex-1">{studentLink}</code>
-          <button onClick={() => onCopy(studentLink, `link-${s.id}`)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs text-gray-600 shrink-0">
+          <code className="text-xs text-gray-600 truncate flex-1">{studentLink}</code>
+          <button onClick={() => onCopy(studentLink, `link-${s.id}`)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs text-gray-700 shrink-0 border border-gray-200">
             {copied === `link-${s.id}` ? <><Check size={11} /> Скопировано</> : <><Copy size={11} /> Копировать</>}
           </button>
           <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs hover:bg-emerald-100 shrink-0">

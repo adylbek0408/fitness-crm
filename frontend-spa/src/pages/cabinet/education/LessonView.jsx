@@ -142,7 +142,7 @@ export default function LessonView() {
               <div
                 ref={playerShellRef}
                 data-protected-root
-                className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg"
+                className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg border border-gray-900"
               >
                 {lesson.playback_url ? (
                   <VodPlayer
@@ -163,7 +163,7 @@ export default function LessonView() {
                 <button
                   type="button"
                   onClick={toggleFullscreen}
-                  className="absolute top-3 right-3 z-20 rounded-xl bg-black/55 text-white p-2.5 hover:bg-black/75 transition"
+                  className="absolute top-3 right-3 z-20 rounded-xl bg-black/50 border border-white/10 text-white p-2.5 hover:bg-black/75 transition"
                   aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
                   title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
                 >
@@ -183,7 +183,7 @@ export default function LessonView() {
                   <button
                     type="button"
                     onClick={toggleFullscreen}
-                    className="absolute top-3 right-3 z-20 rounded-xl bg-black/55 text-white p-2.5 hover:bg-black/75 transition"
+                    className="absolute top-3 right-3 z-20 rounded-xl bg-black/50 border border-white/10 text-white p-2.5 hover:bg-black/75 transition"
                     aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
                     title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
                   >

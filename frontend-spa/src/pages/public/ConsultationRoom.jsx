@@ -220,9 +220,9 @@ export default function ConsultationRoom() {
   // ── "Session ended" screen ──────────────────────────────────────────────
   if (ended) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center px-4">
-        <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
+      <div className="min-h-screen bg-[#0b0d16] flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-8 text-center border border-gray-200">
+          <div className="w-16 h-16 rounded-2xl bg-rose-100 flex items-center justify-center mx-auto mb-4">
             <PhoneOff size={28} className="text-rose-500" />
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Консультация завершена</h2>
@@ -251,10 +251,10 @@ export default function ConsultationRoom() {
 
   // ── Join form ───────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 flex items-center justify-center px-4 py-6">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-6 sm:p-8">
+    <div className="min-h-screen bg-[#f5f7fb] flex items-center justify-center px-4 py-6">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-6 sm:p-8 border border-gray-200">
         <div className="flex items-center gap-3 mb-5 sm:mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-violet-600 flex items-center justify-center shrink-0">
             <Video size={24} className="text-white" aria-hidden="true" />
           </div>
           <div className="min-w-0">
@@ -286,7 +286,7 @@ export default function ConsultationRoom() {
         <button
           onClick={handleJoin}
           disabled={loading}
-          className="mt-5 w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md hover:shadow-lg transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-violet-300 flex items-center justify-center gap-2"
+          className="mt-5 w-full py-3 rounded-xl bg-violet-600 text-white font-semibold shadow-sm hover:bg-violet-700 transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-violet-300 flex items-center justify-center gap-2"
         >
           {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />}
           {loading ? 'Подключение…' : 'Войти в комнату'}

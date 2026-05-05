@@ -190,7 +190,7 @@ export default function ConsultationsAdmin() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center text-white shadow-md shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center text-white shadow-md shrink-0">
             <Video size={20} />
           </div>
           <div>
@@ -204,7 +204,7 @@ export default function ConsultationsAdmin() {
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md hover:shadow-lg transition"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white font-semibold shadow-sm hover:bg-violet-700 transition"
         >
           <Plus size={18} /> Новая консультация
         </button>
@@ -218,7 +218,7 @@ export default function ConsultationsAdmin() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Поиск по теме или тренеру…"
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100"
           />
         </div>
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 shrink-0">
@@ -226,7 +226,7 @@ export default function ConsultationsAdmin() {
             <button
               key={t.key}
               onClick={() => { setStatusFilter(t.key); setPage(1) }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${statusFilter === t.key ? 'bg-white shadow text-violet-600' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${statusFilter === t.key ? 'bg-white shadow text-violet-700' : 'text-gray-500 hover:text-gray-700'}`}
             >
               {t.label}
             </button>
@@ -234,7 +234,7 @@ export default function ConsultationsAdmin() {
         </div>
         <button
           onClick={() => { selectMode ? exitSelectMode() : setSelectMode(true) }}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition ${selectMode ? 'bg-violet-50 text-violet-600 border-violet-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition ${selectMode ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
         >
           <CheckSquare size={14} /> {selectMode ? 'Отменить' : 'Выбрать'}
         </button>
@@ -243,7 +243,7 @@ export default function ConsultationsAdmin() {
       {/* Bulk action bar */}
       {selectMode && selectedIds.size > 0 && (
         <div className="mb-3 flex items-center gap-3 px-4 py-2.5 bg-violet-50 border border-violet-200 rounded-xl">
-          <span className="text-sm font-medium text-violet-700">Выбрано: {selectedIds.size}</span>
+          <span className="text-sm font-medium text-violet-800">Выбрано: {selectedIds.size}</span>
           <button
             onClick={() => setConfirmBulkDelete(true)}
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-medium hover:bg-rose-600"
@@ -349,7 +349,7 @@ function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl,
       onClick={selectMode ? onToggleSelect : undefined}
       style={selectMode ? { cursor: 'pointer' } : {}}
     >
-      <div className="p-4 flex items-start gap-3">
+      <div className="p-4 sm:p-5 flex items-start gap-3">
         {/* Checkbox or icon */}
         <div className="shrink-0 mt-0.5" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
           {selectMode
@@ -357,7 +357,7 @@ function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl,
               ? <CheckSquare size={20} className="text-violet-500" />
               : <SquareIcon size={20} className="text-gray-300" />
             : (
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isActive ? 'bg-gradient-to-br from-violet-500 to-purple-500 text-white shadow shadow-violet-200' : 'bg-gray-100 text-gray-400'}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${isActive ? 'bg-violet-600 text-white shadow shadow-violet-200 border-violet-400/40' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
                 <Video size={18} />
               </div>
             )
@@ -368,7 +368,7 @@ function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl,
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900 truncate">{item.title || 'Консультация'}</span>
-            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-semibold ${badge.cls}`}>{badge.label}</span>
+            <span className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold ${badge.cls}`}>{badge.label}</span>
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500">
             {item.trainer_name && (
@@ -392,7 +392,7 @@ function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl,
             {isActive && (
               <>
                 <button onClick={onJoinRoom} disabled={isJoining} title="Войти в комнату"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500 hover:bg-violet-600 text-white text-xs font-semibold shadow-sm disabled:opacity-60 transition active:scale-95">
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold shadow-sm disabled:opacity-60 transition active:scale-95">
                   {isJoining
                     ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     : <LogIn size={14} />}
@@ -414,7 +414,7 @@ function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl,
 
       {/* Link bar — only for active */}
       {isActive && !selectMode && (
-        <div className="px-4 pb-3 -mt-1">
+        <div className="px-4 sm:px-5 pb-3 -mt-1">
           <div className="flex items-center gap-1.5 bg-violet-50/70 border border-violet-100 rounded-xl p-1 pl-3">
             <code className="flex-1 min-w-0 text-xs text-violet-900/80 truncate font-mono">{roomUrl}</code>
             <button
@@ -452,8 +452,8 @@ function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl,
 function ConsultationCreateModal({ form, setForm, trainers, clients, creating, onClose, onSubmit }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-violet-100 flex items-center justify-between bg-violet-50 rounded-t-3xl">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg border border-gray-200" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50 rounded-t-3xl">
           <h2 className="font-semibold flex items-center gap-2 text-violet-700"><Plus size={18} /> Новая консультация</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-white"><X size={18} /></button>
         </div>
@@ -464,13 +464,13 @@ function ConsultationCreateModal({ form, setForm, trainers, clients, creating, o
               type="text" placeholder="Например, Разбор питания"
               value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
               onKeyDown={e => e.key === 'Enter' && onSubmit()} autoFocus
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-200"
             />
           </div>
           <div>
             <label className="block text-xs text-gray-500 font-medium mb-1">Тренер (необязательно)</label>
             <select value={form.trainer} onChange={e => setForm({ ...form, trainer: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-200 bg-white">
               <option value="">Не указан</option>
               {trainers.map(t => <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>)}
             </select>
@@ -478,13 +478,13 @@ function ConsultationCreateModal({ form, setForm, trainers, clients, creating, o
           <div>
             <label className="block text-xs text-gray-500 font-medium mb-1">Ученик (необязательно)</label>
             <select value={form.client} onChange={e => setForm({ ...form, client: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-200 bg-white">
               <option value="">Открытая ссылка</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
             </select>
           </div>
           <button onClick={onSubmit} disabled={creating}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-semibold shadow-md disabled:opacity-50 flex items-center justify-center gap-2">
+            className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold shadow-sm hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
             {creating ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Создание…</> : <><Plus size={16} /> Создать ссылку</>}
           </button>
         </div>
@@ -588,7 +588,7 @@ function JitsiRoomModal({ info, consultationId, onClose }) {
         <div className="flex items-center gap-2 ml-auto">
           {roomUrl && (
             <a href={roomUrl} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/80 text-white hover:bg-violet-500 text-xs font-medium">
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/90 text-white hover:bg-violet-600 text-xs font-medium">
               <LogIn size={13} /> Открыть в браузере
             </a>
           )}

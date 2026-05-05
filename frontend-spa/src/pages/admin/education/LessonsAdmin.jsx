@@ -1307,11 +1307,11 @@ function PreviewModal({ lesson, onClose }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
       <div
-        className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col"
-        style={{ maxHeight: '92dvh' }}
+        className="bg-[#0d111b] rounded-3xl border border-white/10 shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col"
+        style={{ maxHeight: '94dvh' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 shrink-0 bg-black/20">
           <div className="min-w-0">
             <h3 className="font-semibold text-white truncate">{lesson.title}</h3>
             <p className="text-xs text-white/40">{isAudio ? 'Аудиоурок' : 'Видеоурок'}</p>
@@ -1350,7 +1350,7 @@ function PreviewModal({ lesson, onClose }) {
         )}
 
         {!loading && info?.playback_url && !isAudio && (
-          <div className="bg-black flex-1 overflow-hidden flex items-center justify-center" style={{ minHeight: '240px', maxHeight: '78dvh' }}>
+          <div className="bg-black flex-1 overflow-hidden flex items-center justify-center" style={{ minHeight: '320px', maxHeight: '82dvh' }}>
             <VodPlayer
               src={info.playback_url}
               kind={info.video_kind || 'hls'}

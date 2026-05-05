@@ -126,13 +126,13 @@ export default function StreamLive() {
   // ── Live full-screen layout — phone-first ──────────────────────────────
   if (isLive) {
     return (
-      <div className="min-h-screen bg-black flex flex-col" style={{ minHeight: '100dvh' }}>
+      <div className="min-h-screen bg-[#06080f] flex flex-col" style={{ minHeight: '100dvh' }}>
         {/* Top bar */}
-        <header className="px-3 py-2.5 flex items-center gap-2 text-white bg-gradient-to-b from-black/80 to-transparent absolute inset-x-0 top-0 z-20">
+        <header className="px-3 py-2.5 flex items-center gap-2 text-white bg-gradient-to-b from-black/70 to-transparent absolute inset-x-0 top-0 z-20">
           <Link
             to="/cabinet/profile"
             aria-label="Назад"
-            className="p-2 rounded-xl bg-black/40 backdrop-blur active:bg-black/60"
+            className="p-2 rounded-xl bg-black/35 border border-white/10 backdrop-blur active:bg-black/60"
           >
             <ChevronLeft size={20} />
           </Link>
@@ -145,7 +145,7 @@ export default function StreamLive() {
             type="button"
             onClick={() => setShowViewers(true)}
             aria-label={`Зрителей: ${viewers.length}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur text-[12px] font-medium active:bg-black/60"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/35 border border-white/10 backdrop-blur text-[12px] font-medium active:bg-black/60"
           >
             <Users size={14} /> {viewers.length}
           </button>
@@ -153,7 +153,7 @@ export default function StreamLive() {
             type="button"
             onClick={toggleFullscreen}
             aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
-            className="p-2 rounded-xl bg-black/40 backdrop-blur active:bg-black/60"
+            className="p-2 rounded-xl bg-black/35 border border-white/10 backdrop-blur active:bg-black/60"
           >
             {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
@@ -175,7 +175,7 @@ export default function StreamLive() {
         </div>
 
         {/* Title strip + protection notice */}
-        <div className="px-4 pt-3 pb-4 bg-gradient-to-t from-black to-black/70 text-white">
+        <div className="px-4 pt-3 pb-4 bg-gradient-to-t from-black to-black/70 text-white border-t border-white/10">
           <h2 className="text-[15px] font-semibold leading-tight">{stream.title}</h2>
           {stream.description && (
             <p className="text-[12px] text-white/70 mt-1 line-clamp-2">{stream.description}</p>
