@@ -85,15 +85,37 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         if ltype in ('video', 'audio'):
             qs = qs.filter(lesson_type=ltype)
 
-        # Sprint 3.6 — separate the live-stream archives from regular lessons.
-        # `source=stream` → only lessons that were auto-created from recordings;
-        # `source=lesson` → only manually uploaded lessons.
-        source = self.request.query_params.get('source')
+        # Sprint 3.6 / 9.x — keep stream archives out of the regular lesson list.
+        # Default (no source param) — manually uploaded lessons only;
+        # `source=stream` — only stream recordings (CabinetArchive page);
+        # `source=lesson` — explicit form of the default;
+        # `source=all` — escape hatch for whoever needs the union.
+        # NB: applied here so it affects `list`, but `retrieve` bypasses this
+        # via the explicit override below — students opening a stream-archive
+        # lesson by id (deep link from the Archive page) must still get a 200.
+        source = self.request.query_params.get('source', 'lesson')
         if source == 'stream':
             qs = qs.filter(source_streams__isnull=False).distinct()
-        elif source == 'lesson':
+        elif source != 'all':
             qs = qs.filter(source_streams__isnull=True).distinct()
         return qs.order_by('-published_at', '-created_at')
+
+    def get_object(self):
+        # Detail view must be reachable even when the lesson is a stream
+        # recording — the source filter from `get_queryset` would otherwise
+        # turn legitimate deep links into 404s. Re-run access checks on the
+        # un-filtered base queryset.
+        client = self.request.user.client
+        if not client.group_id:
+            from django.http import Http404
+            raise Http404
+        from rest_framework.generics import get_object_or_404
+        qs = Lesson.objects.filter(is_published=True, deleted_at__isnull=True)
+        lesson = get_object_or_404(qs, pk=self.kwargs[self.lookup_field])
+        if not LessonAccessService.can_client_access(lesson, client):
+            from django.http import Http404
+            raise Http404
+        return lesson
 
     def list(self, request, *args, **kwargs):
         qs = self.filter_queryset(self.get_queryset())
