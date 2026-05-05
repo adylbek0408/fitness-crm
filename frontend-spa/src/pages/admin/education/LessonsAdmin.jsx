@@ -1305,40 +1305,40 @@ function PreviewModal({ lesson, onClose }) {
   const isAudio = lesson.lesson_type === 'audio'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden"
+        className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col"
+        style={{ maxHeight: '92dvh' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-rose-100">
-          <div>
-            <h3 className="font-semibold text-lg">{lesson.title}</h3>
-            <p className="text-sm text-gray-500">{isAudio ? 'Аудиоурок' : 'Видеоурок'}</p>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 shrink-0">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-white truncate">{lesson.title}</h3>
+            <p className="text-xs text-white/40">{isAudio ? 'Аудиоурок' : 'Видеоурок'}</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-rose-50">
+          <button onClick={onClose} aria-label="Закрыть" className="p-2 rounded-xl text-white/60 hover:bg-white/10 hover:text-white transition shrink-0">
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-6">
-          {loading && (
-            <div className="flex items-center justify-center h-48">
-              <div className="w-8 h-8 border-2 border-rose-200 border-t-rose-500 rounded-full animate-spin" />
-            </div>
-          )}
+        {loading && (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 border-2 border-white/20 border-t-rose-400 rounded-full animate-spin" />
+          </div>
+        )}
 
-          {!loading && !info?.playback_url && (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-500 gap-3">
-              <AlertCircle size={40} className="text-rose-300" />
-              <p className="text-sm text-center">
-                Файл ещё обрабатывается или хранилище не настроено.
-                <br />
-                <span className="text-xs text-gray-400">Попробуйте снова через минуту.</span>
-              </p>
-            </div>
-          )}
+        {!loading && !info?.playback_url && (
+          <div className="flex flex-col items-center justify-center py-14 text-white/60 gap-3 px-4">
+            <AlertCircle size={36} className="text-amber-400" />
+            <p className="text-sm text-center text-white/80">
+              Файл ещё обрабатывается или хранилище не настроено.
+            </p>
+            <p className="text-xs text-white/40">Попробуйте снова через минуту.</p>
+          </div>
+        )}
 
-          {!loading && info?.playback_url && isAudio && (
+        {!loading && info?.playback_url && isAudio && (
+          <div className="p-6">
             <audio
               controls
               src={info.playback_url}
@@ -1346,19 +1346,19 @@ function PreviewModal({ lesson, onClose }) {
               controlsList="nodownload"
               onContextMenu={e => e.preventDefault()}
             />
-          )}
+          </div>
+        )}
 
-          {!loading && info?.playback_url && !isAudio && (
-            <div className="aspect-video bg-black rounded-2xl overflow-hidden">
-              <VodPlayer
-                src={info.playback_url}
-                kind={info.video_kind || 'hls'}
-                autoPlay
-                poster={lesson.thumbnail_url || ''}
-              />
-            </div>
-          )}
-        </div>
+        {!loading && info?.playback_url && !isAudio && (
+          <div className="bg-black flex-1 overflow-hidden flex items-center justify-center" style={{ minHeight: '240px', maxHeight: '78dvh' }}>
+            <VodPlayer
+              src={info.playback_url}
+              kind={info.video_kind || 'hls'}
+              autoPlay
+              poster={lesson.thumbnail_url || ''}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

@@ -1,24 +1,24 @@
 import { useRef } from 'react'
 import { MediaPlayer, MediaOutlet, MediaCommunitySkin } from '@vidstack/react'
+import Hls from 'hls.js'
 import 'vidstack/styles/defaults.css'
 import 'vidstack/styles/community-skin/video.css'
+import './VodPlayer.css'
 
 /**
  * VOD player built on @vidstack/react (community skin).
  *
  * Replaces the previous custom HlsPlayer for recorded lessons and
- * stream archives. Vidstack handles HLS via hls.js automatically when
- * the src ends in .m3u8, falls back to native playback otherwise.
+ * stream archives. Uses our bundled hls.js (not the CDN copy vidstack
+ * loads by default) so playback works in CSP-locked envs and behind
+ * unreliable networks.
  *
- * Props mirror the old HlsPlayer signature so call sites stay simple:
- *   src           — HLS manifest URL or R2 presigned MP4 URL
- *   kind          — 'hls' (default) | 'r2'
- *   poster        — optional poster URL
- *   autoPlay      — bool
- *   startAt       — resume position in seconds
- *   onTimeUpdate({position, duration, percent}) — fired ~every 0.5s
- *   onReady(player) — fired on canplay; receives MediaPlayerElement
- *   children      — overlay layers (Watermark) rendered on top of the skin
+ * Quality is pinned to the highest available rendition on
+ * MANIFEST_PARSED — admins explicitly asked for "100% sharp" instead
+ * of the default ABR which starts low and ramps slowly. The user can
+ * still drop quality manually via the community skin's quality menu.
+ *
+ * Props mirror the old HlsPlayer signature so call sites stay simple.
  */
 export default function VodPlayer({
   src,
@@ -35,6 +35,32 @@ export default function VodPlayer({
   const seekedRef = useRef(false)
 
   const source = kind === 'r2' ? { src, type: 'video/mp4' } : src
+
+  const handleProviderChange = (event) => {
+    const provider = event?.detail
+    if (provider?.type !== 'hls') return
+    // Use the bundled hls.js (avoids the default CDN fetch).
+    provider.library = Hls
+    // Override hls.js defaults — never cap quality by player size, give
+    // ABR a high initial bandwidth estimate so the first segments are
+    // already in HD instead of 360p, and skip the pre-roll bandwidth test.
+    provider.config = {
+      capLevelToPlayerSize: false,
+      abrEwmaDefaultEstimate: 5_000_000,
+      testBandwidth: false,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+    }
+    provider.onInstance((hls) => {
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (Array.isArray(hls.levels) && hls.levels.length > 1) {
+          // Pin to highest rendition. Quality menu still works — selecting
+          // there sets currentLevel to a different value and overrides this.
+          hls.currentLevel = hls.levels.length - 1
+        }
+      })
+    })
+  }
 
   const handleCanPlay = () => {
     const player = playerRef.current
@@ -66,10 +92,11 @@ export default function VodPlayer({
       autoplay={autoPlay}
       playsinline
       load="visible"
+      onProviderChange={handleProviderChange}
       onTimeUpdate={handleTimeUpdate}
       onCanPlay={handleCanPlay}
       onContextMenu={e => e.preventDefault()}
-      className="block w-full h-full bg-black"
+      className="vod-player block w-full h-full bg-black"
       style={{ '--media-brand': '#e11d48', '--media-focus-ring': '0 0 0 3px rgba(225,29,72,0.4)' }}
     >
       <MediaOutlet />
