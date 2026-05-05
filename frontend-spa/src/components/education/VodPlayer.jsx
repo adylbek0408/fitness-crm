@@ -28,6 +28,7 @@ export default function VodPlayer({
   startAt = 0,
   onTimeUpdate,
   onReady,
+  alwaysShowControls = true,
   children,
 }) {
   const playerRef = useRef(null)
@@ -96,7 +97,7 @@ export default function VodPlayer({
       onTimeUpdate={handleTimeUpdate}
       onCanPlay={handleCanPlay}
       onContextMenu={e => e.preventDefault()}
-      className="vod-player block w-full h-full bg-black"
+      className={`vod-player block w-full h-full bg-black ${alwaysShowControls ? 'vod-player--always-controls' : ''}`}
       style={{ '--media-brand': '#e11d48', '--media-focus-ring': '0 0 0 3px rgba(225,29,72,0.4)' }}
     >
       <MediaOutlet />

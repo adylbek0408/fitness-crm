@@ -26,3 +26,18 @@
   object-position: center !important;
   background: #000;
 }
+
+/*
+ * Always-visible controls mode:
+ * the default vidstack community skin hides controls when user is idle.
+ * For admin/cabinet UX we keep the control bar visible all the time.
+ */
+.vod-player--always-controls[data-user-idle] {
+  cursor: default !important;
+}
+
+.vod-player--always-controls media-community-skin[data-video] div[part='controls'] {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
