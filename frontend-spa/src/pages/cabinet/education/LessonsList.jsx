@@ -14,6 +14,12 @@ function formatDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+const TABS = [
+  { key: 'all',   label: 'Все' },
+  { key: 'video', label: 'Видео' },
+  { key: 'audio', label: 'Аудио' },
+]
+
 export default function LessonsList() {
   const [lessons, setLessons] = useState([])
   const [tab, setTab] = useState('all')
@@ -50,125 +56,121 @@ export default function LessonsList() {
   return (
     <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
       <header className="bg-white border-b border-rose-100 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Link to="/cabinet/profile" className="p-2 rounded-lg hover:bg-rose-50">
-            <ChevronLeft size={22} />
+        <div className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2">
+          <Link to="/cabinet/profile" className="p-2 rounded-xl hover:bg-rose-50 active:bg-rose-100" aria-label="Назад">
+            <ChevronLeft size={20} />
           </Link>
-          <h1 className="text-xl font-semibold flex-1" style={{ color: '#1f1f1f' }}>
-            Мои уроки
-          </h1>
-          <span className="text-xs text-gray-400">{filtered.length}</span>
+          <h1 className="text-[17px] font-semibold flex-1 truncate">Мои уроки</h1>
+          <span className="text-[11px] text-gray-400 px-1.5 py-0.5 rounded bg-rose-50">{filtered.length}</span>
         </div>
-        <div className="max-w-5xl mx-auto px-4 pb-3 flex flex-wrap items-center gap-2">
-          <div className="flex gap-2">
-            {[
-              { key: 'all', label: 'Все' },
-              { key: 'video', label: 'Видео' },
-              { key: 'audio', label: 'Аудио' },
-            ].map(t => (
+
+        <div className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 pb-3 space-y-2">
+          {/* Search — full width on mobile */}
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Найти урок…"
+              className="w-full pl-9 pr-3 py-2 border border-rose-100 rounded-xl text-[13px] bg-rose-50/40 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-200 placeholder-gray-400"
+            />
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-1.5">
+            {TABS.map(t => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
+                className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-full text-[12.5px] font-medium transition ${
                   tab === t.key
                     ? 'bg-rose-500 text-white shadow-sm'
-                    : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                    : 'bg-rose-50 text-rose-600 active:bg-rose-100'
                 }`}
               >
                 {t.label}
               </button>
             ))}
           </div>
-
-          <div className="relative ml-auto">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Найти урок…"
-              className="pl-8 pr-3 py-1.5 border border-rose-100 rounded-full text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-200 w-44 sm:w-56"
-            />
-          </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6">
+      <main className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 py-4">
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-50 text-rose-700 text-sm">
+          <div className="mb-4 p-3 rounded-xl bg-rose-50 text-rose-700 text-[13px]">
             {error}
           </div>
         )}
 
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="rounded-2xl bg-white border border-rose-100 h-56 animate-pulse" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="rounded-2xl bg-white border border-rose-100 h-40 animate-pulse" />
             ))}
           </div>
         )}
 
         {!loading && filtered.length === 0 && (
           <div className="text-center py-16 text-gray-500">
-            <Play size={48} className="mx-auto mb-3 opacity-40" />
-            <p>{lessons.length === 0 ? 'Уроков пока нет.' : 'Ничего не найдено.'}</p>
+            <Play size={42} className="mx-auto mb-3 opacity-40" />
+            <p className="text-[14px]">{lessons.length === 0 ? 'Уроков пока нет.' : 'Ничего не найдено.'}</p>
           </div>
         )}
 
         {!loading && filtered.length > 0 && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {pageItems.map(l => (
                 <Link
                   key={l.id}
                   to={`/cabinet/lessons/${l.id}`}
-                  className="group rounded-2xl bg-white border border-rose-100 overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
+                  className="group rounded-2xl bg-white border border-rose-100 overflow-hidden shadow-sm active:scale-[0.99] hover:shadow-md transition"
                 >
                   <div className={`aspect-video relative flex items-center justify-center ${
                     l.lesson_type === 'audio'
                       ? 'bg-gradient-to-br from-purple-100 to-pink-200'
                       : 'bg-gradient-to-br from-rose-100 to-pink-200'
                   }`}>
-                    {/* Fallback icon always rendered */}
                     {l.lesson_type === 'audio'
-                      ? <Headphones size={48} className="text-purple-400 opacity-70" />
-                      : <Play size={48} className="text-rose-400 opacity-70" />
+                      ? <Headphones size={42} className="text-purple-400 opacity-70" />
+                      : <Play size={42} className="text-rose-400 opacity-70" />
                     }
-                    {/* Thumbnail overlay */}
                     {l.thumbnail_url && l.lesson_type !== 'audio' && (
                       <img
                         src={l.thumbnail_url}
-                        alt={l.title}
+                        alt=""
+                        loading="lazy"
                         className="absolute inset-0 w-full h-full object-cover"
                         onError={e => { e.currentTarget.style.display = 'none' }}
                       />
                     )}
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-xs bg-black/60 text-white backdrop-blur">
+                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-medium bg-black/60 text-white backdrop-blur">
                       {l.lesson_type === 'audio' ? 'Аудио' : 'Видео'}
                     </div>
                     {!!l.duration_sec && (
-                      <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-xs bg-black/60 text-white">
-                        <Clock size={12} className="inline mr-1" />
+                      <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[10.5px] bg-black/60 text-white">
+                        <Clock size={11} className="inline mr-1" />
                         {formatDuration(l.duration_sec)}
                       </div>
                     )}
                     {l.progress?.is_completed && (
                       <div className="absolute top-2 right-2 text-emerald-400">
-                        <CheckCircle2 size={22} fill="white" />
+                        <CheckCircle2 size={20} fill="white" />
                       </div>
                     )}
                   </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 line-clamp-2 mb-1">
+                  <div className="p-3.5">
+                    <h3 className="font-semibold text-[14px] text-gray-900 line-clamp-2 leading-snug">
                       {l.title}
                     </h3>
                     {l.description && (
-                      <p className="text-xs text-gray-500 line-clamp-2 mb-3">
+                      <p className="text-[12px] text-gray-500 line-clamp-2 mt-1">
                         {l.description}
                       </p>
                     )}
                     {(l.progress?.percent || 0) > 0 && (
-                      <div className="h-1.5 bg-rose-50 rounded-full overflow-hidden">
+                      <div className="mt-2.5 h-1 bg-rose-50 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-rose-400 to-pink-500"
                           style={{ width: `${l.progress.percent}%` }}
@@ -185,17 +187,19 @@ export default function LessonsList() {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={safePage === 1}
-                  className="p-2 rounded-lg bg-white border border-rose-100 text-gray-500 hover:bg-rose-50 disabled:opacity-40"
+                  aria-label="Предыдущая страница"
+                  className="p-2.5 rounded-xl bg-white border border-rose-100 text-gray-500 active:bg-rose-50 disabled:opacity-40"
                 >
                   <ChevronLeft size={16} />
                 </button>
-                <span className="text-sm text-gray-600 px-3">
-                  Страница <strong className="text-rose-600">{safePage}</strong> из {totalPages}
+                <span className="text-[13px] text-gray-600 px-3">
+                  <strong className="text-rose-600">{safePage}</strong> / {totalPages}
                 </span>
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={safePage === totalPages}
-                  className="p-2 rounded-lg bg-white border border-rose-100 text-gray-500 hover:bg-rose-50 disabled:opacity-40"
+                  aria-label="Следующая страница"
+                  className="p-2.5 rounded-xl bg-white border border-rose-100 text-gray-500 active:bg-rose-50 disabled:opacity-40"
                 >
                   <ChevronRight size={16} />
                 </button>

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, Radio, Users, Shield, AlertTriangle, Archive, CheckCircle2, Clock } from 'lucide-react'
+import {
+  ChevronLeft, Radio, Users, Shield, AlertTriangle, Archive,
+  CheckCircle2, Clock, X,
+} from 'lucide-react'
 import api from '../../../api/axios'
 import CloudflareStreamPlayer from '../../../components/education/CloudflareStreamPlayer'
 import Watermark from '../../../components/education/Watermark'
@@ -11,7 +14,7 @@ const CF_SUBDOMAIN = 'customer-cyusd1ztro8pgq40.cloudflarestream.com'
 export default function StreamLive() {
   const nav = useNavigate()
   const [searchParams] = useSearchParams()
-  const streamId = searchParams.get('id') // specific stream from student link
+  const streamId = searchParams.get('id')
 
   const [stream, setStream] = useState(null)
   const [streamEnded, setStreamEnded] = useState(false)
@@ -19,10 +22,8 @@ export default function StreamLive() {
   const [joined, setJoined] = useState(null)
   const [warning, setWarning] = useState('')
   const [error, setError] = useState('')
-  // Backend returns {stream:null, reason:'forbidden'|'not_found'} when access
-  // denied or stream missing. Surface that to the user instead of the generic
-  // "Сейчас эфиров нет" — which made them think the link was broken.
-  const [accessDenied, setAccessDenied] = useState('') // '' | 'forbidden' | 'not_found'
+  const [accessDenied, setAccessDenied] = useState('')
+  const [showViewers, setShowViewers] = useState(false)
   const videoRef = useRef(null)
 
   useContentProtection({
@@ -35,24 +36,16 @@ export default function StreamLive() {
     },
   })
 
-  // Build API URL — use specific id from link when provided
-  const activeUrl = streamId
-    ? `/cabinet/education/streams/active/?id=${streamId}`
-    : '/cabinet/education/streams/active/'
-
-  // Refs to access latest state inside intervals without re-creating them
   const streamRef = useRef(null)
   const streamEndedRef = useRef(false)
   const joinedRef = useRef(false)
   streamRef.current = stream
   streamEndedRef.current = streamEnded
 
-  // Auth check on mount
   useEffect(() => {
     if (!localStorage.getItem('cabinet_access_token')) nav('/cabinet')
   }, [nav])
 
-  // Single interval drives everything: active poll + join + heartbeat + viewers
   useEffect(() => {
     const pollUrl = streamId
       ? `/cabinet/education/streams/active/?id=${streamId}`
@@ -61,7 +54,6 @@ export default function StreamLive() {
     const tick = async () => {
       if (streamEndedRef.current) return
 
-      // 1. Active stream check
       try {
         const r = await api.get(pollUrl)
         const s = r.data?.stream || null
@@ -83,7 +75,6 @@ export default function StreamLive() {
 
         if (s.status !== 'live') return
 
-        // 2. Join once
         if (!joinedRef.current) {
           joinedRef.current = true
           api.post(`/cabinet/education/streams/${s.id}/join/`)
@@ -91,10 +82,8 @@ export default function StreamLive() {
             .catch(() => { joinedRef.current = false })
         }
 
-        // 3. Heartbeat (every other tick = ~10s)
         api.post(`/cabinet/education/streams/${s.id}/heartbeat/`).catch(() => {})
 
-        // 4. Viewers
         api.get(`/cabinet/education/streams/${s.id}/viewers/`)
           .then(r2 => setViewers(r2.data || []))
           .catch(() => {})
@@ -103,162 +92,218 @@ export default function StreamLive() {
       }
     }
 
-    tick() // immediate first call
+    tick()
     const id = setInterval(tick, 8000)
     return () => {
       clearInterval(id)
       joinedRef.current = false
     }
-  }, [streamId]) // stable — never restarts while on the page
+  }, [streamId])
 
   const watermarkText = joined?.watermark?.text || ''
+  const isLive = stream && stream.status === 'live'
 
-  return (
-    <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
-      <header className="bg-white border-b border-rose-100 sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Link to="/cabinet/profile" className="p-2 rounded-lg hover:bg-rose-50">
-            <ChevronLeft size={22} />
+  // ── Live full-screen layout — phone-first ──────────────────────────────
+  if (isLive) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col" style={{ minHeight: '100dvh' }}>
+        {/* Top bar */}
+        <header className="px-3 py-2.5 flex items-center gap-2 text-white bg-gradient-to-b from-black/80 to-transparent absolute inset-x-0 top-0 z-20">
+          <Link
+            to="/cabinet/profile"
+            aria-label="Назад"
+            className="p-2 rounded-xl bg-black/40 backdrop-blur active:bg-black/60"
+          >
+            <ChevronLeft size={20} />
           </Link>
-          <Radio size={20} className="text-rose-500" />
-          <h1 className="text-lg font-semibold flex-1">Прямой эфир</h1>
-          <div className="flex items-center gap-1 text-xs text-rose-500">
-            <Shield size={14} /> Защищено
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600 shadow">
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+            <span className="text-[10px] font-bold tracking-[0.18em]">LIVE</span>
           </div>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setShowViewers(true)}
+            aria-label={`Зрителей: ${viewers.length}`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur text-[12px] font-medium active:bg-black/60"
+          >
+            <Users size={14} /> {viewers.length}
+          </button>
+        </header>
+
+        {/* Player area — fills screen, respects video aspect via object-contain */}
+        <div className="flex-1 relative flex items-center justify-center">
+          <div className="w-full h-full">
+            <CloudflareStreamPlayer
+              uid={stream.cf_playback_id}
+              subdomain={CF_SUBDOMAIN}
+            />
+          </div>
+          <Watermark text={watermarkText} />
         </div>
-      </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
+        {/* Title strip + protection notice */}
+        <div className="px-4 pt-3 pb-4 bg-gradient-to-t from-black to-black/70 text-white">
+          <h2 className="text-[15px] font-semibold leading-tight">{stream.title}</h2>
+          {stream.description && (
+            <p className="text-[12px] text-white/70 mt-1 line-clamp-2">{stream.description}</p>
+          )}
+          <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-white/50">
+            <Shield size={11} /> Запись защищена
+          </p>
+        </div>
+
+        {/* Warning toast */}
         {warning && (
-          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-5 py-2 rounded-xl shadow-lg flex items-center gap-2 text-sm">
-            <AlertTriangle size={16} /> {warning}
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-4 py-2 rounded-xl shadow-lg flex items-center gap-2 text-[13px]">
+            <AlertTriangle size={15} /> {warning}
           </div>
         )}
 
-        {error && (
-          <div className="p-4 rounded-xl bg-rose-50 text-rose-700 mb-4">{error}</div>
-        )}
-
-        {streamEnded && (
-          <div className="text-center py-20">
-            <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5">
-              <CheckCircle2 size={36} className="text-emerald-400" />
-            </div>
-            <p className="text-xl font-semibold text-gray-700">Эфир завершён</p>
-            <p className="text-sm mt-2 text-gray-400">Тренер закончил трансляцию. Запись появится в архиве.</p>
-            <Link
-              to="/cabinet/archive"
-              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 rounded-xl text-sm font-medium transition"
-              style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', color: '#be185d', border: '1px solid #f9a8d4' }}
+        {/* Viewers drawer */}
+        {showViewers && (
+          <div
+            className="fixed inset-0 z-40 bg-black/60 flex items-end"
+            onClick={() => setShowViewers(false)}
+          >
+            <div
+              className="bg-white w-full rounded-t-3xl max-h-[70dvh] flex flex-col"
+              onClick={e => e.stopPropagation()}
             >
-              <Archive size={15} /> Смотреть записи эфиров
-            </Link>
-          </div>
-        )}
-
-        {/* Stream scheduled but not yet started */}
-        {stream && stream.status === 'scheduled' && (
-          <div className="text-center py-20">
-            <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5">
-              <Clock size={36} className="text-amber-400" />
-            </div>
-            <p className="text-xl font-semibold text-gray-700">{stream.title}</p>
-            <p className="text-sm mt-2 text-gray-400">Тренер ещё не начал трансляцию.</p>
-            <p className="text-xs mt-1 text-gray-400">Страница обновится автоматически когда эфир начнётся.</p>
-            <div className="flex items-center justify-center gap-2 mt-4 text-amber-500 text-sm">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Ожидание начала…
-            </div>
-          </div>
-        )}
-
-        {/* Access denied / not found — distinct from "no stream right now"
-            so the student understands WHY a link they were given doesn't open. */}
-        {!stream && !streamEnded && !error && accessDenied && (
-          <div className="text-center py-20 text-gray-500">
-            <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5">
-              <AlertTriangle size={36} className="text-amber-400" />
-            </div>
-            <p className="text-xl font-semibold text-gray-700">
-              {accessDenied === 'not_found' ? 'Эфир не найден' : 'Нет доступа к эфиру'}
-            </p>
-            <p className="text-sm mt-2 text-gray-400 max-w-md mx-auto">
-              {accessDenied === 'not_found'
-                ? 'Ссылка устарела или была удалена. Попросите тренера прислать новую.'
-                : 'Этот эфир открыт другой группе. Свяжитесь с тренером для уточнения.'}
-            </p>
-            <Link
-              to="/cabinet/archive"
-              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 rounded-xl text-sm font-medium transition"
-              style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', color: '#be185d', border: '1px solid #f9a8d4' }}
-            >
-              <Archive size={15} /> Смотреть записи эфиров
-            </Link>
-          </div>
-        )}
-
-        {!stream && !streamEnded && !error && !accessDenied && (
-          <div className="text-center py-20 text-gray-500">
-            <div className="w-20 h-20 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-5">
-              <Radio size={36} className="text-rose-300" />
-            </div>
-            <p className="text-xl font-semibold text-gray-700">Сейчас эфиров нет</p>
-            <p className="text-sm mt-2 text-gray-400">Когда тренер начнёт трансляцию — она появится здесь.</p>
-            <Link
-              to="/cabinet/archive"
-              className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 rounded-xl text-sm font-medium transition"
-              style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', color: '#be185d', border: '1px solid #f9a8d4' }}
-            >
-              <Archive size={15} /> Смотреть записи эфиров
-            </Link>
-          </div>
-        )}
-
-        {stream && stream.status === 'live' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <div className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg">
-                <CloudflareStreamPlayer
-                  uid={stream.cf_playback_id}
-                  subdomain={CF_SUBDOMAIN}
-                />
-                <Watermark text={watermarkText} />
-                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-rose-600 text-white text-xs font-bold flex items-center gap-1.5">
-                  <span className="w-2 h-2 bg-white rounded-full animate-pulse" /> LIVE
+              <div className="flex items-center justify-between px-5 py-4 border-b border-rose-100">
+                <div className="flex items-center gap-2">
+                  <Users size={18} className="text-rose-500" />
+                  <h3 className="font-semibold text-[15px]">На эфире ({viewers.length})</h3>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowViewers(false)}
+                  aria-label="Закрыть"
+                  className="p-2 rounded-xl text-gray-400 hover:bg-gray-50"
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <div className="mt-4 bg-white rounded-2xl border border-rose-100 p-5">
-                <h2 className="text-xl font-bold">{stream.title}</h2>
-                {stream.description && (
-                  <p className="text-gray-600 text-sm mt-1">{stream.description}</p>
-                )}
-              </div>
-            </div>
-
-            <aside className="bg-white rounded-2xl border border-rose-100 p-5 h-fit">
-              <div className="flex items-center gap-2 mb-3">
-                <Users size={18} className="text-rose-500" />
-                <h3 className="font-semibold">На эфире ({viewers.length})</h3>
-              </div>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
                 {viewers.length === 0 && (
-                  <p className="text-sm text-gray-400">Пока никого нет.</p>
+                  <p className="text-center text-sm text-gray-400 py-8">Пока никого нет.</p>
                 )}
                 {viewers.map(v => (
-                  <div key={v.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-rose-50">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-300 to-pink-400 flex items-center justify-center text-white font-semibold">
+                  <div key={v.id} className="flex items-center gap-3 px-2 py-2 rounded-xl">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-300 to-pink-400 flex items-center justify-center text-white font-semibold text-[13px]">
                       {(v.client_name || '?').charAt(0)}
                     </div>
-                    <div className="text-sm">
-                      <div className="font-medium">{v.client_name || 'Гость'}</div>
-                      <div className="text-xs text-emerald-600">в эфире</div>
+                    <div className="text-[13.5px] flex-1 min-w-0">
+                      <div className="font-medium truncate">{v.client_name || 'Гость'}</div>
+                      <div className="text-[11px] text-emerald-600">в эфире</div>
                     </div>
                   </div>
                 ))}
               </div>
-            </aside>
+            </div>
           </div>
         )}
+      </div>
+    )
+  }
+
+  // ── Non-live states (ended, scheduled, no-stream, access denied) ──────
+  return (
+    <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
+      <header className="bg-white border-b border-rose-100 sticky top-0 z-20">
+        <div className="max-w-md sm:max-w-2xl mx-auto px-4 py-3.5 flex items-center gap-2">
+          <Link to="/cabinet/profile" className="p-2 rounded-xl hover:bg-rose-50 active:bg-rose-100" aria-label="Назад">
+            <ChevronLeft size={20} />
+          </Link>
+          <Radio size={18} className="text-rose-500" aria-hidden />
+          <h1 className="text-[16px] font-semibold flex-1">Прямой эфир</h1>
+          <span className="flex items-center gap-1 text-[11px] text-rose-500">
+            <Shield size={12} /> Защищено
+          </span>
+        </div>
+      </header>
+
+      <main className="max-w-md sm:max-w-2xl mx-auto px-4 py-6">
+        {warning && (
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-4 py-2 rounded-xl shadow-lg flex items-center gap-2 text-sm">
+            <AlertTriangle size={15} /> {warning}
+          </div>
+        )}
+
+        {error && (
+          <div className="p-4 rounded-2xl bg-rose-50 text-rose-700 mb-4 text-sm">{error}</div>
+        )}
+
+        {streamEnded && (
+          <EmptyState
+            icon={CheckCircle2}
+            iconBg="#d1fae5"
+            iconColor="#10b981"
+            title="Эфир завершён"
+            text="Тренер закончил трансляцию. Запись появится в архиве."
+          />
+        )}
+
+        {stream && stream.status === 'scheduled' && (
+          <EmptyState
+            icon={Clock}
+            iconBg="#fef3c7"
+            iconColor="#f59e0b"
+            title={stream.title}
+            text="Тренер ещё не начал трансляцию. Страница обновится автоматически."
+            footer={
+              <span className="inline-flex items-center gap-1.5 text-[12px] text-amber-600 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Ожидание начала
+              </span>
+            }
+          />
+        )}
+
+        {!stream && !streamEnded && !error && accessDenied && (
+          <EmptyState
+            icon={AlertTriangle}
+            iconBg="#fef3c7"
+            iconColor="#f59e0b"
+            title={accessDenied === 'not_found' ? 'Эфир не найден' : 'Нет доступа к эфиру'}
+            text={accessDenied === 'not_found'
+              ? 'Ссылка устарела или была удалена. Попросите тренера прислать новую.'
+              : 'Этот эфир открыт другой группе. Свяжитесь с тренером для уточнения.'}
+          />
+        )}
+
+        {!stream && !streamEnded && !error && !accessDenied && (
+          <EmptyState
+            icon={Radio}
+            iconBg="#fce7f3"
+            iconColor="#ec4899"
+            title="Сейчас эфиров нет"
+            text="Когда тренер начнёт трансляцию — она появится здесь."
+          />
+        )}
       </main>
+    </div>
+  )
+}
+
+function EmptyState({ icon: Icon, iconBg, iconColor, title, text, footer }) {
+  return (
+    <div className="text-center py-14 px-4">
+      <div
+        className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5"
+        style={{ background: iconBg }}
+      >
+        <Icon size={36} style={{ color: iconColor }} />
+      </div>
+      <p className="text-[18px] font-semibold text-gray-700 px-2">{title}</p>
+      <p className="text-[13px] mt-2 text-gray-500 max-w-xs mx-auto">{text}</p>
+      {footer && <div className="mt-4">{footer}</div>}
+      <Link
+        to="/cabinet/archive"
+        className="inline-flex items-center gap-2 mt-6 px-5 py-2.5 rounded-xl text-[13px] font-medium border border-rose-200 active:bg-rose-50"
+        style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', color: '#be185d' }}
+      >
+        <Archive size={14} /> Смотреть записи эфиров
+      </Link>
     </div>
   )
 }
