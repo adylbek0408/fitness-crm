@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft, Radio, Users, Shield, AlertTriangle, Archive,
-  CheckCircle2, Clock, X,
+  CheckCircle2, Clock, X, Maximize2, Minimize2,
 } from 'lucide-react'
 import api from '../../../api/axios'
 import CloudflareStreamPlayer from '../../../components/education/CloudflareStreamPlayer'
@@ -25,9 +25,12 @@ export default function StreamLive() {
   const [accessDenied, setAccessDenied] = useState('')
   const [showViewers, setShowViewers] = useState(false)
   const videoRef = useRef(null)
+  const playerShellRef = useRef(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   useContentProtection({
     videoRef,
+    rootRef: playerShellRef,
     onSuspect: kind => {
       setWarning(kind === 'devtools'
         ? 'Закройте инструменты разработчика.'
@@ -100,6 +103,23 @@ export default function StreamLive() {
     }
   }, [streamId])
 
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === playerShellRef.current)
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+  }, [])
+
+  const toggleFullscreen = async () => {
+    const node = playerShellRef.current
+    if (!node) return
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else if (node.requestFullscreen) await node.requestFullscreen()
+    } catch {}
+  }
+
   const watermarkText = joined?.watermark?.text || ''
   const isLive = stream && stream.status === 'live'
 
@@ -129,10 +149,22 @@ export default function StreamLive() {
           >
             <Users size={14} /> {viewers.length}
           </button>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
+            className="p-2 rounded-xl bg-black/40 backdrop-blur active:bg-black/60"
+          >
+            {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
         </header>
 
         {/* Player area — fills screen, respects video aspect via object-contain */}
-        <div className="flex-1 relative flex items-center justify-center">
+        <div
+          ref={playerShellRef}
+          data-protected-root
+          className="flex-1 relative flex items-center justify-center"
+        >
           <div className="w-full h-full">
             <CloudflareStreamPlayer
               uid={stream.cf_playback_id}

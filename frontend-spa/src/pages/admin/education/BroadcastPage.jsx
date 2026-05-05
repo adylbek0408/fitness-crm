@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Radio, Mic, MicOff, Video, VideoOff, Square,
   Users, ChevronLeft, CheckCircle2, Upload, AlertCircle,
-  RefreshCcw, FlipHorizontal2,
+  RefreshCcw,
 } from 'lucide-react'
 import api from '../../../api/axios'
 
@@ -18,7 +18,6 @@ export default function BroadcastPage() {
   const [micOn,        setMicOn]        = useState(true)
   const [camOn,        setCamOn]        = useState(true)
   const [facingMode,   setFacingMode]   = useState('user')
-  const [mirrored,     setMirrored]     = useState(false)
   const [quality,      setQuality]      = useState('720p')
   const [elapsed,      setElapsed]      = useState(0)
   const [viewers,      setViewers]      = useState([])
@@ -42,6 +41,7 @@ export default function BroadcastPage() {
   const insecure = typeof window !== 'undefined' && !window.isSecureContext
   const isLive   = status === 'live'
   const isEnded  = status === 'ended'
+  const previewMirrored = facingMode === 'user'
 
   const QUALITIES = {
     '480p':  { width: 854,  height: 480,  frameRate: 30, videoKbps: 1200 },
@@ -296,7 +296,7 @@ export default function BroadcastPage() {
       {/* ── Camera ── */}
       <video ref={videoRef} autoPlay muted playsInline
         className="absolute inset-0 w-full h-full object-cover"
-        style={{ transform: mirrored ? 'scaleX(-1)' : 'none', transition: 'transform .15s' }}
+        style={{ transform: previewMirrored ? 'scaleX(-1)' : 'none', transition: 'transform .15s' }}
       />
 
       {/* ── IDLE / READY LOBBY ── */}
@@ -433,11 +433,9 @@ export default function BroadcastPage() {
 
           {/* ── Bottom control bar ── */}
           <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-3 px-4 pb-10">
-            {/* mirror label */}
-            <button onClick={() => setMirrored(m => !m)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition active:scale-95 ${mirrored ? 'bg-white/25 text-white border border-white/30' : 'bg-black/30 text-white/40 border border-white/10'}`}>
-              <FlipHorizontal2 size={11} /> {mirrored ? 'Зеркало' : 'Без зеркала'}
-            </button>
+            <div className="px-3 py-1 rounded-full text-[11px] font-medium bg-black/30 text-white/75 border border-white/10">
+              {previewMirrored ? 'Передняя камера: зеркальное превью' : 'Основная камера: обычное превью'}
+            </div>
 
             {/* main pill */}
             <div className="bg-black/55 backdrop-blur-2xl border border-white/[0.12] rounded-[2rem] px-5 py-4 flex items-center gap-4 shadow-2xl">
@@ -459,9 +457,6 @@ export default function BroadcastPage() {
                 className="w-12 h-12 rounded-full bg-white/12 border border-white/20 flex items-center justify-center text-white active:scale-90 disabled:opacity-40 hover:bg-white/20 transition">
                 <RefreshCcw size={19} className={flipping ? 'animate-spin' : ''} />
               </button>
-
-              {/* spacer for symmetry */}
-              <div className="w-12 h-12" />
             </div>
           </div>
         </>

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, AlertTriangle, Shield, Play, Headphones } from 'lucide-react'
+import {
+  ChevronLeft, ChevronRight, AlertTriangle, Shield, Play, Headphones, Maximize2, Minimize2,
+} from 'lucide-react'
 import api from '../../../api/axios'
 import VodPlayer from '../../../components/education/VodPlayer'
 import AudioPlayer from '../../../components/education/AudioPlayer'
@@ -16,10 +18,13 @@ export default function LessonView() {
   const [loading, setLoading] = useState(true)
   const [lessons, setLessons] = useState([])
   const videoRef = useRef(null)
+  const playerShellRef = useRef(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const lastSavedPercent = useRef(0)
 
   useContentProtection({
     videoRef,
+    rootRef: playerShellRef,
     onSuspect: kind => {
       const map = {
         shortcut: 'Запись/печать заблокирована.',
@@ -46,6 +51,26 @@ export default function LessonView() {
       else setError(e.response?.data?.detail || 'Ошибка загрузки')
     }).finally(() => setLoading(false))
   }, [id, nav])
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === playerShellRef.current)
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+  }, [])
+
+  const toggleFullscreen = async () => {
+    const node = playerShellRef.current
+    if (!node) return
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else if (node.requestFullscreen) {
+        await node.requestFullscreen()
+      }
+    } catch {}
+  }
 
   const handleProgress = ({ position, percent }) => {
     if (Math.abs(percent - lastSavedPercent.current) < 1) return
@@ -114,7 +139,11 @@ export default function LessonView() {
         {lesson && (
           <>
             {lesson.lesson_type === 'video' ? (
-              <div className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg">
+              <div
+                ref={playerShellRef}
+                data-protected-root
+                className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg"
+              >
                 {lesson.playback_url ? (
                   <VodPlayer
                     src={lesson.playback_url}
@@ -131,12 +160,36 @@ export default function LessonView() {
                     Видео ещё обрабатывается. Попробуйте позже.
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  className="absolute top-3 right-3 z-20 rounded-xl bg-black/55 text-white p-2.5 hover:bg-black/75 transition"
+                  aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
+                  title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
+                >
+                  {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </button>
               </div>
             ) : (
-              <div className="relative">
+              <div
+                ref={playerShellRef}
+                data-protected-root
+                className="relative"
+              >
                 {lesson.playback_url
                   ? <AudioPlayer src={lesson.playback_url} startAt={startAt} onTimeUpdate={handleProgress} />
                   : <div className="p-6 rounded-2xl bg-white border border-rose-100 text-gray-500">Аудио недоступно.</div>}
+                {lesson.playback_url && (
+                  <button
+                    type="button"
+                    onClick={toggleFullscreen}
+                    className="absolute top-3 right-3 z-20 rounded-xl bg-black/55 text-white p-2.5 hover:bg-black/75 transition"
+                    aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
+                    title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
+                  >
+                    {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  </button>
+                )}
               </div>
             )}
 

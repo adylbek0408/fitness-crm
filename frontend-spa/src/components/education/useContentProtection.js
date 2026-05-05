@@ -25,12 +25,26 @@ import { useEffect } from 'react'
  * embedded into the player — see <Watermark/>. If a recording leaks,
  * the watermark identifies the source.
  */
-export default function useContentProtection({ videoRef, onSuspect } = {}) {
+export default function useContentProtection({ videoRef, rootRef, onSuspect } = {}) {
   useEffect(() => {
     const block = e => { e.preventDefault(); return false }
 
+    const getProtectedRoot = () => (
+      rootRef?.current
+      || videoRef?.current?.closest?.('[data-protected-root]')
+      || null
+    )
+
+    const isProtectedFocused = () => {
+      const root = getProtectedRoot()
+      if (!root) return false
+      const active = document.activeElement
+      return !!active && root.contains(active)
+    }
+
     const onKey = e => {
       const k = (e.key || '').toLowerCase()
+      if (!isProtectedFocused()) return
       // Print Screen — clear clipboard so any captured screenshot is wiped.
       // Note: only works if the page is focused; OS-level screenshot tools
       // bypass this entirely.
@@ -59,11 +73,6 @@ export default function useContentProtection({ videoRef, onSuspect } = {}) {
       }
     }
 
-    const onBlur = () => {
-      // Window lost focus — could be a screen-recording app activating
-      try { videoRef?.current?.pause?.() } catch {}
-    }
-
     // DevTools detection — debounced so transient resizes don't false-positive
     let devtoolsOpen = false
     const checkDevtools = () => {
@@ -74,37 +83,53 @@ export default function useContentProtection({ videoRef, onSuspect } = {}) {
       if (open && !devtoolsOpen) {
         devtoolsOpen = true
         onSuspect?.('devtools')
-        try { videoRef?.current?.pause?.() } catch {}
       } else if (!open) {
         devtoolsOpen = false
       }
     }
     const id = setInterval(checkDevtools, 1500)
 
-    // Block large text selections (limits page-source copy)
     const onSelect = e => {
+      const root = getProtectedRoot()
+      if (!root || !root.contains(e.target)) return
       const t = e.target
       if (t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable) return
       e.preventDefault()
     }
 
-    document.addEventListener('contextmenu', block)
+    const onCopy = e => {
+      const root = getProtectedRoot()
+      if (!root || !root.contains(e.target)) return
+      e.preventDefault()
+    }
+
+    const onContextMenu = e => {
+      const root = getProtectedRoot()
+      if (!root || !root.contains(e.target)) return
+      block(e)
+    }
+
+    const onDragStart = e => {
+      const root = getProtectedRoot()
+      if (!root || !root.contains(e.target)) return
+      block(e)
+    }
+
+    document.addEventListener('contextmenu', onContextMenu)
     document.addEventListener('keydown', onKey)
     document.addEventListener('visibilitychange', onVis)
-    window.addEventListener('blur', onBlur)
     document.addEventListener('selectstart', onSelect)
-    document.addEventListener('dragstart', block)
-    document.addEventListener('copy', block)
+    document.addEventListener('dragstart', onDragStart)
+    document.addEventListener('copy', onCopy)
 
     return () => {
-      document.removeEventListener('contextmenu', block)
+      document.removeEventListener('contextmenu', onContextMenu)
       document.removeEventListener('keydown', onKey)
       document.removeEventListener('visibilitychange', onVis)
-      window.removeEventListener('blur', onBlur)
       document.removeEventListener('selectstart', onSelect)
-      document.removeEventListener('dragstart', block)
-      document.removeEventListener('copy', block)
+      document.removeEventListener('dragstart', onDragStart)
+      document.removeEventListener('copy', onCopy)
       clearInterval(id)
     }
-  }, [videoRef, onSuspect])
+  }, [videoRef, rootRef, onSuspect])
 }
