@@ -549,7 +549,7 @@ class CabinetStreamChatView(APIView):
 # ---------------------------------------------------------------------------
 
 class CabinetStreamGuestView(APIView):
-    """GET: check for pending/active invite. POST: accept invite."""
+    """GET: check invite. POST: accept (status=active). DELETE: leave stage."""
     authentication_classes = [CabinetJWTAuthentication]
     permission_classes = [IsCabinetClient]
 
@@ -567,8 +567,6 @@ class CabinetStreamGuestView(APIView):
             'invite': {
                 'id': str(guest.id),
                 'status': guest.status,
-                'jitsi_room': guest.jitsi_room,
-                'jitsi_token': guest.jitsi_token_guest,
             }
         })
 
@@ -584,10 +582,56 @@ class CabinetStreamGuestView(APIView):
         )
         guest.status = 'active'
         guest.save(update_fields=['status'])
-        from django.conf import settings as dj_settings
-        domain = (getattr(dj_settings, 'JITSI_DOMAIN', '') or '').strip() or 'meet.jit.si'
+        return Response({'id': str(guest.id), 'status': 'active'})
+
+    def delete(self, request, pk):
+        client = request.user.client
+        StreamGuest.objects.filter(
+            stream_id=pk,
+            client=client,
+            status__in=['invited', 'active'],
+            deleted_at__isnull=True,
+        ).update(status='ended')
+        return Response(status=204)
+
+
+class CabinetStreamGuestSignalView(APIView):
+    """WebRTC signaling for guest side.
+
+    GET → { offer_sdp, trainer_ice: [...], status }
+    POST { answer_sdp } → store guest's answer
+    POST { ice: {...} } → append ICE to guest_ice
+    """
+    authentication_classes = [CabinetJWTAuthentication]
+    permission_classes = [IsCabinetClient]
+
+    def _guest(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        return get_object_or_404(
+            StreamGuest,
+            stream_id=pk,
+            client=request.user.client,
+            status='active',
+            deleted_at__isnull=True,
+        )
+
+    def get(self, request, pk):
+        guest = self._guest(request, pk)
         return Response({
-            'jitsi_room': guest.jitsi_room,
-            'jitsi_token': guest.jitsi_token_guest,
-            'jitsi_domain': domain,
+            'status':       guest.status,
+            'offer_sdp':    guest.offer_sdp,
+            'trainer_ice':  guest.trainer_ice or [],
         })
+
+    def post(self, request, pk):
+        guest = self._guest(request, pk)
+        data = request.data or {}
+        if 'answer_sdp' in data:
+            guest.answer_sdp = data['answer_sdp'] or ''
+            guest.save(update_fields=['answer_sdp'])
+        if 'ice' in data and data['ice']:
+            ice_list = list(guest.guest_ice or [])
+            ice_list.append(data['ice'])
+            guest.guest_ice = ice_list
+            guest.save(update_fields=['guest_ice'])
+        return Response({'ok': True})

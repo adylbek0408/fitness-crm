@@ -362,10 +362,16 @@ class StreamGuest(UUIDTimestampedModel):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_INVITED,
     )
-    jitsi_room = models.CharField(max_length=200)
+    # Legacy Jitsi fields kept blank for backward compatibility with mig 0008.
+    jitsi_room = models.CharField(max_length=200, blank=True, default='')
     jitsi_token_trainer = models.TextField(blank=True)
     jitsi_token_guest   = models.TextField(blank=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
+    # WebRTC P2P signaling (trainer ⇄ guest) — Cloudflare-only canvas-mix path.
+    offer_sdp   = models.TextField(blank=True, default='')
+    answer_sdp  = models.TextField(blank=True, default='')
+    trainer_ice = models.JSONField(default=list, blank=True)
+    guest_ice   = models.JSONField(default=list, blank=True)
+    deleted_at  = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         app_label = 'education'

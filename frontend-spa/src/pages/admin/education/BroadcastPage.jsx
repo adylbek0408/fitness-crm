@@ -7,6 +7,10 @@ import {
 } from 'lucide-react'
 import api from '../../../api/axios'
 import StreamChat from '../../../components/education/StreamChat'
+import {
+  createMixerCanvas, createAudioMixer,
+  startTrainerP2P,
+} from '../../../components/education/streamGuestRTC'
 
 export default function BroadcastPage() {
   const { id } = useParams()
@@ -29,16 +33,20 @@ export default function BroadcastPage() {
   const [uploadPct,    setUploadPct]    = useState(0)
   const [flipping,     setFlipping]     = useState(false)
 
-  // ── Chat ──────────────────────────────────────────────────────────────────
+  // Chat
   const [showChat, setShowChat] = useState(false)
 
-  // ── Guest invite ──────────────────────────────────────────────────────────
-  const [showInviteModal, setShowInviteModal]   = useState(false)
-  const [activeViewers,   setActiveViewers]     = useState([])
-  const [inviteLoading,   setInviteLoading]     = useState(false)
-  const [activeGuest,     setActiveGuest]       = useState(null)   // { id, client_name, jitsi_room, jitsi_token_trainer }
-  const [showGuestPanel,  setShowGuestPanel]    = useState(false)
-  const guestPollRef = useRef(null)
+  // Guest invite
+  const [showInviteModal, setShowInviteModal]  = useState(false)
+  const [activeViewers,   setActiveViewers]    = useState([])
+  const [inviteLoading,   setInviteLoading]    = useState(false)
+  const [activeGuest,     setActiveGuest]      = useState(null)
+  const [guestStatus,     setGuestStatus]      = useState('') // '' | 'connecting' | 'live' | 'failed'
+  const guestPollRef     = useRef(null)
+  const guestP2PRef      = useRef(null)         // { pc, remoteStream, close }
+  const mixerRef         = useRef(null)         // { canvas, stream, stop }
+  const audioMixerRef    = useRef(null)         // { audioCtx, mixedTrack, close }
+  const guestVideoElRef  = useRef(null)         // hidden <video> for received guest stream
 
   const videoRef          = useRef(null)
   const pcRef             = useRef(null)
@@ -149,6 +157,7 @@ export default function BroadcastPage() {
     if (w) { try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
+    cleanupGuest()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -164,7 +173,8 @@ export default function BroadcastPage() {
     window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h)
   }, [uploadState])
 
-  // ── Guest polling ─────────────────────────────────────────────────────────
+  // ── Guest list polling (admin sees status changes) ────────────────────────
+
   useEffect(() => {
     if (status !== 'live' || !id) {
       clearInterval(guestPollRef.current)
@@ -176,15 +186,27 @@ export default function BroadcastPage() {
         const guests = r.data || []
         const active = guests.find(g => g.status === 'active')
         const invited = guests.find(g => g.status === 'invited')
-        if (active) { setActiveGuest(active); setShowGuestPanel(true) }
-        else if (invited) setActiveGuest(invited)
-        else if (!active && !invited) { setActiveGuest(null); setShowGuestPanel(false) }
+        const cur = activeGuest
+        if (active && (!cur || cur.id !== active.id || cur.status !== 'active')) {
+          setActiveGuest(active)
+          // start P2P only if not already running for this guest
+          if (!guestP2PRef.current || guestP2PRef.current._guestId !== active.id) {
+            startGuestStage(active)
+          }
+        } else if (!active && invited) {
+          setActiveGuest(invited)
+        } else if (!active && !invited && cur) {
+          // guest ended on their side — clean up
+          cleanupGuest()
+          setActiveGuest(null)
+        }
       } catch {}
     }
     poll()
-    guestPollRef.current = setInterval(poll, 5000)
+    guestPollRef.current = setInterval(poll, 4000)
     return () => clearInterval(guestPollRef.current)
-  }, [status, id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, id, activeGuest])
 
   // ── recording ─────────────────────────────────────────────────────────────
 
@@ -289,6 +311,7 @@ export default function BroadcastPage() {
   }
 
   const stopBroadcast = async () => {
+    cleanupGuest()
     const w = whipRef.current
     await stopRec()
     if (w) { whipRef.current = null; try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
@@ -312,8 +335,13 @@ export default function BroadcastPage() {
       const q   = QUALITIES[quality]
       const ns  = await navigator.mediaDevices.getUserMedia(constraints(q, next))
       const nvt = ns.getVideoTracks()[0]
-      const snd = pcRef.current?.getSenders().find(s => s.track?.kind === 'video')
-      if (snd) await snd.replaceTrack(nvt)
+      // If guest is on stage, the WHIP sender currently has the canvas track —
+      // we don't want to overwrite that. Just update the trainer preview source.
+      if (!guestP2PRef.current) {
+        const snd = pcRef.current?.getSenders().find(s => s.track?.kind === 'video')
+        if (snd) await snd.replaceTrack(nvt)
+      }
+      // Stop old camera tracks and rebuild local stream
       localStreamRef.current?.getVideoTracks().forEach(t => t.stop())
       const combined = new MediaStream([...(localStreamRef.current?.getAudioTracks() || []), nvt])
       localStreamRef.current = combined
@@ -344,16 +372,106 @@ export default function BroadcastPage() {
     }
   }
 
+  // Start P2P with guest + composite into CF stream
+  const startGuestStage = async (guest) => {
+    if (!localStreamRef.current || !pcRef.current) return
+    setGuestStatus('connecting')
+
+    // Hidden video element for received guest stream
+    const guestVid = document.createElement('video')
+    guestVid.autoplay = true
+    guestVid.playsInline = true
+    guestVid.muted = true              // mixed via Web Audio anyway
+    guestVid.style.display = 'none'
+    document.body.appendChild(guestVid)
+    guestVideoElRef.current = guestVid
+
+    const baseUrl = `/education/streams/${id}/guests/${guest.id}/webrtc/`
+
+    try {
+      // Reset signaling slate (in case of stale data from previous attempts)
+      await api.post(baseUrl, { reset: true }).catch(() => {})
+
+      const session = await startTrainerP2P({
+        localStream: localStreamRef.current,
+        postOffer: async (sdp) => { await api.post(baseUrl, { offer_sdp: sdp }) },
+        postIce:   async (cand) => { await api.post(baseUrl, { ice: cand }).catch(() => {}) },
+        poll:      async () => (await api.get(baseUrl)).data,
+        onRemoteStream: (rs) => {
+          guestVid.srcObject = rs
+          guestVid.play().catch(() => {})
+          // Wait for trainer's video to be ready, then start mixer
+          startMixer()
+        },
+        onConnected: () => setGuestStatus('live'),
+        onFailed: () => setGuestStatus('failed'),
+      })
+      session._guestId = guest.id
+      guestP2PRef.current = session
+    } catch(e) {
+      console.warn('[trainer] guest P2P failed:', e)
+      setGuestStatus('failed')
+    }
+  }
+
+  const startMixer = () => {
+    if (mixerRef.current || !videoRef.current || !guestVideoElRef.current) return
+    const q = QUALITIES[quality]
+    const mixer = createMixerCanvas({
+      trainerVideo: videoRef.current,
+      guestVideo:   guestVideoElRef.current,
+      width:        Math.min(q.width, 1280),
+      height:       Math.min(q.height, 720),
+      fps:          24,
+    })
+    mixerRef.current = mixer
+
+    // Replace WHIP video sender's track with composite
+    const videoSender = pcRef.current?.getSenders().find(s => s.track?.kind === 'video')
+    const mixedVideo = mixer.stream.getVideoTracks()[0]
+    if (videoSender && mixedVideo) videoSender.replaceTrack(mixedVideo).catch(() => {})
+
+    // Audio: mix trainer mic + guest audio via Web Audio API
+    try {
+      const guestStream = guestVideoElRef.current.srcObject
+      const am = createAudioMixer(localStreamRef.current, guestStream)
+      audioMixerRef.current = am
+      const audioSender = pcRef.current?.getSenders().find(s => s.track?.kind === 'audio')
+      if (audioSender && am?.mixedTrack) audioSender.replaceTrack(am.mixedTrack).catch(() => {})
+    } catch(e) { console.warn('[audio mix] failed:', e) }
+  }
+
+  const cleanupGuest = () => {
+    setGuestStatus('')
+    // Restore original camera + mic tracks on WHIP sender
+    if (pcRef.current && localStreamRef.current) {
+      const camTrack = localStreamRef.current.getVideoTracks()[0]
+      const micTrack = localStreamRef.current.getAudioTracks()[0]
+      const vs = pcRef.current.getSenders().find(s => s.track?.kind === 'video')
+      const as = pcRef.current.getSenders().find(s => s.track?.kind === 'audio')
+      if (vs && camTrack) vs.replaceTrack(camTrack).catch(() => {})
+      if (as && micTrack) as.replaceTrack(micTrack).catch(() => {})
+    }
+    try { mixerRef.current?.stop() } catch {}
+    mixerRef.current = null
+    try { audioMixerRef.current?.close() } catch {}
+    audioMixerRef.current = null
+    try { guestP2PRef.current?.close() } catch {}
+    guestP2PRef.current = null
+    if (guestVideoElRef.current) {
+      try { guestVideoElRef.current.srcObject = null; guestVideoElRef.current.remove() } catch {}
+      guestVideoElRef.current = null
+    }
+  }
+
   const endGuest = async () => {
     if (!activeGuest) return
     try {
       await api.post(`/education/streams/${id}/guests/${activeGuest.id}/end/`)
     } catch {}
+    cleanupGuest()
     setActiveGuest(null)
-    setShowGuestPanel(false)
   }
-
-  const jitsiDomain = stream?.jitsi_domain || (typeof window !== 'undefined' && window.JITSI_DOMAIN) || 'jitsi.crm.aiym-syry.kg'
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -365,16 +483,14 @@ export default function BroadcastPage() {
         background: 'radial-gradient(120% 120% at 50% 0%, #171824 0%, #0b0d16 55%, #06070d 100%)',
       }}
     >
-      {/* ── Main area ── */}
       <div className={`relative flex-1 transition-all duration-300 ${showChat ? 'mr-72' : ''}`}>
 
-        {/* Camera */}
         <video ref={videoRef} autoPlay muted playsInline
           className="absolute inset-0 w-full h-full object-cover"
           style={{ transform: previewMirrored ? 'scaleX(-1)' : 'none', transition: 'transform .15s' }}
         />
 
-        {/* ── IDLE / READY LOBBY ── */}
+        {/* IDLE / READY LOBBY */}
         {!broadcasting && !isEnded && (
           <div className="absolute inset-0 flex flex-col">
             <button onClick={() => nav('/admin/education/streams')}
@@ -425,7 +541,7 @@ export default function BroadcastPage() {
           </div>
         )}
 
-        {/* ── LIVE overlays ── */}
+        {/* LIVE overlays */}
         {isLive && (
           <>
             <div className="absolute top-0 left-0 right-0 h-44 bg-gradient-to-b from-black/80 via-black/30 to-transparent pointer-events-none" />
@@ -437,7 +553,27 @@ export default function BroadcastPage() {
               </div>
             )}
 
-            {/* ── Top bar ── */}
+            {/* PIP guest preview overlay (matches what viewers see) */}
+            {guestStatus === 'live' && guestVideoElRef.current && (
+              <div className="absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80"
+                style={{
+                  bottom: '6.25%', right: '2.5%',
+                  width: '24%', aspectRatio: '16/9',
+                  pointerEvents: 'none',
+                }}>
+                <video
+                  ref={el => {
+                    if (el && guestVideoElRef.current && el.srcObject !== guestVideoElRef.current.srcObject) {
+                      el.srcObject = guestVideoElRef.current.srcObject
+                    }
+                  }}
+                  autoPlay muted playsInline
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+
+            {/* Top bar */}
             <div className="absolute top-0 left-0 right-0 z-20 flex items-center gap-2 px-3 sm:px-4 pt-4">
               <button onClick={() => nav('/admin/education/streams')}
                 className="w-9 h-9 rounded-xl bg-black/45 backdrop-blur-sm border border-white/10 flex items-center justify-center text-white hover:bg-black/60 active:scale-90 transition shrink-0">
@@ -464,6 +600,30 @@ export default function BroadcastPage() {
               </div>
             )}
 
+            {/* Guest status badge */}
+            {activeGuest && (
+              <div className="absolute top-16 left-3 z-20">
+                <div className="flex items-center gap-2 bg-black/55 backdrop-blur border border-white/15 rounded-xl px-3 py-2">
+                  <span className={`w-2 h-2 rounded-full ${
+                    guestStatus === 'live' ? 'bg-emerald-400 animate-pulse'
+                      : guestStatus === 'connecting' ? 'bg-amber-400 animate-pulse'
+                      : guestStatus === 'failed' ? 'bg-rose-500'
+                      : 'bg-white/40'
+                  }`} />
+                  <span className="text-xs text-white font-medium">
+                    {guestStatus === 'live'       ? `${activeGuest.client_name} в эфире`
+                      : guestStatus === 'connecting' ? `Подключаем ${activeGuest.client_name}…`
+                      : guestStatus === 'failed'     ? `Ошибка связи с ${activeGuest.client_name}`
+                      : activeGuest.status === 'invited' ? `Ждём согласия от ${activeGuest.client_name}…`
+                      : activeGuest.client_name}
+                  </span>
+                  <button onClick={endGuest} title="Завершить" className="text-rose-300 hover:text-white ml-1">
+                    <PhoneOff size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Viewers */}
             {viewers.length > 0 && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2">
@@ -476,66 +636,37 @@ export default function BroadcastPage() {
                     <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-400 to-pink-600 flex items-center justify-center text-white text-xs font-black shadow-lg border-2 border-black/30">
                       {(v.client_name || '?')[0].toUpperCase()}
                     </div>
-                    <div className="absolute right-11 top-1/2 -translate-y-1/2 bg-black/80 text-white text-[10px] px-2 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-                      {v.client_name}
-                    </div>
                   </div>
                 ))}
                 {viewers.length > 5 && <span className="text-[10px] text-white/50">+{viewers.length - 5}</span>}
               </div>
             )}
 
-            {/* Guest badge */}
-            {activeGuest && (
-              <div className="absolute top-16 left-3 z-20">
-                <div className="flex items-center gap-2 bg-emerald-800/70 backdrop-blur border border-emerald-500/30 rounded-xl px-3 py-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-xs text-white font-medium">
-                    {activeGuest.status === 'active' ? `${activeGuest.client_name} в эфире` : `Приглашение: ${activeGuest.client_name}`}
-                  </span>
-                  {activeGuest.status === 'active' && (
-                    <button onClick={() => setShowGuestPanel(p => !p)}
-                      className="text-emerald-300 hover:text-white text-xs ml-1">
-                      {showGuestPanel ? 'Скрыть' : 'Открыть'}
-                    </button>
-                  )}
-                  <button onClick={endGuest} title="Завершить звонок" className="text-rose-300 hover:text-white ml-1">
-                    <PhoneOff size={13} />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ── Bottom control bar ── */}
+            {/* Bottom control bar */}
             <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-3 px-4 pb-8">
               <div className="px-3 py-1 rounded-full text-[11px] font-medium bg-black/30 text-white/75 border border-white/10">
                 {previewMirrored ? 'Передняя камера: зеркальное превью' : 'Основная камера: обычное превью'}
               </div>
 
               <div className="bg-black/55 backdrop-blur-2xl border border-white/[0.12] rounded-3xl px-4 py-3 flex items-center gap-3 shadow-2xl">
-
                 <CtrlBtn on={micOn} onClick={toggleMic} onIcon={<Mic size={20}/>} offIcon={<MicOff size={20}/>} label={micOn ? 'Микрофон вкл.' : 'Микрофон выкл.'} />
                 <CtrlBtn on={camOn} onClick={toggleCam} onIcon={<Video size={20}/>} offIcon={<VideoOff size={20}/>} label={camOn ? 'Камера вкл.' : 'Камера выкл.'} />
 
-                {/* STOP */}
                 <button onClick={stopBroadcast} title="Завершить эфир"
                   className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center shadow-[0_0_30px_rgba(244,63,94,0.45)] border border-rose-300/40 active:scale-90 hover:from-rose-400 hover:to-rose-600 transition">
                   <Square size={22} fill="white" className="text-white" />
                 </button>
 
-                {/* Flip */}
                 <button onClick={flipCamera} disabled={flipping} title="Сменить камеру"
                   className="w-12 h-12 rounded-full bg-white/12 border border-white/20 flex items-center justify-center text-white active:scale-90 disabled:opacity-40 hover:bg-white/20 transition">
                   <RefreshCcw size={19} className={flipping ? 'animate-spin' : ''} />
                 </button>
 
-                {/* Chat toggle */}
                 <button onClick={() => setShowChat(p => !p)} title="Чат"
                   className={`w-12 h-12 rounded-full flex items-center justify-center text-white active:scale-90 hover:opacity-80 transition border ${showChat ? 'bg-rose-600 border-rose-400' : 'bg-white/12 border-white/20'}`}>
                   <MessageCircle size={19} />
                 </button>
 
-                {/* Invite guest */}
                 <button onClick={openInviteModal} title="Пригласить ученицу"
                   className="w-12 h-12 rounded-full bg-white/12 border border-white/20 flex items-center justify-center text-white active:scale-90 hover:bg-white/20 transition">
                   <UserPlus size={19} />
@@ -545,7 +676,7 @@ export default function BroadcastPage() {
           </>
         )}
 
-        {/* ── ENDED overlay ── */}
+        {/* ENDED overlay */}
         {isEnded && (
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-5 px-8"
             style={{ background: 'linear-gradient(to bottom,rgba(0,0,0,.9),rgba(0,0,0,.95))' }}>
@@ -604,7 +735,7 @@ export default function BroadcastPage() {
         )}
       </div>
 
-      {/* ── Chat sidebar ── */}
+      {/* Chat sidebar */}
       {showChat && isLive && (
         <div className="w-72 shrink-0 flex flex-col" style={{ height: '100dvh' }}>
           <StreamChat
@@ -615,36 +746,7 @@ export default function BroadcastPage() {
         </div>
       )}
 
-      {/* ── Guest Jitsi panel ── */}
-      {showGuestPanel && activeGuest?.status === 'active' && (
-        <div className="absolute inset-0 z-30 flex">
-          <div className="flex-1" onClick={() => setShowGuestPanel(false)} />
-          <div className="w-full max-w-md h-full bg-black border-l border-white/10 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-              <span className="text-white text-sm font-semibold">Гость: {activeGuest.client_name}</span>
-              <div className="flex items-center gap-2">
-                <button onClick={endGuest}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-semibold active:scale-95">
-                  <PhoneOff size={13} /> Завершить
-                </button>
-                <button onClick={() => setShowGuestPanel(false)} className="text-white/50 hover:text-white p-1">
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1">
-              <iframe
-                title="Jitsi guest call"
-                src={`https://${jitsiDomain}/${activeGuest.jitsi_room}?jwt=${activeGuest.jitsi_token_trainer}`}
-                allow="camera; microphone; fullscreen; display-capture"
-                className="w-full h-full border-0"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Invite modal ── */}
+      {/* Invite modal */}
       {showInviteModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4"
           onClick={() => setShowInviteModal(false)}>
@@ -688,7 +790,6 @@ export default function BroadcastPage() {
   )
 }
 
-// ── small helper component ─────────────────────────────────────────────────
 function CtrlBtn({ on, onClick, onIcon, offIcon, label }) {
   return (
     <button onClick={onClick} title={label}

@@ -537,28 +537,11 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             stream=stream, client=client, status='invited',
         ).update(status='ended')
 
-        jitsi_room = f'stream-{str(stream.id)[:8]}-guest'
-        try:
-            token_trainer = JitsiService.create_room_token(
-                room=jitsi_room,
-                display_name=request.user.get_full_name() or 'Тренер',
-                is_moderator=True,
-                email=request.user.email or '',
-            )
-            token_guest = JitsiService.create_room_token(
-                room=jitsi_room,
-                display_name=f'{client.first_name} {client.last_name}'.strip() or 'Гость',
-                is_moderator=False,
-            )
-        except Exception as e:
-            return Response({'error': f'Jitsi не настроен: {e}'}, status=503)
-
+        # WebRTC P2P (no Jitsi): trainer initiates the offer once guest accepts.
         guest = StreamGuest.objects.create(
             stream=stream,
             client=client,
-            jitsi_room=jitsi_room,
-            jitsi_token_trainer=token_trainer,
-            jitsi_token_guest=token_guest,
+            jitsi_room='',
         )
         return Response(StreamGuestSerializer(guest).data, status=201)
 
@@ -573,6 +556,53 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         guest.status = 'ended'
         guest.save(update_fields=['status'])
         return Response(status=204)
+
+    @action(
+        detail=True,
+        methods=['get', 'post'],
+        url_path=r'guests/(?P<guest_id>[^/.]+)/webrtc',
+    )
+    def guest_webrtc(self, request, pk=None, guest_id=None):
+        """WebRTC signaling for trainer side.
+
+        GET → returns { answer_sdp, guest_ice: [...], status }
+        POST { offer_sdp } → store trainer's offer
+        POST { ice: {...} } → append ICE candidate to trainer_ice
+        POST { reset: true } → clear all signaling fields (re-negotiation)
+        """
+        try:
+            guest = StreamGuest.objects.get(pk=guest_id, stream_id=pk)
+        except StreamGuest.DoesNotExist:
+            return Response({'error': 'guest not found'}, status=404)
+
+        if request.method == 'GET':
+            return Response({
+                'status':     guest.status,
+                'answer_sdp': guest.answer_sdp,
+                'guest_ice':  guest.guest_ice or [],
+            })
+
+        # POST
+        data = request.data or {}
+        if data.get('reset'):
+            guest.offer_sdp = ''
+            guest.answer_sdp = ''
+            guest.trainer_ice = []
+            guest.guest_ice = []
+            guest.save(update_fields=['offer_sdp', 'answer_sdp', 'trainer_ice', 'guest_ice'])
+            return Response({'ok': True})
+        if 'offer_sdp' in data:
+            guest.offer_sdp = data['offer_sdp'] or ''
+            guest.answer_sdp = ''
+            guest.trainer_ice = []
+            guest.guest_ice = []
+            guest.save(update_fields=['offer_sdp', 'answer_sdp', 'trainer_ice', 'guest_ice'])
+        if 'ice' in data and data['ice']:
+            ice_list = list(guest.trainer_ice or [])
+            ice_list.append(data['ice'])
+            guest.trainer_ice = ice_list
+            guest.save(update_fields=['trainer_ice'])
+        return Response({'ok': True})
 
     @action(detail=True, methods=['get'], url_path='active-viewers')
     def active_viewers(self, request, pk=None):

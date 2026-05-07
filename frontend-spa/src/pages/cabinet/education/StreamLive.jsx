@@ -3,13 +3,14 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft, Radio, Users, Shield, AlertTriangle, Archive,
   CheckCircle2, Clock, X, Maximize2, Minimize2, MessageCircle,
-  PhoneCall, PhoneOff,
+  PhoneCall, PhoneOff, Mic, MicOff, Video, VideoOff,
 } from 'lucide-react'
 import api from '../../../api/axios'
 import CloudflareStreamPlayer from '../../../components/education/CloudflareStreamPlayer'
 import Watermark from '../../../components/education/Watermark'
 import useContentProtection from '../../../components/education/useContentProtection'
 import StreamChat from '../../../components/education/StreamChat'
+import { startGuestP2P } from '../../../components/education/streamGuestRTC'
 
 const CF_SUBDOMAIN = 'customer-cyusd1ztro8pgq40.cloudflarestream.com'
 
@@ -29,11 +30,17 @@ export default function StreamLive() {
   const [showChat,     setShowChat]     = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // ── Guest invite ──────────────────────────────────────────────────────────
-  const [guestInvite,     setGuestInvite]     = useState(null)   // { id, status, jitsi_room, jitsi_token }
-  const [showGuestJitsi,  setShowGuestJitsi]  = useState(false)
-  const [guestJitsiData,  setGuestJitsiData]  = useState(null)   // { jitsi_room, jitsi_token, jitsi_domain }
-  const guestPollRef = useRef(null)
+  // Guest stage state
+  const [guestInvite,    setGuestInvite]    = useState(null)
+  const [onStage,        setOnStage]        = useState(false)
+  const [stageState,     setStageState]     = useState('')   // 'requesting-media' | 'connecting' | 'live' | 'failed'
+  const [stageMicOn,     setStageMicOn]     = useState(true)
+  const [stageCamOn,     setStageCamOn]     = useState(true)
+  const stageLocalRef    = useRef(null)
+  const stagePcRef       = useRef(null)
+  const stageRemoteRef   = useRef(null)        // <video> element for trainer's incoming stream
+  const stagePreviewRef  = useRef(null)        // <video> for our own camera preview
+  const guestPollRef     = useRef(null)
 
   const videoRef       = useRef(null)
   const playerShellRef = useRef(null)
@@ -111,40 +118,121 @@ export default function StreamLive() {
       clearInterval(guestPollRef.current)
       return
     }
-
     const poll = async () => {
       try {
         const r = await api.get(`/cabinet/education/streams/${sid}/guest/`)
         const invite = r.data?.invite
-        setGuestInvite(invite || null)
+        // Trainer ended the call from their side
+        if (!invite && onStage) {
+          leaveStage(false)
+        }
+        // Update local state
+        if (invite?.status === 'invited') setGuestInvite(invite)
+        else if (!invite) setGuestInvite(null)
       } catch {}
     }
-
     poll()
     guestPollRef.current = setInterval(poll, 4000)
     return () => clearInterval(guestPollRef.current)
-  }, [stream?.id, stream?.status])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream?.id, stream?.status, onStage])
 
-  // ── Accept guest invite ───────────────────────────────────────────────────
+  // ── Stage actions ─────────────────────────────────────────────────────────
+
   const acceptInvite = async () => {
-    if (!guestInvite || !stream?.id) return
+    if (!stream?.id || !guestInvite) return
+    setStageState('requesting-media')
+    let localStream
     try {
-      const r = await api.post(`/cabinet/education/streams/${stream.id}/guest/`)
-      setGuestJitsiData(r.data)
-      setShowGuestJitsi(true)
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      })
     } catch(e) {
-      setWarning('Не удалось принять приглашение. Попробуйте ещё раз.')
+      setWarning('Нужен доступ к камере и микрофону. Разрешите в настройках браузера.')
+      setTimeout(() => setWarning(''), 5000)
+      setStageState('')
+      return
+    }
+    stageLocalRef.current = localStream
+    if (stagePreviewRef.current) stagePreviewRef.current.srcObject = localStream
+
+    try {
+      // Tell backend we accept
+      await api.post(`/cabinet/education/streams/${stream.id}/guest/`)
+    } catch(e) {
+      setWarning('Не удалось принять приглашение.')
       setTimeout(() => setWarning(''), 4000)
+      setStageState('')
+      try { localStream.getTracks().forEach(t => t.stop()) } catch {}
+      return
+    }
+
+    setOnStage(true)
+    setStageState('connecting')
+    setGuestInvite(null)
+
+    const baseUrl = `/cabinet/education/streams/${stream.id}/guest/webrtc/`
+    try {
+      const session = await startGuestP2P({
+        localStream,
+        poll:        async () => (await api.get(baseUrl)).data,
+        postAnswer:  async (sdp) => { await api.post(baseUrl, { answer_sdp: sdp }) },
+        postIce:     async (cand) => { await api.post(baseUrl, { ice: cand }).catch(() => {}) },
+        onRemoteStream: (rs) => {
+          if (stageRemoteRef.current) {
+            stageRemoteRef.current.srcObject = rs
+            stageRemoteRef.current.play().catch(() => {})
+          }
+        },
+        onConnected: () => setStageState('live'),
+        onFailed: () => setStageState('failed'),
+      })
+      stagePcRef.current = session
+    } catch(e) {
+      console.warn('[guest] P2P failed:', e)
+      setStageState('failed')
     }
   }
 
-  const declineInvite = () => setGuestInvite(null)
-
-  const leaveGuest = () => {
-    setShowGuestJitsi(false)
-    setGuestJitsiData(null)
+  const declineInvite = async () => {
+    if (!stream?.id) return
+    try { await api.delete(`/cabinet/education/streams/${stream.id}/guest/`) } catch {}
     setGuestInvite(null)
   }
+
+  const leaveStage = async (notifyServer = true) => {
+    if (notifyServer && stream?.id) {
+      try { await api.delete(`/cabinet/education/streams/${stream.id}/guest/`) } catch {}
+    }
+    try { stagePcRef.current?.close() } catch {}
+    stagePcRef.current = null
+    try { stageLocalRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+    stageLocalRef.current = null
+    if (stagePreviewRef.current) stagePreviewRef.current.srcObject = null
+    if (stageRemoteRef.current) stageRemoteRef.current.srcObject = null
+    setOnStage(false)
+    setStageState('')
+    setStageMicOn(true)
+    setStageCamOn(true)
+  }
+
+  const toggleStageMic = () => {
+    const t = stageLocalRef.current?.getAudioTracks()?.[0]
+    if (t) { t.enabled = !t.enabled; setStageMicOn(t.enabled) }
+  }
+  const toggleStageCam = () => {
+    const t = stageLocalRef.current?.getVideoTracks()?.[0]
+    if (t) { t.enabled = !t.enabled; setStageCamOn(t.enabled) }
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      try { stagePcRef.current?.close() } catch {}
+      try { stageLocalRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+    }
+  }, [])
 
   // ── Fullscreen ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -164,17 +252,14 @@ export default function StreamLive() {
 
   const watermarkText = joined?.watermark?.text || ''
   const isLive = stream && stream.status === 'live'
-  const jitsiDomain = guestJitsiData?.jitsi_domain || 'jitsi.crm.aiym-syry.kg'
 
   // ── Live full-screen layout ───────────────────────────────────────────────
   if (isLive) {
     return (
       <div className="min-h-screen bg-[#06080f] flex" style={{ minHeight: '100dvh' }}>
 
-        {/* Main stream area */}
-        <div className={`flex-1 flex flex-col relative transition-all duration-300 ${showChat ? 'mr-0' : ''}`}>
+        <div className={`flex-1 flex flex-col relative transition-all duration-300`}>
 
-          {/* Top bar */}
           <header className="px-3 py-2.5 flex items-center gap-2 text-white bg-gradient-to-b from-black/70 to-transparent absolute inset-x-0 top-0 z-20">
             <Link to="/cabinet/profile" aria-label="Назад"
               className="p-2 rounded-xl bg-black/35 border border-white/10 backdrop-blur active:bg-black/60">
@@ -190,7 +275,6 @@ export default function StreamLive() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/35 border border-white/10 backdrop-blur text-[12px] font-medium active:bg-black/60">
               <Users size={14} /> {viewers.length}
             </button>
-            {/* Chat toggle */}
             <button type="button" onClick={() => setShowChat(p => !p)}
               aria-label="Чат"
               className={`p-2 rounded-xl border backdrop-blur active:bg-black/60 ${showChat ? 'bg-rose-600 border-rose-400' : 'bg-black/35 border-white/10'}`}>
@@ -209,6 +293,21 @@ export default function StreamLive() {
               <CloudflareStreamPlayer uid={stream.cf_playback_id} subdomain={CF_SUBDOMAIN} />
             </div>
             <Watermark text={watermarkText} />
+
+            {/* Self preview while on stage */}
+            {onStage && (
+              <div className="absolute bottom-4 right-4 w-28 h-40 sm:w-32 sm:h-44 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-2xl bg-black z-30">
+                <video ref={stagePreviewRef} autoPlay muted playsInline
+                  className="w-full h-full object-cover"
+                  style={{ transform: 'scaleX(-1)' }} />
+                <div className="absolute top-1 left-1 right-1 flex justify-between items-center">
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-600 text-[9px] text-white font-bold">ВЫ</span>
+                  {stageState === 'connecting' && (
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Title strip */}
@@ -222,15 +321,20 @@ export default function StreamLive() {
             </p>
           </div>
 
-          {/* Warning toast */}
+          {/* Hidden audio element for trainer's voice (low-latency P2P) */}
+          {onStage && (
+            <video ref={stageRemoteRef} autoPlay playsInline
+              style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
+          )}
+
           {warning && (
             <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-4 py-2 rounded-xl shadow-lg flex items-center gap-2 text-[13px]">
               <AlertTriangle size={15} /> {warning}
             </div>
           )}
 
-          {/* ── Guest invite banner ── */}
-          {guestInvite && guestInvite.status === 'invited' && !showGuestJitsi && (
+          {/* Guest invite banner */}
+          {guestInvite && guestInvite.status === 'invited' && !onStage && (
             <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 w-[90vw] max-w-sm">
               <div className="bg-[#1a1d2e] border border-emerald-500/40 rounded-2xl p-4 shadow-2xl flex flex-col gap-3">
                 <div className="flex items-center gap-3">
@@ -239,7 +343,7 @@ export default function StreamLive() {
                   </div>
                   <div>
                     <p className="text-white font-semibold text-sm">Тренер приглашает вас на сцену!</p>
-                    <p className="text-white/50 text-xs">Вы сможете говорить с тренером в прямом эфире</p>
+                    <p className="text-white/50 text-xs">Вас увидят все зрители прямого эфира</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -256,17 +360,29 @@ export default function StreamLive() {
             </div>
           )}
 
-          {/* ── Active guest call badge ── */}
-          {showGuestJitsi && (
+          {/* On-stage controls */}
+          {onStage && (
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-              <button onClick={() => setShowGuestJitsi(true)}
-                className="flex items-center gap-2 bg-emerald-700 border border-emerald-500/40 rounded-full px-4 py-2 text-white text-sm font-medium shadow-xl">
-                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
-                Вы на сцене
-                <button onClick={leaveGuest} className="ml-2 text-emerald-200 hover:text-white">
-                  <PhoneOff size={14} />
+              <div className="bg-black/75 backdrop-blur-xl border border-white/15 rounded-full px-3 py-2 flex items-center gap-2 shadow-2xl">
+                <button onClick={toggleStageMic}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${stageMicOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
+                  {stageMicOn ? <Mic size={16} /> : <MicOff size={16} />}
                 </button>
-              </button>
+                <button onClick={toggleStageCam}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${stageCamOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
+                  {stageCamOn ? <Video size={16} /> : <VideoOff size={16} />}
+                </button>
+                <div className="px-2 flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${stageState === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'}`} />
+                  <span className="text-[11px] text-white/85 font-medium">
+                    {stageState === 'live' ? 'На сцене' : stageState === 'connecting' ? 'Соединение…' : 'Подождите'}
+                  </span>
+                </div>
+                <button onClick={() => leaveStage(true)}
+                  className="flex items-center gap-1.5 ml-1 pl-3 pr-3 h-10 rounded-full bg-rose-600 text-white text-xs font-semibold active:scale-95">
+                  <PhoneOff size={13} /> Покинуть
+                </button>
+              </div>
             </div>
           )}
 
@@ -302,7 +418,7 @@ export default function StreamLive() {
           )}
         </div>
 
-        {/* ── Chat panel ── */}
+        {/* Chat panel */}
         {showChat && (
           <div className="w-72 shrink-0 flex flex-col" style={{ height: '100dvh' }}>
             <StreamChat
@@ -310,30 +426,6 @@ export default function StreamLive() {
               isTrainer={false}
               onClose={() => setShowChat(false)}
             />
-          </div>
-        )}
-
-        {/* ── Guest Jitsi fullscreen modal ── */}
-        {showGuestJitsi && guestJitsiData && (
-          <div className="fixed inset-0 z-50 bg-black flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 bg-black border-b border-white/10">
-              <span className="text-white text-sm font-semibold flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Вы на сцене
-              </span>
-              <button onClick={leaveGuest}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-semibold active:scale-95">
-                <PhoneOff size={13} /> Покинуть сцену
-              </button>
-            </div>
-            <div className="flex-1">
-              <iframe
-                title="Guest call"
-                src={`https://${jitsiDomain}/${guestJitsiData.jitsi_room}?jwt=${guestJitsiData.jitsi_token}`}
-                allow="camera; microphone; fullscreen; display-capture"
-                className="w-full h-full border-0"
-              />
-            </div>
           </div>
         )}
       </div>
