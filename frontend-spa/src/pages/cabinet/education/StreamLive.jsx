@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft, Radio, Users, Shield, AlertTriangle, Archive,
-  CheckCircle2, Clock, X, Maximize2, Minimize2, MessageCircle,
+  CheckCircle2, Clock, X, Maximize2, Minimize2,
   PhoneCall, PhoneOff, Mic, MicOff, Video, VideoOff,
 } from 'lucide-react'
 import api from '../../../api/axios'
@@ -304,17 +304,19 @@ export default function StreamLive() {
   const watermarkText = joined?.watermark?.text || ''
   const isLive = stream && stream.status === 'live'
 
-  // ── Live: YouTube-style layout (плеер 16:9 сверху, инфо + чат снизу) ─────
+  // ── Live: YouTube-style layout ───────────────────────────────────────────
   if (isLive) {
     return (
-      <div className="bg-[#06080f] text-white md:flex md:h-[100dvh]" style={{ minHeight: '100dvh' }}>
-        {/* LEFT: video + meta + (mobile chat) */}
-        <div className="md:flex-1 md:flex md:flex-col md:min-h-0">
+      <div className="bg-[#06080f] text-white flex flex-col md:flex-row"
+           style={{ height: '100dvh', overflow: 'hidden' }}>
 
-          {/* Player area — 16:9 на мобиле, заполняет всё свободное место на десктопе */}
+        {/* ── Left/Main column ──────────────────────────────────────────── */}
+        <div className="flex flex-col flex-1 min-h-0">
+
+          {/* Video — 16:9 on mobile, fills height on desktop */}
           <div ref={playerShellRef} data-protected-root
-               className="relative w-full bg-black md:flex-1 md:min-h-0"
-               style={{ aspectRatio: isWide ? undefined : '16 / 9' }}>
+               className="relative w-full bg-black shrink-0 md:flex-1 md:min-h-0"
+               style={isWide ? undefined : { aspectRatio: '16 / 9' }}>
             <CloudflareStreamPlayer
               ref={playerRef}
               uid={stream.cf_playback_id}
@@ -323,14 +325,14 @@ export default function StreamLive() {
             />
             <Watermark text={watermarkText} />
 
-            {/* Top overlay bar (LIVE / viewers / chat / fullscreen) */}
+            {/* Top bar */}
             <div className="absolute top-0 inset-x-0 z-20 flex items-center gap-2 px-3 py-2.5
                             bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
               <Link to="/cabinet/profile" aria-label="Назад"
                 className="pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
                 <ChevronLeft size={18} />
               </Link>
-              <div className="pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600 shadow">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600 shadow">
                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                 <span className="text-[10px] font-bold tracking-[0.18em]">LIVE</span>
               </div>
@@ -340,12 +342,6 @@ export default function StreamLive() {
                 className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 border border-white/10 backdrop-blur text-[12px] font-medium active:bg-black/60">
                 <Users size={14} /> {viewers.length}
               </button>
-              {!isWide && (
-                <button type="button" onClick={() => setShowChat(p => !p)} aria-label="Чат"
-                  className={`pointer-events-auto p-2 rounded-xl border backdrop-blur active:bg-black/60 ${showChat ? 'bg-rose-600 border-rose-400' : 'bg-black/40 border-white/10'}`}>
-                  <MessageCircle size={18} />
-                </button>
-              )}
               <button type="button" onClick={toggleFullscreen}
                 aria-label={isFullscreen ? 'Свернуть' : 'Во весь экран'}
                 className="pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
@@ -356,7 +352,10 @@ export default function StreamLive() {
             {/* PIP self-preview while on stage */}
             {onStage && (
               <div className="absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-2xl bg-black z-30">
-                <video ref={stagePreviewRef} autoPlay muted playsInline
+                <video ref={el => {
+                  stagePreviewRef.current = el
+                  if (el && stageLocalRef.current) el.srcObject = stageLocalRef.current
+                }} autoPlay muted playsInline
                   className="w-full h-full object-cover"
                   style={{ transform: 'scaleX(-1)' }} />
                 <div className="absolute top-1 left-1 right-1 flex justify-between items-center">
@@ -369,40 +368,29 @@ export default function StreamLive() {
             )}
           </div>
 
-          {/* Title strip (всегда видна) */}
-          <div className="px-4 py-3 border-t border-white/10 bg-black/60 shrink-0">
-            <h2 className="text-[15px] font-semibold leading-tight">{stream.title}</h2>
-            {stream.description && (
-              <p className="text-[12px] text-white/65 mt-1 line-clamp-2">{stream.description}</p>
-            )}
-            <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-white/50">
-              <Shield size={11} /> Запись защищена
-            </p>
+          {/* Title strip */}
+          <div className="px-4 py-2.5 border-b border-white/10 bg-black/60 shrink-0 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-[14px] font-semibold leading-tight truncate">{stream.title}</h2>
+            </div>
+            <span className="flex items-center gap-1 text-[10px] text-white/50 shrink-0">
+              <Shield size={10} /> Запись защищена
+            </span>
           </div>
 
-          {/* MOBILE chat — bottom sheet, занимает оставшееся место */}
-          {!isWide && showChat && (
-            <div className="flex-1 min-h-[40dvh] flex flex-col border-t border-white/10">
-              <StreamChat
-                streamId={stream.id}
-                isTrainer={false}
-                onClose={() => setShowChat(false)}
-              />
-            </div>
-          )}
+          {/* Mobile chat — always visible, fills remaining space, hides on desktop */}
+          <div className="flex-1 min-h-0 flex flex-col md:hidden">
+            <StreamChat streamId={stream.id} isTrainer={false} />
+          </div>
         </div>
 
-        {/* DESKTOP chat — sidebar справа, всегда открыт */}
-        {isWide && (
-          <aside className="hidden md:flex w-80 shrink-0 flex-col border-l border-white/10" style={{ height: '100dvh' }}>
-            <StreamChat
-              streamId={stream.id}
-              isTrainer={false}
-            />
-          </aside>
-        )}
+        {/* ── Desktop sidebar chat — hidden on mobile ───────────────────── */}
+        <aside className="hidden md:flex w-80 shrink-0 flex-col border-l border-white/10"
+               style={{ height: '100dvh' }}>
+          <StreamChat streamId={stream.id} isTrainer={false} />
+        </aside>
 
-        {/* Hidden audio element for trainer's voice (low-latency P2P) */}
+        {/* Hidden audio for trainer's voice (P2P) */}
         {onStage && (
           <video ref={stageRemoteRef} autoPlay playsInline
             style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />

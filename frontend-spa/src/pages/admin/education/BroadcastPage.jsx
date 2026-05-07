@@ -429,7 +429,7 @@ export default function BroadcastPage() {
         background: 'radial-gradient(120% 120% at 50% 0%, #171824 0%, #0b0d16 55%, #06070d 100%)',
       }}
     >
-      <div className={`relative flex-1 transition-all duration-300 ${showChat ? 'mr-72' : ''}`}>
+      <div className="relative flex-1 overflow-hidden">
 
         <video ref={videoRef} autoPlay muted playsInline
           className="absolute inset-0 w-full h-full object-cover"
