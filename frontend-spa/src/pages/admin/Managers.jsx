@@ -10,6 +10,15 @@ import DateField from '../../components/DateField'
 import { STATUS_BADGE, STATUS_LABEL } from '../../utils/format'
 
 function ManagerAvatar({ name }) {
+  const isNazima = /Назима/i.test(name) && /Нурмаматова/i.test(name)
+  if (isNazima) {
+    return (
+      <div className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-md shrink-0 relative overflow-hidden"
+           style={{ background: 'linear-gradient(135deg, #fce7f3, #fbcfe8, #f9a8d4)' }}>
+        <span className="text-xl select-none" role="img" aria-label="flower">🌸</span>
+      </div>
+    )
+  }
   const parts = (name || '').split(' ')
   const initials = parts.slice(0, 2).map(p => p[0] || '').join('').toUpperCase()
   const colors = ['from-sky-500 to-blue-600', 'from-indigo-500 to-violet-600', 'from-teal-500 to-emerald-600', 'from-rose-500 to-pink-600']
