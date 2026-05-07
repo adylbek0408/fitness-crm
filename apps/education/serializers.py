@@ -87,11 +87,14 @@ class LessonProgressSerializer(serializers.ModelSerializer):
 
 
 class LiveStreamSerializer(serializers.ModelSerializer):
+    cf_subdomain = serializers.SerializerMethodField()
+
     class Meta:
         model = LiveStream
         fields = [
             'id', 'title', 'description',
             'cf_playback_id', 'cf_webrtc_playback_url', 'recording_uid',
+            'cf_subdomain',
             'groups', 'trainer',
             'scheduled_at', 'started_at', 'ended_at', 'status',
             'archived_lesson',
@@ -99,9 +102,15 @@ class LiveStreamSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = (
             'id', 'cf_playback_id', 'cf_webrtc_playback_url', 'recording_uid',
+            'cf_subdomain',
             'started_at', 'ended_at', 'archived_lesson',
             'created_at', 'updated_at',
         )
+
+    def get_cf_subdomain(self, obj):
+        from django.conf import settings as dj_settings
+        sub = (getattr(dj_settings, 'CF_STREAM_CUSTOMER', '') or '').strip()
+        return f'{sub}.cloudflarestream.com' if sub else ''
 
 
 class LiveStreamAdminSerializer(LiveStreamSerializer):

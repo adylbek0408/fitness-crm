@@ -4,6 +4,7 @@ import {
   Play, Headphones, Clock, ChevronLeft, ChevronRight, CheckCircle2, Search,
 } from 'lucide-react'
 import api from '../../../api/axios'
+import LessonThumb from '../../../components/education/LessonThumb'
 
 const PAGE_SIZE = 12
 
@@ -127,24 +128,12 @@ export default function LessonsList() {
                   to={`/cabinet/lessons/${l.id}`}
                   className="group rounded-2xl bg-white border border-rose-100 overflow-hidden shadow-sm active:scale-[0.99] hover:shadow-md transition"
                 >
-                  <div className={`aspect-video relative flex items-center justify-center ${
-                    l.lesson_type === 'audio'
-                      ? 'bg-gradient-to-br from-purple-100 to-pink-200'
-                      : 'bg-gradient-to-br from-rose-100 to-pink-200'
-                  }`}>
-                    {l.lesson_type === 'audio'
-                      ? <Headphones size={42} className="text-purple-400 opacity-70" />
-                      : <Play size={42} className="text-rose-400 opacity-70" />
-                    }
-                    {l.thumbnail_url && l.lesson_type !== 'audio' && (
-                      <img
-                        src={l.thumbnail_url}
-                        alt=""
-                        loading="lazy"
-                        className="absolute inset-0 w-full h-full object-cover"
-                        onError={e => { e.currentTarget.style.display = 'none' }}
-                      />
-                    )}
+                  <div className="aspect-video relative">
+                    <LessonThumb
+                      src={l.lesson_type === 'audio' ? '' : (l.thumbnail_url || '')}
+                      title={l.title}
+                      lessonType={l.lesson_type}
+                    />
                     <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-medium bg-black/60 text-white backdrop-blur">
                       {l.lesson_type === 'audio' ? 'Аудио' : 'Видео'}
                     </div>

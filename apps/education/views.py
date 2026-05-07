@@ -295,6 +295,11 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         if 'description' in request.data:
             lesson.description = request.data.get('description') or ''
             update.append('description')
+        if 'thumbnail_url' in request.data:
+            # Frontend confirms successful R2 PUT — only now persist the URL.
+            new_url = (request.data.get('thumbnail_url') or '').strip()
+            lesson.thumbnail_url = new_url
+            update.append('thumbnail_url')
         if update:
             update.append('updated_at')
             lesson.save(update_fields=update)
@@ -351,10 +356,10 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
             except Exception:
                 thumbnail_url = ''
 
-        # Pre-save the URL so the lesson card updates after the browser PUT.
-        lesson.thumbnail_url = thumbnail_url
-        lesson.save(update_fields=['thumbnail_url', 'updated_at'])
-
+        # IMPORTANT: do NOT save thumbnail_url here. If the browser's PUT to R2
+        # fails (CORS, network), we'd be left with a URL pointing at nothing
+        # and a broken-image placeholder forever. Frontend confirms success via
+        # PATCH /metadata/ { thumbnail_url } only after the PUT returns 200.
         return Response({'upload_url': upload_url, 'thumbnail_url': thumbnail_url})
 
     @action(detail=False, methods=['get'])
@@ -493,9 +498,12 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                 stream=stream, deleted_at__isnull=True,
             ).order_by('created_at')
             if after:
+                from datetime import datetime
                 try:
-                    qs = qs.filter(created_at__gt=after)
-                except Exception:
+                    # Frontend sends ISO-8601 (e.g. "2026-05-08T19:30:00.123Z").
+                    parsed = datetime.fromisoformat(after.replace('Z', '+00:00'))
+                    qs = qs.filter(created_at__gt=parsed)
+                except (ValueError, TypeError):
                     pass
             return Response(StreamChatMessageSerializer(qs, many=True).data)
 

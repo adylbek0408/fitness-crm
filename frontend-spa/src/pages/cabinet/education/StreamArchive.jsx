@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { ChevronLeft, Radio, Play, Clock, CheckCircle2 } from 'lucide-react'
 import api from '../../../api/axios'
+import LessonThumb from '../../../components/education/LessonThumb'
 
 function formatDuration(sec) {
   if (!sec) return ''
@@ -75,17 +76,12 @@ export default function StreamArchive() {
                 to={`/cabinet/lessons/${l.id}`}
                 className="group rounded-2xl bg-white border border-rose-100 overflow-hidden shadow-sm active:scale-[0.99] hover:shadow-md transition"
               >
-                <div className="aspect-video bg-gradient-to-br from-rose-100 to-pink-200 relative flex items-center justify-center">
-                  <Play size={42} className="text-rose-400 opacity-70" aria-hidden />
-                  {l.thumbnail_url && (
-                    <img
-                      src={l.thumbnail_url}
-                      alt=""
-                      loading="lazy"
-                      className="absolute inset-0 w-full h-full object-cover"
-                      onError={e => { e.currentTarget.style.display = 'none' }}
-                    />
-                  )}
+                <div className="aspect-video relative">
+                  <LessonThumb
+                    src={l.thumbnail_url || ''}
+                    title={l.title}
+                    lessonType="video"
+                  />
                   <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-medium bg-rose-500 text-white shadow flex items-center gap-1">
                     <Radio size={10} /> Запись эфира
                   </div>

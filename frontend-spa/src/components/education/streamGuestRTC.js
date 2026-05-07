@@ -242,7 +242,7 @@ export async function startTrainerP2P({
       }
       if (appliedAnswer && Array.isArray(data.guest_ice)) {
         for (const c of data.guest_ice) {
-          const key = (c?.candidate || '') + '|' + (c?.sdpMid || '') + '|' + (c?.sdpMLineIndex || '')
+          const key = JSON.stringify(c)
           if (appliedIceSet.has(key)) continue
           appliedIceSet.add(key)
           try { await pc.addIceCandidate(c) } catch {}
@@ -307,7 +307,7 @@ export async function startGuestP2P({
       }
       if (appliedOffer && answered && Array.isArray(data.trainer_ice)) {
         for (const c of data.trainer_ice) {
-          const key = (c?.candidate || '') + '|' + (c?.sdpMid || '') + '|' + (c?.sdpMLineIndex || '')
+          const key = JSON.stringify(c)
           if (appliedIceSet.has(key)) continue
           appliedIceSet.add(key)
           try { await pc.addIceCandidate(c) } catch {}

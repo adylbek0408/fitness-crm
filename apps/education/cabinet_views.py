@@ -520,9 +520,11 @@ class CabinetStreamChatView(APIView):
             stream=stream, deleted_at__isnull=True,
         ).order_by('created_at')
         if after:
+            from datetime import datetime
             try:
-                qs = qs.filter(created_at__gt=after)
-            except Exception:
+                parsed = datetime.fromisoformat(after.replace('Z', '+00:00'))
+                qs = qs.filter(created_at__gt=parsed)
+            except (ValueError, TypeError):
                 pass
         return Response(StreamChatMessageSerializer(qs, many=True).data)
 

@@ -12,7 +12,7 @@ import useContentProtection from '../../../components/education/useContentProtec
 import StreamChat from '../../../components/education/StreamChat'
 import { startGuestP2P } from '../../../components/education/streamGuestRTC'
 
-const CF_SUBDOMAIN = 'customer-cyusd1ztro8pgq40.cloudflarestream.com'
+const CF_SUBDOMAIN_FALLBACK = 'customer-cyusd1ztro8pgq40.cloudflarestream.com'
 
 export default function StreamLive() {
   const nav = useNavigate()
@@ -70,8 +70,11 @@ export default function StreamLive() {
       ? `/cabinet/education/streams/active/?id=${streamId}`
       : '/cabinet/education/streams/active/'
 
+    let inflight = false
     const tick = async () => {
       if (streamEndedRef.current) return
+      if (inflight) return       // skip if previous tick still running (slow network)
+      inflight = true
       try {
         const r = await api.get(pollUrl)
         const s = r.data?.stream || null
@@ -104,6 +107,7 @@ export default function StreamLive() {
           .then(r2 => setViewers(r2.data || []))
           .catch(() => {})
       } catch {}
+      finally { inflight = false }
     }
 
     tick()
@@ -173,6 +177,21 @@ export default function StreamLive() {
     setGuestInvite(null)
 
     const baseUrl = `/cabinet/education/streams/${stream.id}/guest/webrtc/`
+    let connected = false
+    let timedOut = false
+
+    // 30s timeout: if trainer never sends offer / connection never establishes,
+    // cleanly tear down and tell user instead of spinning forever.
+    const timeoutId = setTimeout(() => {
+      if (!connected) {
+        timedOut = true
+        setStageState('failed')
+        setWarning('Не удалось установить связь с тренером. Попробуйте ещё раз.')
+        setTimeout(() => setWarning(''), 5000)
+        leaveStage(true)
+      }
+    }, 30000)
+
     try {
       const session = await startGuestP2P({
         localStream,
@@ -185,13 +204,25 @@ export default function StreamLive() {
             stageRemoteRef.current.play().catch(() => {})
           }
         },
-        onConnected: () => setStageState('live'),
-        onFailed: () => setStageState('failed'),
+        onConnected: () => {
+          connected = true
+          clearTimeout(timeoutId)
+          if (!timedOut) setStageState('live')
+        },
+        onFailed: () => {
+          clearTimeout(timeoutId)
+          setStageState('failed')
+        },
       })
       stagePcRef.current = session
     } catch(e) {
+      clearTimeout(timeoutId)
       console.warn('[guest] P2P failed:', e)
       setStageState('failed')
+      // Cleanup on hard failure
+      try { localStream.getTracks().forEach(t => t.stop()) } catch {}
+      stageLocalRef.current = null
+      setOnStage(false)
     }
   }
 
@@ -290,7 +321,7 @@ export default function StreamLive() {
           {/* Player */}
           <div ref={playerShellRef} data-protected-root className="flex-1 relative flex items-center justify-center">
             <div className="w-full h-full">
-              <CloudflareStreamPlayer uid={stream.cf_playback_id} subdomain={CF_SUBDOMAIN} />
+              <CloudflareStreamPlayer uid={stream.cf_playback_id} subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK} />
             </div>
             <Watermark text={watermarkText} />
 

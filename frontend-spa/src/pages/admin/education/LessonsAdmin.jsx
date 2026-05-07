@@ -11,6 +11,7 @@ import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import VodPlayer from '../../../components/education/VodPlayer'
+import LessonThumb from '../../../components/education/LessonThumb'
 
 const PAGE_SIZE = 12
 
@@ -157,10 +158,9 @@ export default function LessonsAdmin() {
     })
   }
 
-  // Uploads a thumbnail blob to R2 via presigned PUT URL.
-  // Returns true on success, false on failure. The actual thumbnail_url is
-  // re-fetched by the lessons list reload (R2 presigned GET URL is generated
-  // server-side from the key on every list response).
+  // Uploads a thumbnail blob to R2 via presigned PUT URL, then confirms
+  // success to the backend via PATCH /metadata/.  Two-step pattern so a
+  // failed PUT doesn't leave the lesson pointing at a 404 image.
   const uploadThumbnailForLesson = async (lessonId, blob) => {
     if (!blob) {
       console.warn('uploadThumbnailForLesson: empty blob')
@@ -176,6 +176,15 @@ export default function LessonsAdmin() {
       if (!r.ok) {
         const text = await r.text().catch(() => '')
         console.warn('Thumbnail PUT failed', r.status, text)
+        return false
+      }
+      // PUT succeeded → tell backend to persist the URL on the lesson.
+      try {
+        await api.patch(`/education/lessons/${lessonId}/metadata/`, {
+          thumbnail_url: data.thumbnail_url,
+        })
+      } catch (e) {
+        console.warn('Thumbnail metadata patch failed:', e)
         return false
       }
       return true
@@ -724,27 +733,12 @@ function LessonCard({
         </div>
       )}
       {/* Thumbnail / type indicator */}
-      <div className={`aspect-video relative flex items-center justify-center ${
-        isAudio
-          ? 'bg-gradient-to-br from-purple-100 to-pink-200'
-          : 'bg-gradient-to-br from-rose-100 to-pink-200'
-      }`}>
-        {/* Background icon — always visible as fallback */}
-        {isAudio
-          ? <Headphones size={48} className="text-purple-400 opacity-70" />
-          : <Play size={48} className="text-rose-400 opacity-70" />
-        }
-
-        {/* Thumbnail on top — from CF Stream (auto-generated) or manually set */}
-        {!isAudio && l.thumbnail_url && (
-          <img
-            key={l.thumbnail_url}
-            src={l.thumbnail_url}
-            alt={l.title}
-            className="absolute inset-0 w-full h-full object-cover"
-            onError={e => { e.currentTarget.style.display = 'none' }}
-          />
-        )}
+      <div className="aspect-video relative">
+        <LessonThumb
+          src={isAudio ? '' : (l.thumbnail_url || '')}
+          title={l.title}
+          lessonType={l.lesson_type}
+        />
 
         {/* Top-left: type badge */}
         <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-black/60 text-white backdrop-blur uppercase tracking-wider">
