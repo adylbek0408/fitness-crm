@@ -305,3 +305,71 @@ class Consultation(UUIDTimestampedModel):
         if self.used_count >= self.max_uses:
             return False
         return True
+
+
+# ---------------------------------------------------------------------------
+# Live-stream chat
+# ---------------------------------------------------------------------------
+
+class StreamChatMessage(UUIDTimestampedModel):
+    """Single chat message posted during a live stream."""
+
+    stream = models.ForeignKey(
+        LiveStream, on_delete=models.CASCADE, related_name='chat_messages',
+    )
+    client = models.ForeignKey(
+        'clients.Client', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='stream_chat_messages',
+    )
+    sender_name = models.CharField(max_length=100)
+    text = models.TextField(max_length=500)
+    is_trainer = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        app_label = 'education'
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['stream', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.sender_name}: {self.text[:40]}'
+
+
+# ---------------------------------------------------------------------------
+# Guest invitation (student joins trainer's stream via Jitsi)
+# ---------------------------------------------------------------------------
+
+class StreamGuest(UUIDTimestampedModel):
+    """Trainer invites a student to join on stage during a live stream."""
+
+    STATUS_INVITED = 'invited'
+    STATUS_ACTIVE  = 'active'
+    STATUS_ENDED   = 'ended'
+    STATUS_CHOICES = [
+        ('invited', 'Приглашён'),
+        ('active',  'В эфире'),
+        ('ended',   'Завершил'),
+    ]
+
+    stream = models.ForeignKey(
+        LiveStream, on_delete=models.CASCADE, related_name='guests',
+    )
+    client = models.ForeignKey(
+        'clients.Client', on_delete=models.CASCADE, related_name='stream_guests',
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_INVITED,
+    )
+    jitsi_room = models.CharField(max_length=200)
+    jitsi_token_trainer = models.TextField(blank=True)
+    jitsi_token_guest   = models.TextField(blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        app_label = 'education'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.client} guest @ {self.stream_id}'

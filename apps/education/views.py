@@ -26,14 +26,19 @@ from rest_framework.views import APIView
 
 from apps.clients.models import Client
 
-from .models import Consultation, Lesson, LessonProgress, LiveStream
+from .models import (
+    Consultation, Lesson, LessonProgress, LiveStream,
+    StreamChatMessage, StreamGuest,
+)
 from .permissions import IsTeacherOrAdmin
 from .serializers import (
     ConsultationSerializer,
     LessonAdminSerializer,
     LiveStreamAdminSerializer,
+    StreamChatMessageSerializer,
+    StreamGuestSerializer,
 )
-from .services import CloudflareStreamService, R2StorageService
+from .services import CloudflareStreamService, JitsiService, R2StorageService
 
 
 logger = logging.getLogger(__name__)
@@ -475,6 +480,117 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         stream = self.get_object()
         viewers = stream.viewers.filter(is_active=True).select_related('client')
         return Response(StreamViewerSerializer(viewers, many=True).data)
+
+    # ── Chat ──────────────────────────────────────────────────────────────────
+
+    @action(detail=True, methods=['get', 'post'], url_path='chat')
+    def chat(self, request, pk=None):
+        """GET: list messages (poll). POST: trainer sends a message."""
+        stream = self.get_object()
+        if request.method == 'GET':
+            after = request.query_params.get('after')
+            qs = StreamChatMessage.objects.filter(
+                stream=stream, deleted_at__isnull=True,
+            ).order_by('created_at')
+            if after:
+                try:
+                    qs = qs.filter(created_at__gt=after)
+                except Exception:
+                    pass
+            return Response(StreamChatMessageSerializer(qs, many=True).data)
+
+        text = (request.data.get('text') or '').strip()
+        if not text:
+            return Response({'error': 'text required'}, status=400)
+        msg = StreamChatMessage.objects.create(
+            stream=stream,
+            sender_name='Тренер',
+            text=text[:500],
+            is_trainer=True,
+        )
+        return Response(StreamChatMessageSerializer(msg).data, status=201)
+
+    # ── Guests ────────────────────────────────────────────────────────────────
+
+    @action(detail=True, methods=['get', 'post'], url_path='guests')
+    def guests(self, request, pk=None):
+        """GET: list active/invited guests. POST: invite a client."""
+        stream = self.get_object()
+        if request.method == 'GET':
+            qs = StreamGuest.objects.filter(
+                stream=stream,
+                status__in=['invited', 'active'],
+                deleted_at__isnull=True,
+            ).select_related('client')
+            return Response(StreamGuestSerializer(qs, many=True).data)
+
+        client_id = request.data.get('client_id')
+        if not client_id:
+            return Response({'error': 'client_id required'}, status=400)
+        try:
+            client = Client.objects.get(pk=client_id)
+        except Client.DoesNotExist:
+            return Response({'error': 'client not found'}, status=404)
+
+        # Cancel any existing pending invites for this client in this stream
+        StreamGuest.objects.filter(
+            stream=stream, client=client, status='invited',
+        ).update(status='ended')
+
+        jitsi_room = f'stream-{str(stream.id)[:8]}-guest'
+        try:
+            token_trainer = JitsiService.create_room_token(
+                room=jitsi_room,
+                display_name=request.user.get_full_name() or 'Тренер',
+                is_moderator=True,
+                email=request.user.email or '',
+            )
+            token_guest = JitsiService.create_room_token(
+                room=jitsi_room,
+                display_name=f'{client.first_name} {client.last_name}'.strip() or 'Гость',
+                is_moderator=False,
+            )
+        except Exception as e:
+            return Response({'error': f'Jitsi не настроен: {e}'}, status=503)
+
+        guest = StreamGuest.objects.create(
+            stream=stream,
+            client=client,
+            jitsi_room=jitsi_room,
+            jitsi_token_trainer=token_trainer,
+            jitsi_token_guest=token_guest,
+        )
+        return Response(StreamGuestSerializer(guest).data, status=201)
+
+    @action(detail=True, methods=['post'], url_path=r'guests/(?P<guest_id>[^/.]+)/end')
+    def guest_end(self, request, pk=None, guest_id=None):
+        """End / kick a guest session."""
+        stream = self.get_object()
+        try:
+            guest = StreamGuest.objects.get(pk=guest_id, stream=stream)
+        except StreamGuest.DoesNotExist:
+            return Response(status=404)
+        guest.status = 'ended'
+        guest.save(update_fields=['status'])
+        return Response(status=204)
+
+    @action(detail=True, methods=['get'], url_path='active-viewers')
+    def active_viewers(self, request, pk=None):
+        """List currently-watching clients (for invite picker)."""
+        stream = self.get_object()
+        cutoff = timezone.now() - timedelta(seconds=30)
+        viewers = stream.viewers.filter(
+            is_active=True,
+            last_heartbeat_at__gte=cutoff,
+        ).select_related('client')
+        data = [
+            {
+                'id': str(v.client_id),
+                'name': f'{v.client.first_name} {v.client.last_name}'.strip(),
+            }
+            for v in viewers
+        ]
+        return Response(data)
 
     @action(detail=True, methods=['get'], url_path='cf-status')
     def cf_status(self, request, pk=None):

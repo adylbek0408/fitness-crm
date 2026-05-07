@@ -4,7 +4,10 @@ this file holds basic shapes so views can import without errors.
 """
 from rest_framework import serializers
 
-from .models import Lesson, LessonProgress, LiveStream, StreamViewer, Consultation
+from .models import (
+    Consultation, Lesson, LessonProgress, LiveStream,
+    StreamChatMessage, StreamGuest, StreamViewer,
+)
 
 
 class LessonSerializer(serializers.ModelSerializer):
@@ -165,3 +168,33 @@ class ConsultationSerializer(serializers.ModelSerializer):
         if not obj.trainer:
             return None
         return f"{obj.trainer.first_name} {obj.trainer.last_name}".strip()
+
+
+# ---------------------------------------------------------------------------
+# Chat
+# ---------------------------------------------------------------------------
+
+class StreamChatMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StreamChatMessage
+        fields = ['id', 'sender_name', 'text', 'is_trainer', 'created_at']
+        read_only_fields = ['id', 'sender_name', 'is_trainer', 'created_at']
+
+
+# ---------------------------------------------------------------------------
+# Guest invitation
+# ---------------------------------------------------------------------------
+
+class StreamGuestSerializer(serializers.ModelSerializer):
+    client_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StreamGuest
+        fields = [
+            'id', 'client', 'client_name', 'status',
+            'jitsi_room', 'jitsi_token_trainer', 'created_at',
+        ]
+
+    def get_client_name(self, obj):
+        c = obj.client
+        return f'{c.first_name} {c.last_name}'.strip() or str(c.id)

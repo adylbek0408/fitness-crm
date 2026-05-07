@@ -22,12 +22,16 @@ from rest_framework.views import APIView
 
 from apps.clients.cabinet_auth import CabinetJWTAuthentication
 
-from .models import Consultation, Lesson, LessonProgress, LiveStream, StreamViewer
+from .models import (
+    Consultation, Lesson, LessonProgress, LiveStream,
+    StreamChatMessage, StreamGuest, StreamViewer,
+)
 from .permissions import IsCabinetClient
 from .serializers import (
     LessonProgressSerializer,
     LessonSerializer,
     LiveStreamSerializer,
+    StreamChatMessageSerializer,
     StreamViewerSerializer,
 )
 from .services import (
@@ -493,4 +497,97 @@ class PublicConsultationView(APIView):
             'jitsi_token': token,
             'jitsi_domain': domain,
             'display_name': display_name,
+        })
+
+
+# ---------------------------------------------------------------------------
+# Stream Chat (cabinet — students)
+# ---------------------------------------------------------------------------
+
+class CabinetStreamChatView(APIView):
+    """GET: poll new messages. POST: student sends a message."""
+    authentication_classes = [CabinetJWTAuthentication]
+    permission_classes = [IsCabinetClient]
+
+    def _stream(self, pk):
+        from django.shortcuts import get_object_or_404
+        return get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
+
+    def get(self, request, pk):
+        stream = self._stream(pk)
+        after = request.query_params.get('after')
+        qs = StreamChatMessage.objects.filter(
+            stream=stream, deleted_at__isnull=True,
+        ).order_by('created_at')
+        if after:
+            try:
+                qs = qs.filter(created_at__gt=after)
+            except Exception:
+                pass
+        return Response(StreamChatMessageSerializer(qs, many=True).data)
+
+    def post(self, request, pk):
+        stream = self._stream(pk)
+        client = request.user.client
+        text = (request.data.get('text') or '').strip()
+        if not text:
+            return Response({'error': 'text required'}, status=400)
+        if stream.status not in ('live', 'scheduled'):
+            return Response({'error': 'stream not active'}, status=400)
+        name = f'{client.first_name} {client.last_name}'.strip() or 'Ученик'
+        msg = StreamChatMessage.objects.create(
+            stream=stream,
+            client=client,
+            sender_name=name,
+            text=text[:500],
+        )
+        return Response(StreamChatMessageSerializer(msg).data, status=201)
+
+
+# ---------------------------------------------------------------------------
+# Stream Guest — student side (check invite / accept)
+# ---------------------------------------------------------------------------
+
+class CabinetStreamGuestView(APIView):
+    """GET: check for pending/active invite. POST: accept invite."""
+    authentication_classes = [CabinetJWTAuthentication]
+    permission_classes = [IsCabinetClient]
+
+    def get(self, request, pk):
+        client = request.user.client
+        guest = StreamGuest.objects.filter(
+            stream_id=pk,
+            client=client,
+            status__in=['invited', 'active'],
+            deleted_at__isnull=True,
+        ).first()
+        if not guest:
+            return Response({'invite': None})
+        return Response({
+            'invite': {
+                'id': str(guest.id),
+                'status': guest.status,
+                'jitsi_room': guest.jitsi_room,
+                'jitsi_token': guest.jitsi_token_guest,
+            }
+        })
+
+    def post(self, request, pk):
+        client = request.user.client
+        from django.shortcuts import get_object_or_404
+        guest = get_object_or_404(
+            StreamGuest,
+            stream_id=pk,
+            client=client,
+            status='invited',
+            deleted_at__isnull=True,
+        )
+        guest.status = 'active'
+        guest.save(update_fields=['status'])
+        from django.conf import settings as dj_settings
+        domain = (getattr(dj_settings, 'JITSI_DOMAIN', '') or '').strip() or 'meet.jit.si'
+        return Response({
+            'jitsi_room': guest.jitsi_room,
+            'jitsi_token': guest.jitsi_token_guest,
+            'jitsi_domain': domain,
         })

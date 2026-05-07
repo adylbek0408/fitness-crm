@@ -9,6 +9,8 @@ from rest_framework.routers import DefaultRouter
 
 from .cabinet_views import (
     CabinetLessonViewSet,
+    CabinetStreamChatView,
+    CabinetStreamGuestView,
     CabinetStreamHeartbeatView,
     CabinetStreamJoinView,
     CabinetStreamView,
@@ -25,4 +27,6 @@ urlpatterns = [
     path('streams/<uuid:pk>/join/', CabinetStreamJoinView.as_view(), name='cabinet-stream-join'),
     path('streams/<uuid:pk>/heartbeat/', CabinetStreamHeartbeatView.as_view(), name='cabinet-stream-heartbeat'),
     path('streams/<uuid:pk>/viewers/', CabinetStreamViewersView.as_view(), name='cabinet-stream-viewers'),
+    path('streams/<uuid:pk>/chat/', CabinetStreamChatView.as_view(), name='cabinet-stream-chat'),
+    path('streams/<uuid:pk>/guest/', CabinetStreamGuestView.as_view(), name='cabinet-stream-guest'),
 ]
