@@ -119,6 +119,24 @@
        НА ПАУЗЕ. Требует выбора SFU (CF Realtime / Jitsi / LiveKit) +
        1-2 дня работы. Согласовано с пользователем.
 
+## Спринт 10 — Mobile broadcast + VodPlayer polish (2026-05-05)
+- [x] **10.1** ConsultationsAdmin: убрана вкладка «Истекшие», только Все/Активные/Завершённые.
+- [x] **10.2** StreamsAdmin manual-archive: перестаёт ретраить если CF не получил
+       видеоданных (recordings_count === 0 + state !== connected) — информативное сообщение.
+- [x] **10.3** BroadcastPage полный редизайн под Instagram/Telegram Live:
+       тёмный полноэкранный UI, glassmorphism нижний контрол, пульсирующее лобби.
+       iOS MediaRecorder fix (video/mp4 вместо webm), camera flip через
+       RTCPeerConnection.getSenders().replaceTrack(), z-index фикс (cam-off overlay
+       перекрывал controls), текст «Эфиры» вместо «Уроки».
+- [x] **10.4** StreamsAdmin preview modal: aspect-video → адаптивный maxHeight:75dvh
+       (portrait-видео больше не сжато в 16:9 рамку).
+- [x] **10.5** VodPlayer → Vidstack 1.12.13 + PlyrLayout: полный рерайт под 1.x API
+       (MediaProvider, PlyrLayout, корректные CSS-пути), мобильные tap-targets,
+       скрыт volume на мобиле, object-fit:contain для portrait-записей.
+       Все call-sites работают без изменений (одинаковый prop API).
+- [x] **10.6** Mobile card UX: StreamsAdmin + ConsultationsAdmin — icon-only кнопки
+       с title, убраны переполнения текста.
+
 ---
 
 ## Решения по ходу

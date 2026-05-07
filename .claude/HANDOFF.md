@@ -1,3 +1,73 @@
+# HANDOFF — 2026-05-05 (сессия — mobile broadcast + VodPlayer Vidstack 1.x)
+
+## Что сделано в этой сессии
+
+### 1. BroadcastPage — полный редизайн + iOS fix
+**Файл:** `frontend-spa/src/pages/admin/education/BroadcastPage.jsx`
+
+- **Instagram/Telegram Live стиль:** тёмный полноэкранный UI, glassmorphism нижний
+  контрол-пилюль, пульсирующее lobby-экран.
+- **iOS MediaRecorder fix (критично — 90% эфиров с телефона):**
+  ```js
+  const supportedMime = () => {
+    const list = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1',
+                  'video/mp4', 'video/webm;codecs=h264,opus', 'video/webm']
+    return list.find(t => { try { return MediaRecorder.isTypeSupported(t) } catch { return false } }) || ''
+  }
+  ```
+  Отправляет `.mp4` или `.webm` расширение в соответствии с фактическим MIME.
+- **Camera flip** (front/back) через `RTCPeerConnection.getSenders().replaceTrack()`.
+- **Z-index bugfix:** cam-off overlay `z-10`, controls теперь `z-20` → controls видны
+  когда камера выключена.
+- **Текст:** «появится в разделе «Эфиры»» вместо «Уроки».
+
+### 2. ConsultationsAdmin — убрана вкладка «Истекшие»
+**Файл:** `frontend-spa/src/pages/admin/education/ConsultationsAdmin.jsx`
+- `STATUS_TABS` теперь только: Все / Активные / Завершённые.
+
+### 3. StreamsAdmin — фикс бесконечного ретрая архива
+**Файл:** `frontend-spa/src/pages/admin/education/StreamsAdmin.jsx`
+- При `cf.recordings_count === 0 && cf.live_input_state !== 'connected'` — прекращает
+  ретраи немедленно с понятным сообщением (было: крутилось 40 раз → 10 мин впустую).
+- Preview modal: заменён `aspect-video` на `maxHeight: '75dvh'` — portrait-видео
+  больше не сжато в 16:9 рамку.
+
+### 4. VodPlayer — Vidstack 1.12.13 + PlyrLayout
+**Файлы:** `frontend-spa/src/components/education/VodPlayer.jsx`,
+`frontend-spa/src/components/education/VodPlayer.css`,
+`frontend-spa/package.json`
+
+- Полный рерайт под Vidstack 1.x API (0.6.x использовал удалённые `MediaOutlet`,
+  `MediaCommunitySkin`).
+- `MediaProvider` + `PlyrLayout` из `@vidstack/react/player/layouts/plyr`.
+- Корректные CSS импорты: `@vidstack/react/player/styles/base.css` + `../plyr/theme.css`.
+- prop API сохранён (src, kind, poster, autoPlay, startAt, onTimeUpdate, onReady, live).
+- object-fit:contain для portrait-записей, скрытый volume на мобиле.
+
+---
+
+## Что нужно сделать на сервере СЕЙЧАС
+
+```bash
+cd /var/www/fitness-crm
+git pull origin main
+cd frontend-spa
+npm install          # устанавливает @vidstack/react@1.12.13
+npm run build
+cd ..
+sudo systemctl restart fitness-crm.service
+```
+
+После деплоя проверить:
+1. BroadcastPage на iPhone: запустить эфир, выключить камеру — контролы остаются.
+   Завершить — запись уходит в CF.
+2. Плеер VodPlayer на телефоне: открыть урок — Plyr skin, HLS без буферинга.
+3. Preview portrait-видео в StreamsAdmin — не сжато в 16:9.
+4. ConsultationsAdmin — нет вкладки «Истекшие».
+5. StreamsAdmin — кнопка архива не крутится бесконечно если CF без записи.
+
+---
+
 # HANDOFF — 2026-05-05 (сессия — vidstack player + mobile-first ЛК + dedup StreamViewer)
 
 ## Что сделано в этой сессии
