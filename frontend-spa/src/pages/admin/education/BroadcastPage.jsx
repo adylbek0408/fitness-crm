@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Radio, Mic, MicOff, Video, VideoOff, Square,
-  Users, ChevronLeft, CheckCircle2, Upload, AlertCircle,
+  Users, ChevronLeft, CheckCircle2,
   RefreshCcw, MessageCircle, UserPlus, X, PhoneOff,
 } from 'lucide-react'
 import api from '../../../api/axios'
@@ -29,12 +29,12 @@ export default function BroadcastPage() {
   const [connState,    setConnState]    = useState('')
   const [cfStatus,     setCfStatus]     = useState(null)
   const [redirectIn,   setRedirectIn]   = useState(null)
-  const [uploadState,  setUploadState]  = useState(null)
-  const [uploadPct,    setUploadPct]    = useState(0)
   const [flipping,     setFlipping]     = useState(false)
 
-  // Chat
-  const [showChat, setShowChat] = useState(false)
+  // Chat — open by default on desktop (>=768), closed on mobile to save room.
+  const [showChat, setShowChat] = useState(
+    typeof window !== 'undefined' && window.innerWidth >= 768
+  )
 
   // Guest invite
   const [showInviteModal, setShowInviteModal]  = useState(false)
@@ -54,9 +54,6 @@ export default function BroadcastPage() {
   const elapsedRef        = useRef(null)
   const statusRef         = useRef(status)
   const whipRef           = useRef(null)
-  const recorderRef       = useRef(null)
-  const chunksRef         = useRef([])
-  const mimeRef           = useRef('')
 
   const insecure = typeof window !== 'undefined' && !window.isSecureContext
   const isLive   = status === 'live'
@@ -74,14 +71,6 @@ export default function BroadcastPage() {
   const fmt = sec => {
     const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60
     return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`
-  }
-
-  const supportedMime = () => {
-    const list = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4',
-      'video/webm;codecs=h264,opus', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm',
-    ]
-    return list.find(t => { try { return MediaRecorder.isTypeSupported(t) } catch { return false } }) || ''
   }
 
   const constraints = (q, facing) => ({
@@ -142,14 +131,14 @@ export default function BroadcastPage() {
   }, [status, id])
 
   useEffect(() => {
-    if (status !== 'ended' || uploadState === 'uploading') return
+    if (status !== 'ended') return
     setRedirectIn(4)
     const t = setInterval(() => setRedirectIn(p => {
       if (p <= 1) { clearInterval(t); nav('/admin/education/streams'); return 0 }
       return p - 1
     }), 1000)
     return () => clearInterval(t)
-  }, [status, uploadState, nav])
+  }, [status, nav])
 
   useEffect(() => () => {
     if (statusRef.current === 'live') api.post(`/education/streams/${id}/end/`).catch(() => {})
@@ -166,12 +155,6 @@ export default function BroadcastPage() {
     const h = e => { e.preventDefault(); e.returnValue = 'Эфир идёт — если уйти, он завершится.'; return e.returnValue }
     window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h)
   }, [status])
-
-  useEffect(() => {
-    if (uploadState !== 'uploading') return
-    const h = e => { e.preventDefault(); e.returnValue = 'Запись загружается — не закрывайте вкладку!'; return e.returnValue }
-    window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h)
-  }, [uploadState])
 
   // ── Guest list polling (admin sees status changes) ────────────────────────
 
@@ -208,43 +191,9 @@ export default function BroadcastPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, id, activeGuest])
 
-  // ── recording ─────────────────────────────────────────────────────────────
-
-  const startRec = ls => {
-    try {
-      const mime = supportedMime(); mimeRef.current = mime; chunksRef.current = []
-      const mr = new MediaRecorder(ls, mime ? { mimeType: mime, videoBitsPerSecond: QUALITIES[quality].videoKbps * 1000 } : {})
-      mr.ondataavailable = e => { if (e.data?.size > 0) chunksRef.current.push(e.data) }
-      recorderRef.current = mr; mr.start(10000)
-    } catch(e) { console.warn('[Rec] start failed:', e) }
-  }
-
-  const stopRec = () => new Promise(res => {
-    const mr = recorderRef.current
-    if (!mr || mr.state === 'inactive') { res(); return }
-    mr.addEventListener('stop', res, { once: true }); mr.stop()
-  })
-
-  const uploadRec = useCallback(async () => {
-    const chunks = chunksRef.current
-    if (!chunks?.length) return
-    setUploadState('uploading'); setUploadPct(0)
-    try {
-      const mime = mimeRef.current || 'video/webm'
-      const blob = new Blob(chunks, { type: mime })
-      const ext  = mime.includes('mp4') ? 'mp4' : 'webm'
-      const fd   = new FormData()
-      fd.append('file', new File([blob], `recording.${ext}`, { type: mime }))
-      await api.post(`/education/streams/${id}/upload-recording/`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: e => { if (e.total) setUploadPct(Math.min(90, Math.round(e.loaded / e.total * 90))) },
-        timeout: 0,
-      })
-      setUploadPct(100); setUploadState('done')
-    } catch(e) { console.error('[Rec] upload failed:', e); setUploadState('error') }
-  }, [id])
-
   // ── broadcast ─────────────────────────────────────────────────────────────
+  // Запись делает Cloudflare Stream Live Input автоматически — клиентский
+  // MediaRecorder не нужен (это была вторая параллельная кодировка → перегрев).
 
   const startBroadcast = async () => {
     if (!stream?.cf_webrtc_url) { setError('WebRTC URL не найден.'); return }
@@ -255,7 +204,6 @@ export default function BroadcastPage() {
       const ls = await navigator.mediaDevices.getUserMedia(constraints(q, facingMode))
       localStreamRef.current = ls
       if (videoRef.current) videoRef.current.srcObject = ls
-      startRec(ls)
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] })
       pcRef.current = pc
@@ -313,14 +261,12 @@ export default function BroadcastPage() {
   const stopBroadcast = async () => {
     cleanupGuest()
     const w = whipRef.current
-    await stopRec()
     if (w) { whipRef.current = null; try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     if (videoRef.current) videoRef.current.srcObject = null
     setBroadcasting(false); setStatus('ended')
     try { await api.post(`/education/streams/${id}/end/`, w ? { whip_resource_url: w } : {}) } catch {}
-    uploadRec()
   }
 
   const toggleMic = () => { const t = localStreamRef.current?.getAudioTracks()?.[0]; if (t) { t.enabled = !t.enabled; setMicOn(t.enabled) } }
@@ -680,57 +626,18 @@ export default function BroadcastPage() {
         {isEnded && (
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-5 px-8"
             style={{ background: 'linear-gradient(to bottom,rgba(0,0,0,.9),rgba(0,0,0,.95))' }}>
-
-            {uploadState === 'uploading' && (
-              <div className="w-full max-w-sm bg-white/5 backdrop-blur border border-white/10 rounded-3xl p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                    <Upload size={18} className="text-blue-400 animate-bounce" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white">{uploadPct < 90 ? 'Загрузка записи…' : 'Отправляем в Cloudflare…'}</p>
-                    <p className="text-xs text-white/40 mt-0.5">Не закрывайте страницу</p>
-                  </div>
-                  <span className="font-mono text-sm text-blue-300 shrink-0">{uploadPct}%</span>
-                </div>
-                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500"
-                    style={{ width: `${uploadPct}%` }} />
-                </div>
-              </div>
-            )}
-
-            {uploadState === 'done' && (
-              <div className="flex items-center gap-3 bg-emerald-900/50 border border-emerald-600/30 rounded-2xl px-5 py-3 text-sm text-emerald-200">
-                <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
-                Запись сохранена — появится в разделе «Эфиры»
-              </div>
-            )}
-
-            {uploadState === 'error' && (
-              <div className="w-full max-w-sm bg-rose-900/50 border border-rose-700/40 rounded-2xl px-5 py-4 text-sm text-rose-200">
-                <div className="flex items-center gap-2 mb-3"><AlertCircle size={16} className="shrink-0" /> Ошибка загрузки записи</div>
-                <button onClick={() => { setUploadState(null); uploadRec() }} className="text-xs underline text-rose-300 hover:text-rose-100">
-                  Повторить
-                </button>
-              </div>
-            )}
-
-            {uploadState !== 'uploading' && (
-              <>
-                <div className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                  <CheckCircle2 size={40} className="text-emerald-400" />
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-white">Эфир завершён</p>
-                  {redirectIn && <p className="text-white/50 text-sm mt-1">Переход через <span className="text-rose-400 font-bold">{redirectIn}</span> с…</p>}
-                </div>
-                <button onClick={() => nav('/admin/education/streams')}
-                  className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95">
-                  К списку эфиров
-                </button>
-              </>
-            )}
+            <div className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+              <CheckCircle2 size={40} className="text-emerald-400" />
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">Эфир завершён</p>
+              <p className="text-white/50 text-sm mt-1">Cloudflare обрабатывает запись (1–3 минуты).</p>
+              {redirectIn && <p className="text-white/50 text-sm mt-1">Переход через <span className="text-rose-400 font-bold">{redirectIn}</span> с…</p>}
+            </div>
+            <button onClick={() => nav('/admin/education/streams')}
+              className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95">
+              К списку эфиров
+            </button>
           </div>
         )}
       </div>

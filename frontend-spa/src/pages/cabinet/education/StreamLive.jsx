@@ -27,7 +27,12 @@ export default function StreamLive() {
   const [error,        setError]        = useState('')
   const [accessDenied, setAccessDenied] = useState('')
   const [showViewers,  setShowViewers]  = useState(false)
-  const [showChat,     setShowChat]     = useState(false)
+  // Chat: на десктопе по дефолту открыт (sidebar справа), на мобиле — закрыт
+  // (открывается bottom-sheet'ом по тапу), как в YouTube Live.
+  const [isWide] = useState(
+    typeof window !== 'undefined' && window.innerWidth >= 768
+  )
+  const [showChat,     setShowChat]     = useState(isWide)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   // Guest stage state
@@ -43,6 +48,7 @@ export default function StreamLive() {
   const guestPollRef     = useRef(null)
 
   const videoRef       = useRef(null)
+  const playerRef      = useRef(null)   // CloudflareStreamPlayer imperative handle
   const playerShellRef = useRef(null)
 
   useContentProtection({
@@ -267,67 +273,89 @@ export default function StreamLive() {
 
   // ── Fullscreen ────────────────────────────────────────────────────────────
   useEffect(() => {
-    const onFsChange = () => setIsFullscreen(document.fullscreenElement === playerShellRef.current)
+    const onFsChange = () => setIsFullscreen(
+      Boolean(document.fullscreenElement || document.webkitFullscreenElement)
+    )
     document.addEventListener('fullscreenchange', onFsChange)
-    return () => document.removeEventListener('fullscreenchange', onFsChange)
+    document.addEventListener('webkitfullscreenchange', onFsChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange)
+      document.removeEventListener('webkitfullscreenchange', onFsChange)
+    }
   }, [])
 
   const toggleFullscreen = async () => {
-    const node = playerShellRef.current
-    if (!node) return
     try {
-      if (document.fullscreenElement) await document.exitFullscreen()
-      else if (node.requestFullscreen) await node.requestFullscreen()
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) await document.exitFullscreen()
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
+        return
+      }
+      // На iOS Safari fullscreen работает только на <video> через
+      // webkitEnterFullscreen — playerRef проксирует этот вызов.
+      const p = playerRef.current
+      if (p?.requestFullscreen) { await p.requestFullscreen(); return }
+      // Десктоп fallback: fullscreen на shell-обёртке (плеер + watermark + чат)
+      const node = playerShellRef.current
+      if (node?.requestFullscreen) await node.requestFullscreen()
     } catch {}
   }
 
   const watermarkText = joined?.watermark?.text || ''
   const isLive = stream && stream.status === 'live'
 
-  // ── Live full-screen layout ───────────────────────────────────────────────
+  // ── Live: YouTube-style layout (плеер 16:9 сверху, инфо + чат снизу) ─────
   if (isLive) {
     return (
-      <div className="min-h-screen bg-[#06080f] flex" style={{ minHeight: '100dvh' }}>
+      <div className="bg-[#06080f] text-white md:flex md:h-[100dvh]" style={{ minHeight: '100dvh' }}>
+        {/* LEFT: video + meta + (mobile chat) */}
+        <div className="md:flex-1 md:flex md:flex-col md:min-h-0">
 
-        <div className={`flex-1 flex flex-col relative transition-all duration-300`}>
-
-          <header className="px-3 py-2.5 flex items-center gap-2 text-white bg-gradient-to-b from-black/70 to-transparent absolute inset-x-0 top-0 z-20">
-            <Link to="/cabinet/profile" aria-label="Назад"
-              className="p-2 rounded-xl bg-black/35 border border-white/10 backdrop-blur active:bg-black/60">
-              <ChevronLeft size={20} />
-            </Link>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600 shadow">
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              <span className="text-[10px] font-bold tracking-[0.18em]">LIVE</span>
-            </div>
-            <div className="flex-1" />
-            <button type="button" onClick={() => setShowViewers(true)}
-              aria-label={`Зрителей: ${viewers.length}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/35 border border-white/10 backdrop-blur text-[12px] font-medium active:bg-black/60">
-              <Users size={14} /> {viewers.length}
-            </button>
-            <button type="button" onClick={() => setShowChat(p => !p)}
-              aria-label="Чат"
-              className={`p-2 rounded-xl border backdrop-blur active:bg-black/60 ${showChat ? 'bg-rose-600 border-rose-400' : 'bg-black/35 border-white/10'}`}>
-              <MessageCircle size={18} />
-            </button>
-            <button type="button" onClick={toggleFullscreen}
-              aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
-              className="p-2 rounded-xl bg-black/35 border border-white/10 backdrop-blur active:bg-black/60">
-              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-            </button>
-          </header>
-
-          {/* Player */}
-          <div ref={playerShellRef} data-protected-root className="flex-1 relative flex items-center justify-center">
-            <div className="w-full h-full">
-              <CloudflareStreamPlayer uid={stream.cf_playback_id} subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK} />
-            </div>
+          {/* Player area — 16:9 на мобиле, заполняет всё свободное место на десктопе */}
+          <div ref={playerShellRef} data-protected-root
+               className="relative w-full bg-black md:flex-1 md:min-h-0"
+               style={{ aspectRatio: isWide ? undefined : '16 / 9' }}>
+            <CloudflareStreamPlayer
+              ref={playerRef}
+              uid={stream.cf_playback_id}
+              subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK}
+              live
+            />
             <Watermark text={watermarkText} />
 
-            {/* Self preview while on stage */}
+            {/* Top overlay bar (LIVE / viewers / chat / fullscreen) */}
+            <div className="absolute top-0 inset-x-0 z-20 flex items-center gap-2 px-3 py-2.5
+                            bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
+              <Link to="/cabinet/profile" aria-label="Назад"
+                className="pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
+                <ChevronLeft size={18} />
+              </Link>
+              <div className="pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600 shadow">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                <span className="text-[10px] font-bold tracking-[0.18em]">LIVE</span>
+              </div>
+              <div className="flex-1" />
+              <button type="button" onClick={() => setShowViewers(true)}
+                aria-label={`Зрителей: ${viewers.length}`}
+                className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 border border-white/10 backdrop-blur text-[12px] font-medium active:bg-black/60">
+                <Users size={14} /> {viewers.length}
+              </button>
+              {!isWide && (
+                <button type="button" onClick={() => setShowChat(p => !p)} aria-label="Чат"
+                  className={`pointer-events-auto p-2 rounded-xl border backdrop-blur active:bg-black/60 ${showChat ? 'bg-rose-600 border-rose-400' : 'bg-black/40 border-white/10'}`}>
+                  <MessageCircle size={18} />
+                </button>
+              )}
+              <button type="button" onClick={toggleFullscreen}
+                aria-label={isFullscreen ? 'Свернуть' : 'Во весь экран'}
+                className="pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
+                {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              </button>
+            </div>
+
+            {/* PIP self-preview while on stage */}
             {onStage && (
-              <div className="absolute bottom-4 right-4 w-28 h-40 sm:w-32 sm:h-44 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-2xl bg-black z-30">
+              <div className="absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-2xl bg-black z-30">
                 <video ref={stagePreviewRef} autoPlay muted playsInline
                   className="w-full h-full object-cover"
                   style={{ transform: 'scaleX(-1)' }} />
@@ -341,122 +369,132 @@ export default function StreamLive() {
             )}
           </div>
 
-          {/* Title strip */}
-          <div className="px-4 pt-3 pb-4 bg-gradient-to-t from-black to-black/70 text-white border-t border-white/10">
+          {/* Title strip (всегда видна) */}
+          <div className="px-4 py-3 border-t border-white/10 bg-black/60 shrink-0">
             <h2 className="text-[15px] font-semibold leading-tight">{stream.title}</h2>
             {stream.description && (
-              <p className="text-[12px] text-white/70 mt-1 line-clamp-2">{stream.description}</p>
+              <p className="text-[12px] text-white/65 mt-1 line-clamp-2">{stream.description}</p>
             )}
-            <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-white/50">
+            <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-white/50">
               <Shield size={11} /> Запись защищена
             </p>
           </div>
 
-          {/* Hidden audio element for trainer's voice (low-latency P2P) */}
-          {onStage && (
-            <video ref={stageRemoteRef} autoPlay playsInline
-              style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
-          )}
-
-          {warning && (
-            <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-4 py-2 rounded-xl shadow-lg flex items-center gap-2 text-[13px]">
-              <AlertTriangle size={15} /> {warning}
-            </div>
-          )}
-
-          {/* Guest invite banner */}
-          {guestInvite && guestInvite.status === 'invited' && !onStage && (
-            <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 w-[90vw] max-w-sm">
-              <div className="bg-[#1a1d2e] border border-emerald-500/40 rounded-2xl p-4 shadow-2xl flex flex-col gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                    <PhoneCall size={20} className="text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-white font-semibold text-sm">Тренер приглашает вас на сцену!</p>
-                    <p className="text-white/50 text-xs">Вас увидят все зрители прямого эфира</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={acceptInvite}
-                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold active:scale-95 transition">
-                    Принять ✨
-                  </button>
-                  <button onClick={declineInvite}
-                    className="flex-1 py-2.5 rounded-xl bg-white/10 text-white/70 text-sm active:scale-95 transition">
-                    Отклонить
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* On-stage controls */}
-          {onStage && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-              <div className="bg-black/75 backdrop-blur-xl border border-white/15 rounded-full px-3 py-2 flex items-center gap-2 shadow-2xl">
-                <button onClick={toggleStageMic}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${stageMicOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
-                  {stageMicOn ? <Mic size={16} /> : <MicOff size={16} />}
-                </button>
-                <button onClick={toggleStageCam}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${stageCamOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
-                  {stageCamOn ? <Video size={16} /> : <VideoOff size={16} />}
-                </button>
-                <div className="px-2 flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${stageState === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'}`} />
-                  <span className="text-[11px] text-white/85 font-medium">
-                    {stageState === 'live' ? 'На сцене' : stageState === 'connecting' ? 'Соединение…' : 'Подождите'}
-                  </span>
-                </div>
-                <button onClick={() => leaveStage(true)}
-                  className="flex items-center gap-1.5 ml-1 pl-3 pr-3 h-10 rounded-full bg-rose-600 text-white text-xs font-semibold active:scale-95">
-                  <PhoneOff size={13} /> Покинуть
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Viewers drawer */}
-          {showViewers && (
-            <div className="fixed inset-0 z-40 bg-black/60 flex items-end" onClick={() => setShowViewers(false)}>
-              <div className="bg-white w-full rounded-t-3xl max-h-[70dvh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between px-5 py-4 border-b border-rose-100">
-                  <div className="flex items-center gap-2">
-                    <Users size={18} className="text-rose-500" />
-                    <h3 className="font-semibold text-[15px]">На эфире ({viewers.length})</h3>
-                  </div>
-                  <button type="button" onClick={() => setShowViewers(false)} aria-label="Закрыть" className="p-2 rounded-xl text-gray-400 hover:bg-gray-50">
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
-                  {viewers.length === 0 && <p className="text-center text-sm text-gray-400 py-8">Пока никого нет.</p>}
-                  {viewers.map(v => (
-                    <div key={v.id} className="flex items-center gap-3 px-2 py-2 rounded-xl">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-300 to-pink-400 flex items-center justify-center text-white font-semibold text-[13px]">
-                        {(v.client_name || '?').charAt(0)}
-                      </div>
-                      <div className="text-[13.5px] flex-1 min-w-0">
-                        <div className="font-medium truncate">{v.client_name || 'Гость'}</div>
-                        <div className="text-[11px] text-emerald-600">в эфире</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {/* MOBILE chat — bottom sheet, занимает оставшееся место */}
+          {!isWide && showChat && (
+            <div className="flex-1 min-h-[40dvh] flex flex-col border-t border-white/10">
+              <StreamChat
+                streamId={stream.id}
+                isTrainer={false}
+                onClose={() => setShowChat(false)}
+              />
             </div>
           )}
         </div>
 
-        {/* Chat panel */}
-        {showChat && (
-          <div className="w-72 shrink-0 flex flex-col" style={{ height: '100dvh' }}>
+        {/* DESKTOP chat — sidebar справа, всегда открыт */}
+        {isWide && (
+          <aside className="hidden md:flex w-80 shrink-0 flex-col border-l border-white/10" style={{ height: '100dvh' }}>
             <StreamChat
               streamId={stream.id}
               isTrainer={false}
-              onClose={() => setShowChat(false)}
             />
+          </aside>
+        )}
+
+        {/* Hidden audio element for trainer's voice (low-latency P2P) */}
+        {onStage && (
+          <video ref={stageRemoteRef} autoPlay playsInline
+            style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
+        )}
+
+        {warning && (
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-4 py-2 rounded-xl shadow-lg flex items-center gap-2 text-[13px]">
+            <AlertTriangle size={15} /> {warning}
+          </div>
+        )}
+
+        {/* Guest invite banner */}
+        {guestInvite && guestInvite.status === 'invited' && !onStage && (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 w-[90vw] max-w-sm">
+            <div className="bg-[#1a1d2e] border border-emerald-500/40 rounded-2xl p-4 shadow-2xl flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <PhoneCall size={20} className="text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-white font-semibold text-sm">Тренер приглашает вас на сцену!</p>
+                  <p className="text-white/50 text-xs">Вас увидят все зрители прямого эфира</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={acceptInvite}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold active:scale-95 transition">
+                  Принять ✨
+                </button>
+                <button onClick={declineInvite}
+                  className="flex-1 py-2.5 rounded-xl bg-white/10 text-white/70 text-sm active:scale-95 transition">
+                  Отклонить
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* On-stage controls */}
+        {onStage && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+            <div className="bg-black/75 backdrop-blur-xl border border-white/15 rounded-full px-3 py-2 flex items-center gap-2 shadow-2xl">
+              <button onClick={toggleStageMic}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${stageMicOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
+                {stageMicOn ? <Mic size={16} /> : <MicOff size={16} />}
+              </button>
+              <button onClick={toggleStageCam}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${stageCamOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
+                {stageCamOn ? <Video size={16} /> : <VideoOff size={16} />}
+              </button>
+              <div className="px-2 flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${stageState === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'}`} />
+                <span className="text-[11px] text-white/85 font-medium">
+                  {stageState === 'live' ? 'На сцене' : stageState === 'connecting' ? 'Соединение…' : 'Подождите'}
+                </span>
+              </div>
+              <button onClick={() => leaveStage(true)}
+                className="flex items-center gap-1.5 ml-1 pl-3 pr-3 h-10 rounded-full bg-rose-600 text-white text-xs font-semibold active:scale-95">
+                <PhoneOff size={13} /> Покинуть
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Viewers drawer */}
+        {showViewers && (
+          <div className="fixed inset-0 z-40 bg-black/60 flex items-end" onClick={() => setShowViewers(false)}>
+            <div className="bg-white w-full rounded-t-3xl max-h-[70dvh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-rose-100">
+                <div className="flex items-center gap-2">
+                  <Users size={18} className="text-rose-500" />
+                  <h3 className="font-semibold text-[15px] text-gray-900">На эфире ({viewers.length})</h3>
+                </div>
+                <button type="button" onClick={() => setShowViewers(false)} aria-label="Закрыть" className="p-2 rounded-xl text-gray-400 hover:bg-gray-50">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+                {viewers.length === 0 && <p className="text-center text-sm text-gray-400 py-8">Пока никого нет.</p>}
+                {viewers.map(v => (
+                  <div key={v.id} className="flex items-center gap-3 px-2 py-2 rounded-xl">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-300 to-pink-400 flex items-center justify-center text-white font-semibold text-[13px]">
+                      {(v.client_name || '?').charAt(0)}
+                    </div>
+                    <div className="text-[13.5px] flex-1 min-w-0 text-gray-900">
+                      <div className="font-medium truncate">{v.client_name || 'Гость'}</div>
+                      <div className="text-[11px] text-emerald-600">в эфире</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
