@@ -1,25 +1,26 @@
+/**
+ * VodPlayer — Vidstack 1.x  (PlyrLayout skin)
+ *
+ * Replaces the 0.6.x build that used the removed MediaOutlet / MediaCommunitySkin API.
+ *
+ * Props (same signature as before so all call-sites work unchanged):
+ *   src               — HLS manifest URL or R2 presigned MP4 URL
+ *   kind              — 'hls' (default) | 'r2'
+ *   poster            — optional poster image URL
+ *   autoPlay          — bool
+ *   startAt           — resume position in seconds
+ *   onTimeUpdate({position, duration, percent}) — fired ~every 0.5 s
+ *   onReady(player)   — fired once video can play
+ *   live              — bool: live HLS stream (hides scrubber)
+ */
 import { useRef } from 'react'
-import { MediaPlayer, MediaOutlet, MediaCommunitySkin } from '@vidstack/react'
+import { MediaPlayer, MediaProvider, isHLSProvider } from '@vidstack/react'
+import { PlyrLayout, plyrLayoutIcons } from '@vidstack/react/player/layouts/plyr'
 import Hls from 'hls.js'
-import 'vidstack/styles/defaults.css'
-import 'vidstack/styles/community-skin/video.css'
+import '@vidstack/react/player/styles/base.css'
+import '@vidstack/react/player/styles/plyr/theme.css'
 import './VodPlayer.css'
 
-/**
- * VOD player built on @vidstack/react (community skin).
- *
- * Replaces the previous custom HlsPlayer for recorded lessons and
- * stream archives. Uses our bundled hls.js (not the CDN copy vidstack
- * loads by default) so playback works in CSP-locked envs and behind
- * unreliable networks.
- *
- * Quality is pinned to the highest available rendition on
- * MANIFEST_PARSED — admins explicitly asked for "100% sharp" instead
- * of the default ABR which starts low and ramps slowly. The user can
- * still drop quality manually via the community skin's quality menu.
- *
- * Props mirror the old HlsPlayer signature so call sites stay simple.
- */
 export default function VodPlayer({
   src,
   kind = 'hls',
@@ -28,41 +29,38 @@ export default function VodPlayer({
   startAt = 0,
   onTimeUpdate,
   onReady,
-  alwaysShowControls = true,
-  children,
+  live = false,
 }) {
-  const playerRef = useRef(null)
-  const lastEmittedRef = useRef(-10)
-  const seekedRef = useRef(false)
+  const playerRef   = useRef(null)
+  const seekedRef   = useRef(false)
+  const lastEmitRef = useRef(-10)
 
+  // Vidstack auto-detects HLS from .m3u8; for R2 MP4 we pass explicit type.
   const source = kind === 'r2' ? { src, type: 'video/mp4' } : src
 
-  const handleProviderChange = (event) => {
-    const provider = event?.detail
-    if (provider?.type !== 'hls') return
-    // Use the bundled hls.js (avoids the default CDN fetch).
-    provider.library = Hls
-    // Override hls.js defaults — never cap quality by player size, give
-    // ABR a high initial bandwidth estimate so the first segments are
-    // already in HD instead of 360p, and skip the pre-roll bandwidth test.
-    provider.config = {
-      capLevelToPlayerSize: false,
-      abrEwmaDefaultEstimate: 5_000_000,
-      testBandwidth: false,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
+  // ── Provider setup: inject bundled hls.js + quality pin ──────────────────
+  const handleProviderChange = (provider) => {
+    // v1.x passes the provider directly (not wrapped in event.detail)
+    const p = provider?.detail ?? provider        // handle both shapes
+    if (!isHLSProvider(p)) return
+    p.library = Hls
+    p.config = {
+      capLevelToPlayerSize:    false,             // never downgrade for small box
+      abrEwmaDefaultEstimate:  5_000_000,         // start ABR at HD, not 360p
+      testBandwidth:           false,
+      maxBufferLength:         30,
+      maxMaxBufferLength:      60,
     }
-    provider.onInstance((hls) => {
+    p.onInstance((hls) => {
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (Array.isArray(hls.levels) && hls.levels.length > 1) {
-          // Pin to highest rendition. Quality menu still works — selecting
-          // there sets currentLevel to a different value and overrides this.
-          hls.currentLevel = hls.levels.length - 1
+          hls.currentLevel = hls.levels.length - 1   // pin highest quality
         }
       })
     })
   }
 
+  // ── Resume position ────────────────────────────────────────────────────────
   const handleCanPlay = () => {
     const player = playerRef.current
     if (!player) return
@@ -73,13 +71,14 @@ export default function VodPlayer({
     onReady?.(player)
   }
 
-  const handleTimeUpdate = (e) => {
+  // ── Progress callback (throttled to 0.5 s) ────────────────────────────────
+  const handleTimeUpdate = (detail) => {
     if (!onTimeUpdate) return
-    const currentTime = e?.detail?.currentTime ?? 0
-    if (Math.abs(currentTime - lastEmittedRef.current) < 0.5) return
-    lastEmittedRef.current = currentTime
+    const currentTime = detail?.currentTime ?? detail?.detail?.currentTime ?? 0
+    if (Math.abs(currentTime - lastEmitRef.current) < 0.5) return
+    lastEmitRef.current = currentTime
     const duration = playerRef.current?.duration || 0
-    const percent = duration > 0
+    const percent  = duration > 0
       ? Math.min(100, Math.round((currentTime / duration) * 100))
       : 0
     onTimeUpdate({ position: currentTime, duration, percent })
@@ -90,19 +89,21 @@ export default function VodPlayer({
       ref={playerRef}
       src={source}
       poster={poster}
-      autoplay={autoPlay}
-      playsinline
+      autoPlay={autoPlay}
+      playsInline
       load="visible"
+      streamType={live ? 'live' : 'on-demand'}
       onProviderChange={handleProviderChange}
       onTimeUpdate={handleTimeUpdate}
       onCanPlay={handleCanPlay}
       onContextMenu={e => e.preventDefault()}
-      className={`vod-player block w-full h-full bg-black ${alwaysShowControls ? 'vod-player--always-controls' : ''}`}
-      style={{ '--media-brand': '#e11d48', '--media-focus-ring': '0 0 0 3px rgba(225,29,72,0.4)' }}
+      className="vod-player w-full h-full"
     >
-      <MediaOutlet />
-      <MediaCommunitySkin />
-      {children}
+      <MediaProvider />
+      <PlyrLayout
+        icons={plyrLayoutIcons}
+        displayDuration
+      />
     </MediaPlayer>
   )
 }

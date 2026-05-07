@@ -1,43 +1,55 @@
 /*
- * Force the underlying <video> element to letterbox (object-fit: contain)
- * inside whatever sized container the call site gives it. Without this,
- * vidstack's default sizing makes a portrait phone-shot video either
- * overflow or sit inside a tiny strip in the middle of a 16:9 box.
+ * VodPlayer — styles for Vidstack 1.x + Plyr skin.
  *
- * Also pin the media-outlet to fill the player so the video is never
- * pushed outside its parent.
+ * Goals:
+ *  1. Video fills container with letterbox (object-fit: contain).
+ *  2. Portrait recordings from phone (9:16) display correctly.
+ *  3. Rose-600 accent colour matches the CRM palette.
  */
+
+/* ── Container ─────────────────────────────────────────────────────────── */
 .vod-player {
+  --plyr-color-main: #e11d48;
+  --plyr-font-family: inherit;
+  --plyr-font-size-base: 14px;
+  --plyr-control-spacing: 10px;
+  --plyr-video-background: #000;
   width: 100%;
   height: 100%;
+  background: #000;
+  display: block;
 }
 
-.vod-player media-outlet {
+/* ── Media provider (v1.x replaces media-outlet) ───────────────────────── */
+.vod-player media-provider {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-.vod-player media-outlet video,
+/* ── Video element — letterbox, never crop ──────────────────────────────── */
+.vod-player media-provider video,
 .vod-player video {
-  width: 100% !important;
+  width: 100%  !important;
   height: 100% !important;
   object-fit: contain !important;
   object-position: center !important;
   background: #000;
 }
 
-/*
- * Always-visible controls mode:
- * the default vidstack community skin hides controls when user is idle.
- * For admin/cabinet UX we keep the control bar visible all the time.
- */
-.vod-player--always-controls[data-user-idle] {
-  cursor: default !important;
-}
-
-.vod-player--always-controls media-community-skin[data-video] div[part='controls'] {
-  opacity: 1 !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
+/* ── Mobile: bigger tap targets, hide volume (use device buttons) ────────── */
+@media (max-width: 640px) {
+  .vod-player .plyr__controls {
+    padding: 8px 10px !important;
+    gap: 4px !important;
+  }
+  .vod-player .plyr__control {
+    padding: 6px !important;
+  }
+  .vod-player .plyr__time {
+    font-size: 12px;
+  }
+  .vod-player .plyr__volume {
+    display: none !important;
+  }
 }
