@@ -353,12 +353,21 @@ export default function BroadcastPage() {
 
     const baseUrl = `/education/streams/${id}/guests/${guest.id}/webrtc/`
 
+    // Fetch TURN credentials (required for NAT traversal on mobile/cellular).
+    // Falls back silently to STUN-only if the endpoint is unavailable.
+    let turnIceServers
+    try {
+      const tr = await api.post(`/education/streams/${id}/turn-credentials/`)
+      turnIceServers = tr.data?.iceServers
+    } catch { /* keep undefined → will use DEFAULT_ICE_SERVERS */ }
+
     try {
       // Reset signaling slate (in case of stale data from previous attempts)
       await api.post(baseUrl, { reset: true }).catch(() => {})
 
       const session = await startTrainerP2P({
         localStream: localStreamRef.current,
+        iceServers: turnIceServers,
         postOffer: async (sdp) => { await api.post(baseUrl, { offer_sdp: sdp }) },
         postIce:   async (cand) => { await api.post(baseUrl, { ice: cand }).catch(() => {}) },
         poll:      async () => (await api.get(baseUrl)).data,

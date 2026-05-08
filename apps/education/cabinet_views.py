@@ -597,6 +597,49 @@ class CabinetStreamGuestView(APIView):
         return Response(status=204)
 
 
+class CabinetStreamTurnCredentialsView(APIView):
+    """Generate short-lived Cloudflare TURN credentials for the guest side.
+
+    Called by the student's browser before accepting the on-stage invite.
+    POST → { iceServers: [...] }
+    """
+    authentication_classes = [CabinetJWTAuthentication]
+    permission_classes = [IsCabinetClient]
+
+    def post(self, request, pk):
+        import os, requests as req_lib
+        key_id  = os.environ.get('CF_TURN_KEY_ID', '')
+        key_tok = os.environ.get('CF_TURN_API_TOKEN', '')
+        if not key_id or not key_tok:
+            return Response({'iceServers': [
+                {'urls': 'stun:stun.cloudflare.com:3478'},
+                {'urls': 'stun:stun.l.google.com:19302'},
+            ]})
+        try:
+            resp = req_lib.post(
+                f'https://rtc.live.cloudflare.com/v1/turn/keys/{key_id}/credentials/generate-ice-servers',
+                headers={'Authorization': f'Bearer {key_tok}', 'Content-Type': 'application/json'},
+                json={'ttl': 86400},
+                timeout=5,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            ice = data.get('iceServers', {})
+            ice_servers = [ice] if isinstance(ice, dict) else ice
+            ice_servers = [
+                {'urls': 'stun:stun.cloudflare.com:3478'},
+                {'urls': 'stun:stun.l.google.com:19302'},
+            ] + ice_servers
+            return Response({'iceServers': ice_servers})
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning('CF TURN credentials failed: %s', e)
+            return Response({'iceServers': [
+                {'urls': 'stun:stun.cloudflare.com:3478'},
+                {'urls': 'stun:stun.l.google.com:19302'},
+            ]})
+
+
 class CabinetStreamGuestSignalView(APIView):
     """WebRTC signaling for guest side.
 

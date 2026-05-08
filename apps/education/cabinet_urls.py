@@ -14,6 +14,7 @@ from .cabinet_views import (
     CabinetStreamGuestView,
     CabinetStreamHeartbeatView,
     CabinetStreamJoinView,
+    CabinetStreamTurnCredentialsView,
     CabinetStreamView,
     CabinetStreamViewersView,
 )
@@ -31,4 +32,5 @@ urlpatterns = [
     path('streams/<uuid:pk>/chat/', CabinetStreamChatView.as_view(), name='cabinet-stream-chat'),
     path('streams/<uuid:pk>/guest/', CabinetStreamGuestView.as_view(), name='cabinet-stream-guest'),
     path('streams/<uuid:pk>/guest/webrtc/', CabinetStreamGuestSignalView.as_view(), name='cabinet-stream-guest-webrtc'),
+    path('streams/<uuid:pk>/turn-credentials/', CabinetStreamTurnCredentialsView.as_view(), name='cabinet-stream-turn-credentials'),
 ]

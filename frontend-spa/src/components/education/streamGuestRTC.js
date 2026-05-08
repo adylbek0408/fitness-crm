@@ -17,7 +17,7 @@
  *   - When no guest, raw camera track flows directly (zero canvas overhead)
  */
 
-const ICE_SERVERS = [
+const DEFAULT_ICE_SERVERS = [
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:stun.l.google.com:19302' },
 ]
@@ -196,8 +196,9 @@ export function createAudioMixer(trainerStream, guestStream) {
  */
 export async function startTrainerP2P({
   localStream, postOffer, postIce, poll, onConnected, onRemoteStream, onFailed,
+  iceServers,
 }) {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+  const pc = new RTCPeerConnection({ iceServers: iceServers || DEFAULT_ICE_SERVERS })
   let pollTimer = null
   let appliedAnswer = false
   const appliedIceSet = new Set()
@@ -277,8 +278,9 @@ export async function startTrainerP2P({
 
 export async function startGuestP2P({
   localStream, poll, postAnswer, postIce, onConnected, onRemoteStream, onFailed,
+  iceServers,
 }) {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+  const pc = new RTCPeerConnection({ iceServers: iceServers || DEFAULT_ICE_SERVERS })
   let pollTimer = null
   let appliedOffer = false
   let answered = false

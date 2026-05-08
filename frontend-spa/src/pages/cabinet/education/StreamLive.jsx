@@ -180,6 +180,14 @@ export default function StreamLive() {
     let connected = false
     let timedOut = false
 
+    // Fetch TURN credentials before setting up P2P — needed for NAT
+    // traversal when the guest is on cellular and the trainer is on Wi-Fi.
+    let turnIceServers
+    try {
+      const tr = await api.post(`/cabinet/education/streams/${stream.id}/turn-credentials/`)
+      turnIceServers = tr.data?.iceServers
+    } catch { /* falls back to default STUN */ }
+
     // 30s timeout: if trainer never sends offer / connection never establishes,
     // cleanly tear down and tell user instead of spinning forever.
     const timeoutId = setTimeout(() => {
@@ -195,6 +203,7 @@ export default function StreamLive() {
     try {
       const session = await startGuestP2P({
         localStream,
+        iceServers: turnIceServers,
         poll:        async () => (await api.get(baseUrl)).data,
         postAnswer:  async (sdp) => { await api.post(baseUrl, { answer_sdp: sdp }) },
         postIce:     async (cand) => { await api.post(baseUrl, { ice: cand }).catch(() => {}) },

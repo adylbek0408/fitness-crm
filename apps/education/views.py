@@ -630,6 +630,50 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         ]
         return Response(data)
 
+    @action(detail=True, methods=['post'], url_path='turn-credentials')
+    def turn_credentials(self, request, pk=None):
+        """Generate short-lived Cloudflare TURN credentials for WebRTC P2P.
+
+        Called by the trainer's browser before establishing the P2P
+        connection with the invited guest. Returns an iceServers array
+        that includes TURN relays — required for NAT traversal between
+        mobile (cellular) and desktop/Wi-Fi participants.
+        """
+        import os, requests as req_lib
+        key_id  = os.environ.get('CF_TURN_KEY_ID', '')
+        key_tok = os.environ.get('CF_TURN_API_TOKEN', '')
+        if not key_id or not key_tok:
+            # Graceful fallback: return only STUN so the UI doesn't break
+            return Response({'iceServers': [
+                {'urls': 'stun:stun.cloudflare.com:3478'},
+                {'urls': 'stun:stun.l.google.com:19302'},
+            ]})
+        try:
+            resp = req_lib.post(
+                f'https://rtc.live.cloudflare.com/v1/turn/keys/{key_id}/credentials/generate-ice-servers',
+                headers={'Authorization': f'Bearer {key_tok}', 'Content-Type': 'application/json'},
+                json={'ttl': 86400},
+                timeout=5,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            # CF returns { "iceServers": { "urls": [...], "username": "...", "credential": "..." } }
+            # Normalise to array form expected by RTCPeerConnection.
+            ice = data.get('iceServers', {})
+            ice_servers = [ice] if isinstance(ice, dict) else ice
+            # Always prepend STUN (cheap, no traffic cost)
+            ice_servers = [
+                {'urls': 'stun:stun.cloudflare.com:3478'},
+                {'urls': 'stun:stun.l.google.com:19302'},
+            ] + ice_servers
+            return Response({'iceServers': ice_servers})
+        except Exception as e:
+            logger.warning('CF TURN credentials failed: %s', e)
+            return Response({'iceServers': [
+                {'urls': 'stun:stun.cloudflare.com:3478'},
+                {'urls': 'stun:stun.l.google.com:19302'},
+            ]})
+
     @action(detail=True, methods=['get'], url_path='cf-status')
     def cf_status(self, request, pk=None):
         """Diagnostic: query CF Stream for actual state of this live input.
