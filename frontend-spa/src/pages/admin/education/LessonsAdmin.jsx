@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import * as tus from 'tus-js-client'
 import {
   Upload, Trash2, Plus, CheckCircle2, Headphones, Play,
   Mic, Square, Video, FileAudio, Search, Users,
@@ -296,10 +297,22 @@ export default function LessonsAdmin() {
       }
 
       if (upload.kind === 'cf-direct') {
-        // CF Stream direct creator upload expects FormData with a 'file' field.
-        const fd = new FormData()
-        fd.append('file', form.file)
-        await xhrUpload(upload.url, 'POST', fd, null, onUploadProgress)
+        // CF Stream URL is TUS-compatible — use tus-js-client for chunked
+        // resumable upload. If connection drops mid-way, upload resumes
+        // from the last successful chunk instead of restarting from zero.
+        await new Promise((resolve, reject) => {
+          const tusUpload = new tus.Upload(form.file, {
+            uploadUrl:   upload.url,          // pre-created TUS URL from backend
+            chunkSize:   50 * 1024 * 1024,    // 50 MB per chunk
+            retryDelays: [0, 1000, 3000, 5000, 10000],
+            onProgress: (loaded, total) => {
+              if (total) onUploadProgress(loaded / total)
+            },
+            onSuccess: resolve,
+            onError:   reject,
+          })
+          tusUpload.start()
+        })
       } else if (upload.kind === 'r2-presigned-put') {
         await xhrUpload(
           upload.url, 'PUT', form.file,
