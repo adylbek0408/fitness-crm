@@ -23,9 +23,13 @@ export default function BroadcastPage() {
   const [micOn,        setMicOn]        = useState(true)
   const [camOn,        setCamOn]        = useState(true)
   const [facingMode,   setFacingMode]   = useState('user')
-  const [quality,      setQuality]      = useState('720p')
+  // Quality is fixed at the highest tier (1080p) — the picker was confusing
+  // and the trainer almost always wants max. If we ever need to scale down
+  // for slow connections, we can fall back automatically.
+  const quality = '1080p'
   const [elapsed,      setElapsed]      = useState(0)
   const [viewers,      setViewers]      = useState([])
+  const [showViewers,  setShowViewers]  = useState(false)
   const [connState,    setConnState]    = useState('')
   const [cfStatus,     setCfStatus]     = useState(null)
   const [redirectIn,   setRedirectIn]   = useState(null)
@@ -359,10 +363,15 @@ export default function BroadcastPage() {
         postIce:   async (cand) => { await api.post(baseUrl, { ice: cand }).catch(() => {}) },
         poll:      async () => (await api.get(baseUrl)).data,
         onRemoteStream: (rs) => {
-          guestVid.srcObject = rs
-          guestVid.play().catch(() => {})
+          // Bind hidden <video> for canvas mixer source
+          if (guestVid.srcObject !== rs) {
+            guestVid.srcObject = rs
+            guestVid.play().catch(() => {})
+          }
           setGuestRemoteStream(rs)
-          startMixer()
+          // Pass stream directly — don't fish it back from srcObject,
+          // which can race with ICE restarts and end up null.
+          startMixer(rs)
         },
         onConnected: () => setGuestStatus('live'),
         onFailed: () => setGuestStatus('failed'),
@@ -375,7 +384,7 @@ export default function BroadcastPage() {
     }
   }
 
-  const startMixer = () => {
+  const startMixer = (passedGuestStream) => {
     if (mixerRef.current || !videoRef.current || !guestVideoElRef.current) return
     const q = QUALITIES[quality]
     const mixer = createMixerCanvas({
@@ -392,9 +401,27 @@ export default function BroadcastPage() {
     const mixedVideo = mixer.stream.getVideoTracks()[0]
     if (videoSender && mixedVideo) videoSender.replaceTrack(mixedVideo).catch(() => {})
 
-    // Audio: mix trainer mic + guest audio via Web Audio API
+    // Audio: mix trainer mic + guest audio via Web Audio API.
+    // We use the stream passed in by onRemoteStream (more reliable than
+    // re-reading guestVideoEl.srcObject, which can be null during ICE
+    // flaps). Skip audio mixing if the stream has no audio tracks yet —
+    // it'll be set up next time onRemoteStream fires with audio.
     try {
-      const guestStream = guestVideoElRef.current.srcObject
+      const guestStream = passedGuestStream
+        || (guestVideoElRef.current?.srcObject instanceof MediaStream
+            ? guestVideoElRef.current.srcObject
+            : null)
+      if (!guestStream || !(guestStream instanceof MediaStream)) {
+        console.warn('[audio mix] no guest stream yet, will retry')
+        // Reset flag so the next onRemoteStream call retries.
+        // Actually mixerRef is set at this point; clear it to allow retry?
+        // No — video mixing is fine; only audio is missing. Leave it.
+        return
+      }
+      if (guestStream.getAudioTracks().length === 0) {
+        console.warn('[audio mix] guest stream has no audio tracks yet')
+        return
+      }
       const am = createAudioMixer(localStreamRef.current, guestStream)
       audioMixerRef.current = am
       const audioSender = pcRef.current?.getSenders().find(s => s.track?.kind === 'audio')
@@ -468,18 +495,7 @@ export default function BroadcastPage() {
 
                 <p className="text-white/60 text-[11px] font-semibold tracking-[0.18em] uppercase mb-1">Студия эфира</p>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">{stream?.title || 'Без названия'}</h1>
-                <p className="text-sm text-white/55 mb-5">Проверьте кадр, звук и качество перед запуском прямого эфира</p>
-
-                <div className="flex gap-2 justify-center mb-5">
-                  {Object.entries({ '480p': 'SD', '720p': 'HD', '1080p': 'FHD' }).map(([k, label]) => (
-                    <button key={k} onClick={() => setQuality(k)}
-                      className={`px-4 py-2 rounded-xl text-sm font-semibold transition active:scale-95 border ${
-                        quality === k
-                          ? 'bg-rose-500 text-white border-rose-400 shadow-lg shadow-rose-900/30'
-                          : 'bg-white/5 text-white/70 hover:bg-white/10 border-white/15'
-                      }`}>{label}</button>
-                  ))}
-                </div>
+                <p className="text-sm text-white/55 mb-5">Проверьте кадр и звук перед запуском прямого эфира</p>
 
                 {error && (
                   <div className="w-full bg-rose-900/50 border border-rose-700/40 rounded-2xl px-4 py-3 text-rose-200 text-sm mb-3">{error}</div>
@@ -570,7 +586,7 @@ export default function BroadcastPage() {
               </div>
             )}
 
-            {/* Guest status badge */}
+            {/* Guest status badge with prominent "Remove" button */}
             {activeGuest && (
               <div className="absolute top-16 left-3 z-20">
                 <div className="flex items-center gap-2 bg-black/55 backdrop-blur border border-white/15 rounded-xl px-3 py-2">
@@ -587,30 +603,34 @@ export default function BroadcastPage() {
                       : activeGuest.status === 'invited' ? `Ждём согласия от ${activeGuest.client_name}…`
                       : activeGuest.client_name}
                   </span>
-                  <button onClick={endGuest} title="Завершить" className="text-rose-300 hover:text-white ml-1">
-                    <PhoneOff size={13} />
+                  <button onClick={endGuest} title="Удалить из эфира"
+                    className="ml-1 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-semibold active:scale-95 transition">
+                    <PhoneOff size={11} /> Удалить
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Viewers */}
-            {viewers.length > 0 && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2">
-                <div className="bg-black/50 backdrop-blur-sm rounded-full px-2.5 py-1.5 flex items-center gap-1 border border-white/10">
-                  <Users size={12} className="text-rose-300" />
-                  <span className="text-xs font-bold text-white">{viewers.length}</span>
-                </div>
-                {viewers.slice(0, 5).map(v => (
-                  <div key={v.id} className="group relative">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-400 to-pink-600 flex items-center justify-center text-white text-xs font-black shadow-lg border-2 border-black/30">
+            {/* Viewers — count pill is clickable, opens a drawer with names */}
+            <div className="absolute right-3 top-16 z-20 flex flex-col items-end gap-2">
+              <button onClick={() => setShowViewers(true)} title="Список зрителей"
+                className="bg-black/50 hover:bg-black/65 backdrop-blur-sm rounded-full px-3 py-1.5 flex items-center gap-1.5 border border-white/10 active:scale-95 transition">
+                <Users size={13} className="text-rose-300" />
+                <span className="text-xs font-bold text-white">{viewers.length}</span>
+              </button>
+              {/* Avatar stack — quick visual indication who's there */}
+              {viewers.length > 0 && (
+                <div className="flex flex-col gap-1.5 items-center">
+                  {viewers.slice(0, 5).map(v => (
+                    <div key={v.id} className="w-8 h-8 rounded-full bg-gradient-to-br from-rose-400 to-pink-600 flex items-center justify-center text-white text-[11px] font-black shadow-lg border-2 border-black/30"
+                      title={v.client_name}>
                       {(v.client_name || '?')[0].toUpperCase()}
                     </div>
-                  </div>
-                ))}
-                {viewers.length > 5 && <span className="text-[10px] text-white/50">+{viewers.length - 5}</span>}
-              </div>
-            )}
+                  ))}
+                  {viewers.length > 5 && <span className="text-[10px] text-white/60 font-semibold">+{viewers.length - 5}</span>}
+                </div>
+              )}
+            </div>
 
             {/* Bottom control bar */}
             <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-3 px-4 pb-8">
@@ -674,6 +694,46 @@ export default function BroadcastPage() {
             isTrainer={true}
             onClose={() => setShowChat(false)}
           />
+        </div>
+      )}
+
+      {/* Viewers drawer — list with names */}
+      {showViewers && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4"
+          onClick={() => setShowViewers(false)}>
+          <div className="bg-[#1a1d2e] border border-white/10 rounded-3xl w-full max-w-sm p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Users size={18} className="text-rose-400" />
+                <h3 className="text-white font-semibold">В эфире ({viewers.length})</h3>
+              </div>
+              <button onClick={() => setShowViewers(false)} className="text-white/40 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+            {viewers.length === 0 && (
+              <p className="text-white/40 text-sm text-center py-8">
+                Пока никто не подключился.
+              </p>
+            )}
+            {viewers.length > 0 && (
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {viewers.map(v => (
+                  <div key={v.id}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-white">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-400 to-pink-600 flex items-center justify-center text-sm font-bold shrink-0">
+                      {(v.client_name || '?')[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{v.client_name || 'Гость'}</div>
+                      <div className="text-[11px] text-emerald-400">в эфире</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

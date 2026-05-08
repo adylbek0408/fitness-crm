@@ -223,15 +223,42 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         </div>
       )}
 
-      {/* Autoplay blocked (iOS policy) — tap anywhere to start */}
+      {/* Autoplay blocked (iOS policy) — tap anywhere to start.
+          Note: this button is INSIDE a user-gesture handler when clicked,
+          which is the only way to convince iOS Safari to actually play. */}
       {needsTap && !hardError && (
         <button
           type="button"
-          className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 cursor-pointer"
+          className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 cursor-pointer z-30"
           onClick={() => {
             const v = videoRef.current
             if (!v) return
-            v.play().then(() => setNeedsTap(false)).catch(() => {})
+            // Hide overlay optimistically so user gets immediate feedback
+            setNeedsTap(false)
+            setLoading(true)
+            // Some iOS versions need a fresh load() before play() inside a
+            // user gesture. If src was set long before, the gesture-token
+            // may be considered "consumed" and play() will fail again.
+            try {
+              if (!v.currentSrc) v.load()
+            } catch {}
+            const tryPlay = () => v.play()
+              .then(() => { setNeedsTap(false); setLoading(false) })
+              .catch(err => {
+                console.warn('[player] tap-play failed:', err?.name || err)
+                // Retry once after a tiny delay — sometimes the manifest
+                // load is still in flight when the gesture fires.
+                setTimeout(() => {
+                  v.play()
+                    .then(() => { setNeedsTap(false); setLoading(false) })
+                    .catch(e2 => {
+                      console.warn('[player] retry-play failed:', e2?.name || e2)
+                      setNeedsTap(true)   // bring overlay back so user can try again
+                      setLoading(false)
+                    })
+                }, 250)
+              })
+            tryPlay()
           }}
         >
           <div className="w-16 h-16 rounded-full bg-white/20 border-2 border-white/60 flex items-center justify-center mb-3">
