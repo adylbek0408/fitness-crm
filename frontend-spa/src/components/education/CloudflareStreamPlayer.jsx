@@ -34,6 +34,8 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     const src = `https://${subdomain}/${uid}/manifest/video.m3u8`
     const canNative = v.canPlayType('application/vnd.apple.mpegurl')
 
+    console.log('[player] init src:', src, 'canNative:', canNative || 'false', 'hlsSupported:', Hls.isSupported())
+
     setLoading(true)
     setHardError(false)
     setNeedsTap(false)
@@ -42,21 +44,28 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     let retryTimer = null
     let hasPlayed  = false   // flips true on first 'playing' event
 
-    const onCanPlay = () => { if (!cleanedUp) setLoading(false) }
+    const onCanPlay = () => {
+      if (!cleanedUp) {
+        console.log('[player] canplay — readyState:', v.readyState)
+        setLoading(false)
+      }
+    }
     const onPlaying = () => {
       if (cleanedUp) return
+      console.log('[player] playing ✓')
       hasPlayed = true
+      // CRITICAL: cancel any pending retry timer.
+      // Without this the timer fires v.load() mid-playback and kills the stream.
+      clearTimeout(retryTimer)
+      retryTimer = null
       setLoading(false)
       setNeedsTap(false)
     }
-    // If the video lands in a paused state BEFORE it ever actually played
-    // (typical iOS Safari autoplay-blocked path — the play() promise may
-    // resolve normally and the video just sits there showing the native
-    // play icon), surface our "tap to start" overlay so the user knows
-    // what to do.
+    // Autoplay-blocked: video has data but is paused before any playing event.
     const onPause = () => {
       if (cleanedUp || hasPlayed) return
       if (v.readyState >= 2) {
+        console.log('[player] paused before first play — showing tap overlay')
         setNeedsTap(true)
         setLoading(false)
       }
@@ -68,27 +77,26 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     v.addEventListener('pause',      onPause)
 
     if (canNative) {
-      // iOS / Safari — native HLS.
-      // For live streams the manifest may not be ready when the user joins,
-      // and the trainer may briefly drop & reconnect. Keep retrying for a
-      // long time (effectively forever for a live session) instead of giving
-      // up after 25 s — the watcher hates a "dead" black box.
+      // ── iOS / Safari / Chrome-Mac — native HLS ─────────────────────────
+      // For live streams the manifest may not be ready when the user joins
+      // (trainer still connecting). Retry aggressively instead of giving up.
       let retries     = 0
-      let ignoreError = false   // suppress error during retry reset
-      // ~50 minutes for live (covers full session); 25 s for VOD (real "missing")
-      const MAX_RETRIES = live ? 1200 : 10
+      let ignoreError = false
+      const MAX_RETRIES = live ? 1200 : 10   // ~50 min live vs 25 s VOD
 
       const handleError = () => {
-        if (cleanedUp || ignoreError) return
+        // Never interrupt once the user has successfully started playback.
+        if (cleanedUp || ignoreError || hasPlayed) return
+        const errCode = v.error?.code ?? '?'
+        console.warn('[player] native HLS error code:', errCode, 'retry:', retries + 1)
         if (retries < MAX_RETRIES) {
           retries++
           ignoreError = true
-          // Backoff: 1.5 s for first 5 tries, then 3 s steady state
           const delay = retries < 5 ? 1500 : 3000
           retryTimer  = setTimeout(() => {
-            if (cleanedUp) return
+            if (cleanedUp || hasPlayed) return   // don't interrupt active playback
             ignoreError = false
-            v.load()   // re-fetch manifest with same src
+            v.load()
           }, delay)
         } else {
           setHardError(true)
@@ -99,11 +107,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       v.addEventListener('error', handleError)
       v.src = src
 
-      // Explicit play() so we can detect autoplay-blocked policy separately
-      // from genuine media errors — and show a friendlier "tap to start" UI
-      // instead of the error screen. On iOS any rejection here means the
-      // user must tap — NotAllowedError is the spec name but Safari has
-      // historically used AbortError, "interrupted by load request" etc.
+      // Attempt autoplay — any rejection means browser policy requires a tap.
       try {
         const p = v.play()
         if (p && typeof p.then === 'function') {
@@ -118,11 +122,11 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         if (!cleanedUp) { setNeedsTap(true); setLoading(false) }
       }
 
-      // Safety net: if 4 s in we still haven't actually started playing,
-      // assume autoplay was silently denied (older iOS, Low-Power Mode, etc.)
-      // and prompt the user instead of leaving them on a black screen.
+      // Safety net: 4 s after init, if we're still paused and haven't played,
+      // silently-blocked autoplay (Low-Power Mode, older iOS, etc.).
       const tapPrompt = setTimeout(() => {
         if (!cleanedUp && !hasPlayed && v.paused) {
+          console.warn('[player] 4 s passed, still paused — showing tap overlay')
           setNeedsTap(true)
           setLoading(false)
         }
@@ -141,6 +145,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       }
 
     } else if (Hls.isSupported()) {
+      // ── hls.js (Chrome, Firefox, etc.) ────────────────────────────────
       const onErr = e => {
         if (!cleanedUp) { setHardError(true); onError?.(e) }
       }
@@ -151,14 +156,18 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         backBufferLength:        live ? 30 : 90,
         maxBufferLength:         live ? 6  : 30,
         liveSyncDurationCount:   3,
-        manifestLoadingMaxRetry: 6,
+        manifestLoadingMaxRetry: live ? 60 : 6,   // keep retrying for live
         levelLoadingMaxRetry:    6,
         fragLoadingMaxRetry:     6,
       })
       hls.loadSource(src)
       hls.attachMedia(v)
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log('[player] hls.js manifest parsed')
+      })
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (data.fatal) {
+          console.warn('[player] hls.js fatal error:', data.type, data.details)
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             setTimeout(() => { try { hls.startLoad() } catch {} }, 1500)
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
@@ -209,9 +218,8 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         className={className}
         autoPlay
         playsInline
-        // Hide native controls until OUR overlay has been resolved:
-        // iOS draws its own grey play button when paused, which competes
-        // visually with the "tap to start" overlay.
+        // Hide native controls while our "tap to start" overlay is active —
+        // otherwise iOS shows a grey play button that visually competes.
         controls={!needsTap}
         controlsList="nodownload noremoteplayback"
         disablePictureInPicture={false}
@@ -223,42 +231,41 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         </div>
       )}
 
-      {/* Autoplay blocked (iOS policy) — tap anywhere to start.
-          Note: this button is INSIDE a user-gesture handler when clicked,
-          which is the only way to convince iOS Safari to actually play. */}
+      {/* ── Tap-to-start overlay ─────────────────────────────────────── */}
       {needsTap && !hardError && (
         <button
           type="button"
-          className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 cursor-pointer z-30"
+          // z-40 — above watermark (z-30) so click always reaches this button
+          className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 cursor-pointer z-40"
           onClick={() => {
             const v = videoRef.current
             if (!v) return
-            // Hide overlay optimistically so user gets immediate feedback
+            console.log('[player] tap — readyState:', v.readyState,
+              'error:', v.error?.code ?? null, 'src:', v.currentSrc?.slice(-40))
+            // Optimistically hide overlay so the user sees instant feedback.
             setNeedsTap(false)
             setLoading(true)
-            // Some iOS versions need a fresh load() before play() inside a
-            // user gesture. If src was set long before, the gesture-token
-            // may be considered "consumed" and play() will fail again.
-            try {
-              if (!v.currentSrc) v.load()
-            } catch {}
-            const tryPlay = () => v.play()
-              .then(() => { setNeedsTap(false); setLoading(false) })
-              .catch(err => {
-                console.warn('[player] tap-play failed:', err?.name || err)
-                // Retry once after a tiny delay — sometimes the manifest
-                // load is still in flight when the gesture fires.
-                setTimeout(() => {
-                  v.play()
-                    .then(() => { setNeedsTap(false); setLoading(false) })
-                    .catch(e2 => {
-                      console.warn('[player] retry-play failed:', e2?.name || e2)
-                      setNeedsTap(true)   // bring overlay back so user can try again
-                      setLoading(false)
-                    })
-                }, 250)
+            // If the video element is in an error state (e.g. manifest was
+            // temporarily unavailable), reset it before calling play().
+            // DO NOT load() if video is healthy — it would restart buffering.
+            if (v.error || !v.currentSrc) {
+              try { v.load() } catch {}
+            }
+            // MUST call play() synchronously here — the browser gesture token
+            // is consumed by the FIRST async operation (await / setTimeout).
+            v.play()
+              .then(() => {
+                console.log('[player] tap-play succeeded')
+                setNeedsTap(false)
+                setLoading(false)
               })
-            tryPlay()
+              .catch(err => {
+                console.warn('[player] tap-play failed:', err?.name, err?.message)
+                // Re-show overlay so the user can tap again.
+                // DO NOT retry in setTimeout — that loses the gesture token on iOS.
+                setNeedsTap(true)
+                setLoading(false)
+              })
           }}
         >
           <div className="w-16 h-16 rounded-full bg-white/20 border-2 border-white/60 flex items-center justify-center mb-3">
@@ -271,7 +278,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       )}
 
       {hardError && (
-        <div className="absolute inset-0 flex items-center justify-center text-center px-6 bg-black/85 z-20">
+        <div className="absolute inset-0 flex items-center justify-center text-center px-6 bg-black/85 z-40">
           <div className="max-w-xs flex flex-col items-center gap-3">
             <p className="text-white text-sm font-semibold">Эфир временно недоступен</p>
             <p className="text-white/60 text-xs">Возможно тренер ещё подключается. Попробуйте ещё раз.</p>
