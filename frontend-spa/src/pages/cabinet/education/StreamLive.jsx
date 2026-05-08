@@ -381,6 +381,30 @@ export default function StreamLive() {
             </span>
           </div>
 
+          {/* On-stage controls — inline, between title and chat (mobile + desktop) */}
+          {onStage && (
+            <div className="shrink-0 px-3 py-2 border-b border-white/10 bg-black/70 flex items-center justify-center gap-2">
+              <button onClick={toggleStageMic}
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ${stageMicOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
+                {stageMicOn ? <Mic size={15} /> : <MicOff size={15} />}
+              </button>
+              <button onClick={toggleStageCam}
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ${stageCamOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
+                {stageCamOn ? <Video size={15} /> : <VideoOff size={15} />}
+              </button>
+              <div className="px-2 flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${stageState === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'}`} />
+                <span className="text-[11px] text-white/85 font-medium">
+                  {stageState === 'live' ? 'На сцене' : stageState === 'connecting' ? 'Соединение…' : 'Подождите'}
+                </span>
+              </div>
+              <button onClick={() => leaveStage(true)}
+                className="flex items-center gap-1 ml-auto px-3 h-9 rounded-full bg-rose-600 text-white text-xs font-semibold active:scale-95">
+                <PhoneOff size={12} /> Покинуть
+              </button>
+            </div>
+          )}
+
           {/* Mobile chat — always visible, fills remaining space, hides on desktop */}
           <div className="flex-1 min-h-0 flex flex-col md:hidden">
             <StreamChat streamId={stream.id} isTrainer={false} />
@@ -431,31 +455,7 @@ export default function StreamLive() {
           </div>
         )}
 
-        {/* On-stage controls */}
-        {onStage && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-            <div className="bg-black/75 backdrop-blur-xl border border-white/15 rounded-full px-3 py-2 flex items-center gap-2 shadow-2xl">
-              <button onClick={toggleStageMic}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${stageMicOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
-                {stageMicOn ? <Mic size={16} /> : <MicOff size={16} />}
-              </button>
-              <button onClick={toggleStageCam}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${stageCamOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
-                {stageCamOn ? <Video size={16} /> : <VideoOff size={16} />}
-              </button>
-              <div className="px-2 flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${stageState === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'}`} />
-                <span className="text-[11px] text-white/85 font-medium">
-                  {stageState === 'live' ? 'На сцене' : stageState === 'connecting' ? 'Соединение…' : 'Подождите'}
-                </span>
-              </div>
-              <button onClick={() => leaveStage(true)}
-                className="flex items-center gap-1.5 ml-1 pl-3 pr-3 h-10 rounded-full bg-rose-600 text-white text-xs font-semibold active:scale-95">
-                <PhoneOff size={13} /> Покинуть
-              </button>
-            </div>
-          </div>
-        )}
+        {/* On-stage controls moved inline above the chat — see above */}
 
         {/* Viewers drawer */}
         {showViewers && (

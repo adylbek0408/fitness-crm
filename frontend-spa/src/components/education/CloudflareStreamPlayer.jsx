@@ -48,24 +48,27 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
 
     if (canNative) {
       // iOS / Safari — native HLS.
-      // Retry on error: manifest often isn't ready the instant the stream
-      // status flips to 'live', and LL-HLS parsing can hiccup on some
-      // WebKit versions. hls.js handles this automatically; here we add
-      // the same resilience for the native path.
+      // For live streams the manifest may not be ready when the user joins,
+      // and the trainer may briefly drop & reconnect. Keep retrying for a
+      // long time (effectively forever for a live session) instead of giving
+      // up after 25 s — the watcher hates a "dead" black box.
       let retries     = 0
       let ignoreError = false   // suppress error during retry reset
-      const MAX_RETRIES = 10
+      // ~50 minutes for live (covers full session); 25 s for VOD (real "missing")
+      const MAX_RETRIES = live ? 1200 : 10
 
       const handleError = () => {
         if (cleanedUp || ignoreError) return
         if (retries < MAX_RETRIES) {
           retries++
           ignoreError = true
+          // Backoff: 1.5 s for first 5 tries, then 3 s steady state
+          const delay = retries < 5 ? 1500 : 3000
           retryTimer  = setTimeout(() => {
             if (cleanedUp) return
             ignoreError = false
             v.load()   // re-fetch manifest with same src
-          }, 2500)
+          }, delay)
         } else {
           setHardError(true)
           onError?.(new Error('stream unavailable'))
@@ -195,10 +198,24 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       )}
 
       {hardError && (
-        <div className="absolute inset-0 flex items-center justify-center text-center px-6 bg-black/80">
-          <div className="max-w-xs">
-            <p className="text-white text-sm font-semibold mb-1">Не удалось подключиться к эфиру</p>
-            <p className="text-white/50 text-xs">Проверьте интернет и обновите страницу.</p>
+        <div className="absolute inset-0 flex items-center justify-center text-center px-6 bg-black/85 z-20">
+          <div className="max-w-xs flex flex-col items-center gap-3">
+            <p className="text-white text-sm font-semibold">Эфир временно недоступен</p>
+            <p className="text-white/60 text-xs">Возможно тренер ещё подключается. Попробуйте ещё раз.</p>
+            <button
+              type="button"
+              onClick={() => {
+                const v = videoRef.current
+                if (!v) return
+                setHardError(false)
+                setLoading(true)
+                try { v.load() } catch {}
+                v.play().catch(() => {})
+              }}
+              className="mt-1 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white text-sm font-semibold transition"
+            >
+              Повторить попытку
+            </button>
           </div>
         </div>
       )}

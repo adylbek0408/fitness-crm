@@ -159,12 +159,12 @@ export default function BroadcastPage() {
   }, [status])
 
   // Bind guest remote stream to PIP <video> whenever either arrives.
-  // onConnected and onRemoteStream can fire in either order, so we use both
-  // guestStatus and guestRemoteStream as deps — whichever comes last triggers
-  // the final bind.
+  // The PIP <video> uses a ref-callback that binds immediately when mounted,
+  // but we keep this effect as a safety net — it re-binds if the stream
+  // arrives AFTER the video element is already mounted.
   useEffect(() => {
     const v = guestPipVideoRef.current
-    if (!v || !guestRemoteStream || guestStatus !== 'live') return
+    if (!v || !guestRemoteStream) return
     if (v.srcObject !== guestRemoteStream) {
       v.srcObject = guestRemoteStream
       v.play().catch(() => {})
@@ -515,19 +515,31 @@ export default function BroadcastPage() {
               </div>
             )}
 
-            {/* PIP guest preview overlay (matches what viewers see) */}
-            {guestStatus === 'live' && (
+            {/* PIP guest preview overlay — visible during connecting too,
+                so trainer always sees that something is happening. */}
+            {(guestStatus === 'live' || guestStatus === 'connecting') && (
               <div className="absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80"
                 style={{
                   bottom: '6.25%', right: '2.5%',
                   width: '24%', aspectRatio: '16/9',
-                  pointerEvents: 'none',
                 }}>
                 <video
-                  ref={guestPipVideoRef}
+                  ref={el => {
+                    guestPipVideoRef.current = el
+                    if (el && guestRemoteStream && el.srcObject !== guestRemoteStream) {
+                      el.srcObject = guestRemoteStream
+                      el.play().catch(() => {})
+                    }
+                  }}
                   autoPlay muted playsInline
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover bg-black"
                 />
+                {guestStatus === 'connecting' && !guestRemoteStream && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 text-white text-[10px] gap-1">
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Подключаем…</span>
+                  </div>
+                )}
               </div>
             )}
 
