@@ -27,12 +27,6 @@ export default function StreamLive() {
   const [error,        setError]        = useState('')
   const [accessDenied, setAccessDenied] = useState('')
   const [showViewers,  setShowViewers]  = useState(false)
-  // Chat: на десктопе по дефолту открыт (sidebar справа), на мобиле — закрыт
-  // (открывается bottom-sheet'ом по тапу), как в YouTube Live.
-  const [isWide] = useState(
-    typeof window !== 'undefined' && window.innerWidth >= 768
-  )
-  const [showChat,     setShowChat]     = useState(isWide)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   // Guest stage state
@@ -271,6 +265,21 @@ export default function StreamLive() {
     }
   }, [])
 
+  // Bind local stream → preview <video> after on-stage element mounts.
+  // ref-callback alone isn't enough on iOS — also ensure explicit play().
+  useEffect(() => {
+    if (!onStage) return
+    const v = stagePreviewRef.current
+    const s = stageLocalRef.current
+    if (!v || !s) return
+    if (v.srcObject !== s) v.srcObject = s
+    const tryPlay = () => v.play().catch(e => console.warn('[guest preview] play failed:', e))
+    tryPlay()
+    // Some iOS Safari versions need a second nudge after metadata loads
+    v.addEventListener('loadedmetadata', tryPlay, { once: true })
+    return () => v.removeEventListener('loadedmetadata', tryPlay)
+  }, [onStage])
+
   // ── Fullscreen ────────────────────────────────────────────────────────────
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(
@@ -307,16 +316,14 @@ export default function StreamLive() {
   // ── Live: YouTube-style layout ───────────────────────────────────────────
   if (isLive) {
     return (
-      <div className="bg-[#06080f] text-white flex flex-col md:flex-row"
-           style={{ height: '100dvh', overflow: 'hidden' }}>
+      <div className="bg-[#06080f] text-white flex flex-col md:flex-row fixed inset-0 overflow-hidden">
 
         {/* ── Left/Main column ──────────────────────────────────────────── */}
-        <div className="flex flex-col flex-1 min-h-0">
+        <div className="flex flex-col flex-1 min-h-0 min-w-0">
 
           {/* Video — 16:9 on mobile, fills height on desktop */}
           <div ref={playerShellRef} data-protected-root
-               className="relative w-full bg-black shrink-0 md:flex-1 md:min-h-0"
-               style={isWide ? undefined : { aspectRatio: '16 / 9' }}>
+               className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto">
             <CloudflareStreamPlayer
               ref={playerRef}
               uid={stream.cf_playback_id}
@@ -342,9 +349,10 @@ export default function StreamLive() {
                 className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 border border-white/10 backdrop-blur text-[12px] font-medium active:bg-black/60">
                 <Users size={14} /> {viewers.length}
               </button>
+              {/* Fullscreen — desktop only; on iOS Safari нативные video-контролы дают свой fullscreen */}
               <button type="button" onClick={toggleFullscreen}
                 aria-label={isFullscreen ? 'Свернуть' : 'Во весь экран'}
-                className="pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
+                className="hidden md:inline-flex pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
                 {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
               </button>
             </div>
@@ -352,10 +360,7 @@ export default function StreamLive() {
             {/* PIP self-preview while on stage */}
             {onStage && (
               <div className="absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-2xl bg-black z-30">
-                <video ref={el => {
-                  stagePreviewRef.current = el
-                  if (el && stageLocalRef.current) el.srcObject = stageLocalRef.current
-                }} autoPlay muted playsInline
+                <video ref={stagePreviewRef} autoPlay muted playsInline
                   className="w-full h-full object-cover"
                   style={{ transform: 'scaleX(-1)' }} />
                 <div className="absolute top-1 left-1 right-1 flex justify-between items-center">
@@ -368,13 +373,11 @@ export default function StreamLive() {
             )}
           </div>
 
-          {/* Title strip */}
-          <div className="px-4 py-2.5 border-b border-white/10 bg-black/60 shrink-0 flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-[14px] font-semibold leading-tight truncate">{stream.title}</h2>
-            </div>
+          {/* Title strip — compact */}
+          <div className="px-3 py-2 border-b border-white/10 bg-black/60 shrink-0 flex items-center gap-2">
+            <h2 className="text-[13px] font-semibold leading-tight truncate flex-1 min-w-0">{stream.title}</h2>
             <span className="flex items-center gap-1 text-[10px] text-white/50 shrink-0">
-              <Shield size={10} /> Запись защищена
+              <Shield size={10} /> Защищено
             </span>
           </div>
 
@@ -385,8 +388,7 @@ export default function StreamLive() {
         </div>
 
         {/* ── Desktop sidebar chat — hidden on mobile ───────────────────── */}
-        <aside className="hidden md:flex w-80 shrink-0 flex-col border-l border-white/10"
-               style={{ height: '100dvh' }}>
+        <aside className="hidden md:flex w-80 shrink-0 flex-col border-l border-white/10 h-full">
           <StreamChat streamId={stream.id} isTrainer={false} />
         </aside>
 
