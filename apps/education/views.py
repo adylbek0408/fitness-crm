@@ -1005,11 +1005,15 @@ class CFStreamWebhookView(APIView):
         try:
             ok = CloudflareStreamService.verify_webhook_signature(body, sig)
         except ImproperlyConfigured:
+            logger.error('CF webhook: CF_STREAM_WEBHOOK_SECRET not set — rejecting')
             return Response({'detail': 'Webhook secret not configured.'},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
         if not ok:
+            logger.warning('CF webhook: invalid signature (sig=%s)', sig[:40] if sig else 'empty')
             return Response({'detail': 'Invalid signature.'},
                             status=status.HTTP_401_UNAUTHORIZED)
+
+        logger.info('CF webhook received: body_len=%d sig_present=%s', len(body), bool(sig))
 
         try:
             payload = request.data or {}
@@ -1019,6 +1023,7 @@ class CFStreamWebhookView(APIView):
         event_type = (payload.get('eventType')
                       or payload.get('event')
                       or '').lower()
+        logger.info('CF webhook event=%s keys=%s', event_type, list(payload.keys()))
         # Cloudflare's events sometimes only put info in `meta` / fields,
         # so handle two common shapes.
 
@@ -1040,8 +1045,15 @@ class CFStreamWebhookView(APIView):
             or payload.get('video_uid')
             or ''
         )
-        duration = payload.get('duration') or 0
-        thumbnail = payload.get('thumbnail') or ''
+        # For live_input.recording.ready, duration/thumbnail live inside
+        # payload["video"]; for video.ready they're at the top level.
+        _video_raw_dict = _video_raw if isinstance(_video_raw, dict) else {}
+        duration = (payload.get('duration')
+                    or _video_raw_dict.get('duration')
+                    or 0)
+        thumbnail = (payload.get('thumbnail')
+                     or _video_raw_dict.get('thumbnail')
+                     or '')
 
         # Auto-archive: if we know which live input produced this video,
         # attach the lesson to that LiveStream.
