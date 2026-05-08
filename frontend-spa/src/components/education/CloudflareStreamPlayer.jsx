@@ -136,12 +136,16 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         if (!cleanedUp) { setNeedsTap(true); setLoading(false) }
       }
 
-      // Safety net: 4 s after init, if we're still paused and haven't played,
-      // silently-blocked autoplay (Low-Power Mode, older iOS, etc.).
+      // Safety net: 4 s after init, if video has data but is still paused
+      // → silently-blocked autoplay (Low-Power Mode, older iOS, etc.)
+      // Only show tap overlay when there is actual video data (readyState ≥ 2).
+      // If readyState is 0 (stream not started yet) we just clear the spinner.
       const tapPrompt = setTimeout(() => {
         if (!cleanedUp && !hasPlayed && v.paused) {
-          console.warn('[player] 4 s passed, still paused — showing tap overlay')
-          setNeedsTap(true)
+          if (v.readyState >= 2) {
+            console.warn('[player] 4 s passed, data ready, still paused — showing tap overlay')
+            setNeedsTap(true)
+          }
           setLoading(false)
         }
       }, 4000)
@@ -285,26 +289,12 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             console.log('[player] tap — readyState:', v.readyState,
               'error:', v.error?.code ?? null, 'src:', v.currentSrc?.slice(-40))
 
-            // If stream hasn't loaded yet (trainer hasn't started broadcasting),
-            // show spinner and wait — don't call play() with nothing to play.
-            if (v.readyState === 0 && !v.error) {
-              console.log('[player] tap — stream not loaded yet, showing spinner')
-              setNeedsTap(false)
-              setLoading(true)
-              return
-            }
-
-            // Optimistically hide overlay so the user sees instant feedback.
+            // CRITICAL iOS rule: call v.play() FIRST (synchronously, in the gesture
+            // handler) — this unlocks the media element even if it fails.
+            // Only call v.load() AFTER play() finishes (in .catch), never before.
+            // Calling v.load() before v.play() causes AbortError on Safari/iOS.
             setNeedsTap(false)
             setLoading(true)
-            // If the video element is in an error state (e.g. manifest was
-            // temporarily unavailable), reset it before calling play().
-            // DO NOT load() if video is healthy — it would restart buffering.
-            if (v.error || !v.currentSrc) {
-              try { v.load() } catch {}
-            }
-            // MUST call play() synchronously here — the browser gesture token
-            // is consumed by the FIRST async operation (await / setTimeout).
             v.play()
               .then(() => {
                 console.log('[player] tap-play succeeded')
@@ -313,10 +303,20 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
               })
               .catch(err => {
                 console.warn('[player] tap-play failed:', err?.name, err?.message)
-                // Re-show overlay so the user can tap again.
-                // DO NOT retry in setTimeout — that loses the gesture token on iOS.
-                setNeedsTap(true)
-                setLoading(false)
+                if (err?.name === 'NotAllowedError') {
+                  // Browser still requires a gesture — show overlay again.
+                  setNeedsTap(true)
+                  setLoading(false)
+                } else {
+                  // NotSupportedError / AbortError — stream not loaded yet.
+                  // Reset the video so the periodic retry can reload the source.
+                  // Element is now "gesture-unlocked" for future auto-play attempts.
+                  if (!cleanedUp) {
+                    try { v.load() } catch {}   // re-trigger manifest load
+                    setNeedsTap(false)
+                    setLoading(true)            // keep spinner while we wait for stream
+                  }
+                }
               })
           }}
         >
