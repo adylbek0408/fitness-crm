@@ -40,13 +40,15 @@ export default function BroadcastPage() {
   const [showInviteModal, setShowInviteModal]  = useState(false)
   const [activeViewers,   setActiveViewers]    = useState([])
   const [inviteLoading,   setInviteLoading]    = useState(false)
-  const [activeGuest,     setActiveGuest]      = useState(null)
-  const [guestStatus,     setGuestStatus]      = useState('') // '' | 'connecting' | 'live' | 'failed'
+  const [activeGuest,       setActiveGuest]       = useState(null)
+  const [guestStatus,       setGuestStatus]       = useState('') // '' | 'connecting' | 'live' | 'failed'
+  const [guestRemoteStream, setGuestRemoteStream] = useState(null)
   const guestPollRef     = useRef(null)
   const guestP2PRef      = useRef(null)         // { pc, remoteStream, close }
   const mixerRef         = useRef(null)         // { canvas, stream, stop }
   const audioMixerRef    = useRef(null)         // { audioCtx, mixedTrack, close }
   const guestVideoElRef  = useRef(null)         // hidden <video> for received guest stream
+  const guestPipVideoRef = useRef(null)         // visible PIP <video> in trainer preview
 
   const videoRef          = useRef(null)
   const pcRef             = useRef(null)
@@ -155,6 +157,19 @@ export default function BroadcastPage() {
     const h = e => { e.preventDefault(); e.returnValue = 'Эфир идёт — если уйти, он завершится.'; return e.returnValue }
     window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h)
   }, [status])
+
+  // Bind guest remote stream to PIP <video> whenever either arrives.
+  // onConnected and onRemoteStream can fire in either order, so we use both
+  // guestStatus and guestRemoteStream as deps — whichever comes last triggers
+  // the final bind.
+  useEffect(() => {
+    const v = guestPipVideoRef.current
+    if (!v || !guestRemoteStream || guestStatus !== 'live') return
+    if (v.srcObject !== guestRemoteStream) {
+      v.srcObject = guestRemoteStream
+      v.play().catch(() => {})
+    }
+  }, [guestRemoteStream, guestStatus])
 
   // ── Guest list polling (admin sees status changes) ────────────────────────
 
@@ -346,7 +361,7 @@ export default function BroadcastPage() {
         onRemoteStream: (rs) => {
           guestVid.srcObject = rs
           guestVid.play().catch(() => {})
-          // Wait for trainer's video to be ready, then start mixer
+          setGuestRemoteStream(rs)
           startMixer()
         },
         onConnected: () => setGuestStatus('live'),
@@ -389,6 +404,7 @@ export default function BroadcastPage() {
 
   const cleanupGuest = () => {
     setGuestStatus('')
+    setGuestRemoteStream(null)
     // Restore original camera + mic tracks on WHIP sender
     if (pcRef.current && localStreamRef.current) {
       const camTrack = localStreamRef.current.getVideoTracks()[0]
@@ -500,7 +516,7 @@ export default function BroadcastPage() {
             )}
 
             {/* PIP guest preview overlay (matches what viewers see) */}
-            {guestStatus === 'live' && guestVideoElRef.current && (
+            {guestStatus === 'live' && (
               <div className="absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80"
                 style={{
                   bottom: '6.25%', right: '2.5%',
@@ -508,11 +524,7 @@ export default function BroadcastPage() {
                   pointerEvents: 'none',
                 }}>
                 <video
-                  ref={el => {
-                    if (el && guestVideoElRef.current && el.srcObject !== guestVideoElRef.current.srcObject) {
-                      el.srcObject = guestVideoElRef.current.srcObject
-                    }
-                  }}
+                  ref={guestPipVideoRef}
                   autoPlay muted playsInline
                   className="w-full h-full object-cover"
                 />
