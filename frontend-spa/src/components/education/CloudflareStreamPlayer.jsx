@@ -49,9 +49,19 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     let hasPlayed  = false   // flips true on first 'playing' event
 
     const onCanPlay = () => {
-      if (!cleanedUp) {
-        console.log('[player] canplay — readyState:', v.readyState)
-        setLoading(false)
+      if (cleanedUp) return
+      console.log('[player] canplay — readyState:', v.readyState)
+      setLoading(false)
+      // If data arrived but we've never played (stream came online while
+      // spinner was showing), nudge the browser to autoplay.
+      if (!hasPlayed) {
+        v.play().catch(err => {
+          if (!cleanedUp) {
+            console.warn('[player] canplay-play blocked:', err?.name)
+            setNeedsTap(true)
+            setLoading(false)
+          }
+        })
       }
     }
     const onPlaying = () => {
@@ -150,51 +160,75 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
 
     } else if (Hls.isSupported()) {
       // ── hls.js (Chrome, Firefox, etc.) ────────────────────────────────
-      const onErr = e => {
-        if (!cleanedUp) { setHardError(true); onError?.(e) }
-      }
-      v.addEventListener('error', onErr)
-
-      const hls = new Hls({
+      // After a FATAL error hls.startLoad() does nothing — the instance is
+      // dead. The only way to retry is to destroy it and create a fresh one.
+      let netFatalCount = 0
+      const HLS_CFG = {
         lowLatencyMode:          live,
         backBufferLength:        live ? 30 : 90,
         maxBufferLength:         live ? 6  : 30,
         liveSyncDurationCount:   3,
-        manifestLoadingMaxRetry: live ? 60 : 6,   // keep retrying for live
-        levelLoadingMaxRetry:    6,
-        fragLoadingMaxRetry:     6,
-      })
-      hls.loadSource(src)
-      hls.attachMedia(v)
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log('[player] hls.js manifest parsed — readyState:', v.readyState)
-        // Play will be attempted by the autoPlay attribute + onCanPlay/onPause handlers.
-        // Chrome may silently block autoPlay; the onPause handler shows the tap overlay.
-      })
-      hls.on(Hls.Events.ERROR, (_evt, data) => {
-        if (data.fatal) {
-          console.warn('[player] hls.js fatal error:', data.type, data.details)
+        // Per-request retries before escalating to FATAL:
+        manifestLoadingMaxRetry: 4,
+        manifestLoadingRetryDelay: 1500,
+        levelLoadingMaxRetry:    4,
+        fragLoadingMaxRetry:     4,
+      }
+
+      const createHlsInstance = () => {
+        if (cleanedUp) return
+        const h = new Hls(HLS_CFG)
+        hlsRef.current = h
+        h.loadSource(src)
+        h.attachMedia(v)
+
+        h.on(Hls.Events.MANIFEST_PARSED, () => {
+          netFatalCount = 0   // reset on success
+          console.log('[player] hls.js manifest parsed — readyState:', v.readyState)
+        })
+
+        h.on(Hls.Events.ERROR, (_evt, data) => {
+          if (!data.fatal) return
+          console.warn('[player] hls.js fatal:', data.type, data.details, '— attempt', netFatalCount + 1)
+
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            // For live streams keep retrying; for VOD show error after a few attempts
-            console.log('[player] hls.js network error — retrying in 3s')
-            setTimeout(() => { try { hls.startLoad() } catch {} }, 3000)
+            netFatalCount++
+            // For live: never give up — manifest may appear once trainer starts.
+            // For VOD: give up after 3 consecutive fatal network errors.
+            if (live || netFatalCount <= 3) {
+              const delay = Math.min(3000 * netFatalCount, 15000)
+              console.log(`[player] hls.js destroying + recreating in ${delay}ms`)
+              retryTimer = setTimeout(() => {
+                if (cleanedUp || hasPlayed) return
+                try { h.destroy() } catch {}
+                createHlsInstance()
+              }, delay)
+            } else {
+              if (!cleanedUp) setHardError(true)
+              onError?.(data)
+            }
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            try { hls.recoverMediaError() } catch { if (!cleanedUp) setHardError(true) }
+            try {
+              h.recoverMediaError()
+            } catch {
+              if (!cleanedUp) setHardError(true)
+            }
           } else {
             if (!cleanedUp) setHardError(true)
             onError?.(data)
           }
-        }
-      })
-      hlsRef.current = hls
+        })
+      }
+
+      createHlsInstance()
 
       return () => {
         cleanedUp = true
+        clearTimeout(retryTimer)
         v.removeEventListener('canplay',    onCanPlay)
         v.removeEventListener('loadeddata', onCanPlay)
         v.removeEventListener('playing',    onPlaying)
         v.removeEventListener('pause',      onPause)
-        v.removeEventListener('error',      onErr)
         try { hlsRef.current?.destroy() } catch {}
         hlsRef.current = null
       }
