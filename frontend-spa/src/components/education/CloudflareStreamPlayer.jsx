@@ -32,9 +32,13 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     if (!v) return
 
     const src = `https://${subdomain}/${uid}/manifest/video.m3u8`
-    const canNative = v.canPlayType('application/vnd.apple.mpegurl')
+    // Prefer hls.js whenever MSE is available (Chrome, Firefox, Edge).
+    // IMPORTANT: Chrome on macOS returns 'maybe' for canPlayType('application/vnd.apple.mpegurl')
+    // but cannot actually play HLS natively — it has MSE/hls.js support instead.
+    // Only fall back to native HLS when hls.js is NOT supported (Safari, iOS).
+    const canNative = !Hls.isSupported() && !!v.canPlayType('application/vnd.apple.mpegurl')
 
-    console.log('[player] init src:', src, 'canNative:', canNative || 'false', 'hlsSupported:', Hls.isSupported())
+    console.log('[player] init src:', src, 'canNative:', canNative, 'hlsSupported:', Hls.isSupported())
 
     setLoading(true)
     setHardError(false)
@@ -163,13 +167,17 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       hls.loadSource(src)
       hls.attachMedia(v)
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log('[player] hls.js manifest parsed')
+        console.log('[player] hls.js manifest parsed — readyState:', v.readyState)
+        // Play will be attempted by the autoPlay attribute + onCanPlay/onPause handlers.
+        // Chrome may silently block autoPlay; the onPause handler shows the tap overlay.
       })
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (data.fatal) {
           console.warn('[player] hls.js fatal error:', data.type, data.details)
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            setTimeout(() => { try { hls.startLoad() } catch {} }, 1500)
+            // For live streams keep retrying; for VOD show error after a few attempts
+            console.log('[player] hls.js network error — retrying in 3s')
+            setTimeout(() => { try { hls.startLoad() } catch {} }, 3000)
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             try { hls.recoverMediaError() } catch { if (!cleanedUp) setHardError(true) }
           } else {
@@ -242,6 +250,16 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             if (!v) return
             console.log('[player] tap — readyState:', v.readyState,
               'error:', v.error?.code ?? null, 'src:', v.currentSrc?.slice(-40))
+
+            // If stream hasn't loaded yet (trainer hasn't started broadcasting),
+            // show spinner and wait — don't call play() with nothing to play.
+            if (v.readyState === 0 && !v.error) {
+              console.log('[player] tap — stream not loaded yet, showing spinner')
+              setNeedsTap(false)
+              setLoading(true)
+              return
+            }
+
             // Optimistically hide overlay so the user sees instant feedback.
             setNeedsTap(false)
             setLoading(true)
