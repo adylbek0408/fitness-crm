@@ -238,6 +238,24 @@ export default function LessonsAdmin() {
     return `${m}:${String(s).padStart(2, '0')}`
   }
 
+  // ── XHR upload with real progress ────────────────────────────────────────
+  const xhrUpload = (url, method, body, headers, onProgress) =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open(method, url)
+      if (headers) Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v))
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
+      }
+      xhr.onload  = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(xhr)
+        else reject(new Error(`Upload ${xhr.status}: ${xhr.responseText.slice(0, 200)}`))
+      }
+      xhr.onerror   = () => reject(new Error('Ошибка сети при загрузке'))
+      xhr.ontimeout = () => reject(new Error('Таймаут загрузки'))
+      xhr.send(body)
+    })
+
   // ── Upload lesson ────────────────────────────────────────────────────────
   const handleUpload = async () => {
     if (!form.title.trim()) {
@@ -272,26 +290,22 @@ export default function LessonsAdmin() {
         ? captureVideoFrame(form.file)
         : Promise.resolve(thumbnailBlob)
 
+      const onUploadProgress = ratio => {
+        // 15% (init done) → 72% (upload done), leaves 3% for finalize
+        setProgress(15 + Math.round(ratio * 57))
+      }
+
       if (upload.kind === 'cf-direct') {
         // CF Stream direct creator upload expects FormData with a 'file' field.
-        // Sending raw binary with Content-Type: video/mp4 causes HTTP 400.
         const fd = new FormData()
         fd.append('file', form.file)
-        const r = await fetch(upload.url, {
-          method: 'POST',
-          body: fd,
-        })
-        if (!r.ok) {
-          const errText = await r.text().catch(() => '')
-          throw new Error('Cloudflare Stream: ' + r.status + (errText ? ' — ' + errText.slice(0, 200) : ''))
-        }
+        await xhrUpload(upload.url, 'POST', fd, null, onUploadProgress)
       } else if (upload.kind === 'r2-presigned-put') {
-        const r = await fetch(upload.url, {
-          method: 'PUT',
-          headers: { 'Content-Type': upload.content_type },
-          body: form.file,
-        })
-        if (!r.ok) throw new Error('R2: ' + r.status)
+        await xhrUpload(
+          upload.url, 'PUT', form.file,
+          { 'Content-Type': upload.content_type },
+          onUploadProgress,
+        )
       }
 
       setProgress(75)
@@ -1247,15 +1261,27 @@ function UploadModal({
           {/* Progress bar */}
           {progress > 0 && (
             <div className="space-y-1">
+              <div className="flex justify-between text-xs text-gray-500 mb-0.5">
+                <span>
+                  {progress < 15  ? 'Подготовка…'
+                  : progress < 75 ? `Загрузка файла — ${progress}%`
+                  : progress < 95 ? 'Финализация…'
+                  : progress < 100 ? 'Загрузка превью…'
+                  : '✓ Готово!'}
+                </span>
+                <span>{progress}%</span>
+              </div>
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-rose-500 to-pink-500 transition-all duration-300"
+                  className="h-full bg-gradient-to-r from-rose-500 to-pink-500 transition-all duration-200"
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <p className="text-xs text-gray-500 text-center">
-                {progress < 100 ? `Загрузка ${progress}%` : 'Готово!'}
-              </p>
+              {progress >= 15 && progress < 75 && form?.file && (
+                <p className="text-xs text-gray-400 text-center">
+                  {(form.file.size / 1024 / 1024).toFixed(1)} МБ → Cloudflare
+                </p>
+              )}
             </div>
           )}
 
