@@ -205,11 +205,21 @@ export async function startTrainerP2P({
   // Send local tracks to guest
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
-  // Receive guest tracks
+  // Receive guest tracks. We must use BOTH e.track and e.streams[0] —
+  // some browsers (notably Safari on iOS) fire 'track' with empty `streams`
+  // array, and we'd lose the track. Notify on every event so the consumer
+  // re-binds the latest stream to its <video> element.
   const remoteStream = new MediaStream()
   pc.addEventListener('track', (e) => {
-    e.streams[0]?.getTracks().forEach(t => remoteStream.addTrack(t))
-    if (remoteStream.getTracks().length === 1) onRemoteStream?.(remoteStream)
+    console.log('[trainer P2P] ontrack:', e.track?.kind, 'streams:', e.streams?.length)
+    if (e.streams && e.streams[0]) {
+      e.streams[0].getTracks().forEach(t => {
+        if (!remoteStream.getTracks().some(rt => rt.id === t.id)) remoteStream.addTrack(t)
+      })
+    } else if (e.track) {
+      if (!remoteStream.getTracks().some(rt => rt.id === e.track.id)) remoteStream.addTrack(e.track)
+    }
+    onRemoteStream?.(remoteStream)
   })
 
   pc.addEventListener('icecandidate', (e) => {
@@ -219,6 +229,7 @@ export async function startTrainerP2P({
   })
 
   pc.addEventListener('iceconnectionstatechange', () => {
+    console.log('[trainer P2P] ice:', pc.iceConnectionState)
     if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
       onConnected?.()
     }
@@ -276,10 +287,18 @@ export async function startGuestP2P({
   // Send our camera/mic to trainer
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
-  // Receive trainer's tracks (so we hear/see the trainer in real-time)
+  // Receive trainer's tracks (so we hear/see the trainer in real-time).
+  // Same Safari-iOS robustness as the trainer side: handle empty streams[].
   const remoteStream = new MediaStream()
   pc.addEventListener('track', (e) => {
-    e.streams[0]?.getTracks().forEach(t => remoteStream.addTrack(t))
+    console.log('[guest P2P] ontrack:', e.track?.kind, 'streams:', e.streams?.length)
+    if (e.streams && e.streams[0]) {
+      e.streams[0].getTracks().forEach(t => {
+        if (!remoteStream.getTracks().some(rt => rt.id === t.id)) remoteStream.addTrack(t)
+      })
+    } else if (e.track) {
+      if (!remoteStream.getTracks().some(rt => rt.id === e.track.id)) remoteStream.addTrack(e.track)
+    }
     onRemoteStream?.(remoteStream)
   })
 
@@ -288,6 +307,7 @@ export async function startGuestP2P({
   })
 
   pc.addEventListener('iceconnectionstatechange', () => {
+    console.log('[guest P2P] ice:', pc.iceConnectionState)
     if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
       onConnected?.()
     }

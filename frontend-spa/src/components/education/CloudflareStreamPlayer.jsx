@@ -40,11 +40,32 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
 
     let cleanedUp  = false
     let retryTimer = null
+    let hasPlayed  = false   // flips true on first 'playing' event
 
     const onCanPlay = () => { if (!cleanedUp) setLoading(false) }
+    const onPlaying = () => {
+      if (cleanedUp) return
+      hasPlayed = true
+      setLoading(false)
+      setNeedsTap(false)
+    }
+    // If the video lands in a paused state BEFORE it ever actually played
+    // (typical iOS Safari autoplay-blocked path — the play() promise may
+    // resolve normally and the video just sits there showing the native
+    // play icon), surface our "tap to start" overlay so the user knows
+    // what to do.
+    const onPause = () => {
+      if (cleanedUp || hasPlayed) return
+      if (v.readyState >= 2) {
+        setNeedsTap(true)
+        setLoading(false)
+      }
+    }
 
     v.addEventListener('canplay',    onCanPlay)
     v.addEventListener('loadeddata', onCanPlay)
+    v.addEventListener('playing',    onPlaying)
+    v.addEventListener('pause',      onPause)
 
     if (canNative) {
       // iOS / Safari — native HLS.
@@ -80,23 +101,41 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
 
       // Explicit play() so we can detect autoplay-blocked policy separately
       // from genuine media errors — and show a friendlier "tap to start" UI
-      // instead of the error screen.
-      const p = v.play()
-      if (p instanceof Promise) {
-        p.catch(err => {
-          if (cleanedUp) return
-          if (err?.name === 'NotAllowedError') {
+      // instead of the error screen. On iOS any rejection here means the
+      // user must tap — NotAllowedError is the spec name but Safari has
+      // historically used AbortError, "interrupted by load request" etc.
+      try {
+        const p = v.play()
+        if (p && typeof p.then === 'function') {
+          p.catch(err => {
+            if (cleanedUp) return
+            console.warn('[player] autoplay rejected:', err?.name || err)
             setNeedsTap(true)
             setLoading(false)
-          }
-        })
+          })
+        }
+      } catch (e) {
+        if (!cleanedUp) { setNeedsTap(true); setLoading(false) }
       }
+
+      // Safety net: if 4 s in we still haven't actually started playing,
+      // assume autoplay was silently denied (older iOS, Low-Power Mode, etc.)
+      // and prompt the user instead of leaving them on a black screen.
+      const tapPrompt = setTimeout(() => {
+        if (!cleanedUp && !hasPlayed && v.paused) {
+          setNeedsTap(true)
+          setLoading(false)
+        }
+      }, 4000)
 
       return () => {
         cleanedUp = true
         clearTimeout(retryTimer)
+        clearTimeout(tapPrompt)
         v.removeEventListener('canplay',    onCanPlay)
         v.removeEventListener('loadeddata', onCanPlay)
+        v.removeEventListener('playing',    onPlaying)
+        v.removeEventListener('pause',      onPause)
         v.removeEventListener('error',      handleError)
         try { v.src = '' } catch {}
       }
@@ -136,6 +175,8 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         cleanedUp = true
         v.removeEventListener('canplay',    onCanPlay)
         v.removeEventListener('loadeddata', onCanPlay)
+        v.removeEventListener('playing',    onPlaying)
+        v.removeEventListener('pause',      onPause)
         v.removeEventListener('error',      onErr)
         try { hlsRef.current?.destroy() } catch {}
         hlsRef.current = null
@@ -152,6 +193,8 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         cleanedUp = true
         v.removeEventListener('canplay',    onCanPlay)
         v.removeEventListener('loadeddata', onCanPlay)
+        v.removeEventListener('playing',    onPlaying)
+        v.removeEventListener('pause',      onPause)
         v.removeEventListener('error',      onErr)
       }
     }
@@ -166,7 +209,10 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         className={className}
         autoPlay
         playsInline
-        controls
+        // Hide native controls until OUR overlay has been resolved:
+        // iOS draws its own grey play button when paused, which competes
+        // visually with the "tap to start" overlay.
+        controls={!needsTap}
         controlsList="nodownload noremoteplayback"
         disablePictureInPicture={false}
       />
