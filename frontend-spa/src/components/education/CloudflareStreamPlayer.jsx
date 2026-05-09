@@ -139,28 +139,34 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
               continue
             }
 
+            // Set up handlers BEFORE setRemoteDescription — ontrack fires
+            // synchronously during SDP processing and would be missed if set after.
+            let trackResolve, trackReject
+            const trackPromise = new Promise((resolve, reject) => {
+              trackResolve = resolve; trackReject = reject
+            })
+            const trackTimeout = setTimeout(
+              () => trackReject(new Error('WHEP: no track in 8s')), 8000
+            )
+            pc.ontrack = e => {
+              clearTimeout(trackTimeout)
+              console.log('[player] WHEP ontrack — streams:', e.streams?.length)
+              if (e.streams?.[0]) trackResolve(e.streams[0])
+              else { const s = new MediaStream(); s.addTrack(e.track); trackResolve(s) }
+            }
+            pc.oniceconnectionstatechange = () => {
+              console.log('[player] WHEP ICE:', pc.iceConnectionState)
+              if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                clearTimeout(trackTimeout)
+                trackReject(new Error(`WHEP ICE ${pc.iceConnectionState}`))
+              }
+            }
+
             const sdp = await resp.text()
+            console.log('[player] WHEP answer len:', sdp.length, 'first80:', sdp.slice(0, 80).replace(/\r?\n/g, '|'))
             await pc.setRemoteDescription({ type: 'answer', sdp })
 
-            // Wait for the first media track (up to 8 s)
-            const remoteStream = await new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => reject(new Error('WHEP: no track in 8s')), 8000)
-              pc.ontrack = e => {
-                clearTimeout(timeout)
-                if (e.streams?.[0]) resolve(e.streams[0])
-                else {
-                  const s = new MediaStream()
-                  s.addTrack(e.track)
-                  resolve(s)
-                }
-              }
-              pc.oniceconnectionstatechange = () => {
-                if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-                  clearTimeout(timeout)
-                  reject(new Error(`WHEP ICE ${pc.iceConnectionState}`))
-                }
-              }
-            })
+            const remoteStream = await trackPromise
 
             if (cleanedUp || hasPlayed) { pc.close(); whepRef.current = null; return }
 
