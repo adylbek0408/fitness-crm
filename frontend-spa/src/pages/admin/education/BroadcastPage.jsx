@@ -66,6 +66,8 @@ export default function BroadcastPage() {
   const isIntentionalStopRef  = useRef(false)
   const mediaRecorderRef      = useRef(null)
   const recordedChunksRef     = useRef([])
+  // Resolves after onstop fires — guarantees ondataavailable has already flushed all chunks
+  const recorderStopPromise   = useRef(null)
 
   const insecure = typeof window !== 'undefined' && !window.isSecureContext
   const isLive   = status === 'live'
@@ -153,12 +155,15 @@ export default function BroadcastPage() {
     let aborted = false
 
     const doUpload = async () => {
-      // Flush the final MediaRecorder chunk (onstop fires synchronously after stop())
+      // If recorder is still running (external stop), stop it and wait for final chunk
       const mr = mediaRecorderRef.current
-      if (mr && mr.state !== 'inactive') {
-        await new Promise(resolve => { mr.onstop = resolve; try { mr.stop() } catch { resolve() } })
-      }
       mediaRecorderRef.current = null
+      if (mr && mr.state !== 'inactive') {
+        try { mr.stop() } catch {}
+      }
+      // Always await the stop promise — it resolves after ondataavailable flushes all chunks
+      try { await recorderStopPromise.current } catch {}
+      recorderStopPromise.current = null
 
       const chunks = recordedChunksRef.current || []
       recordedChunksRef.current = []
@@ -325,6 +330,8 @@ export default function BroadcastPage() {
         if (mimeType) {
           const mr = new MediaRecorder(ls, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 128_000 })
           recordedChunksRef.current = []
+          // stopPromise resolves only after onstop — by then ondataavailable has already fired
+          recorderStopPromise.current = new Promise(res => { mr.onstop = res })
           mr.ondataavailable = e => { if (e.data?.size > 0) recordedChunksRef.current.push(e.data) }
           mr.start(10_000)  // flush chunk every 10 s
           mediaRecorderRef.current = mr
@@ -342,13 +349,17 @@ export default function BroadcastPage() {
     cleanupGuest()
     const w = whipRef.current
     if (w) { whipRef.current = null; try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
-    // Stop recorder before tracks so the final chunk is flushed to recordedChunksRef
+    // Stop recorder and await onstop — only after that ondataavailable has flushed all chunks
     const mr = mediaRecorderRef.current
-    if (mr && mr.state !== 'inactive') { try { mr.stop() } catch {} }
+    mediaRecorderRef.current = null
+    if (mr && mr.state !== 'inactive') {
+      try { mr.stop() } catch {}
+      try { await recorderStopPromise.current } catch {}  // wait for final ondataavailable
+    }
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     if (videoRef.current) videoRef.current.srcObject = null
-    setBroadcasting(false); setStatus('ended')
+    setBroadcasting(false); setStatus('ended')  // chunks are ready NOW
     try { await api.post(`/education/streams/${id}/end/`, w ? { whip_resource_url: w } : {}) } catch {}
   }
 
