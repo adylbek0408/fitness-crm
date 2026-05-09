@@ -200,6 +200,16 @@ export function createAudioMixer(trainerStream, guestStream) {
     } catch {}
   }
 
+  // iOS Safari suspends AudioContext when the tab is backgrounded — the
+  // mixed track then carries silence and the recording goes mute.
+  // Resume the context whenever we come back to the foreground.
+  const onVisibility = () => {
+    if (!document.hidden && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {})
+    }
+  }
+  document.addEventListener('visibilitychange', onVisibility)
+
   const addGuest = (s) => {
     if (!s) return
     try { guestSrc?.disconnect() } catch {}
@@ -222,6 +232,7 @@ export function createAudioMixer(trainerStream, guestStream) {
   }
 
   const close = () => {
+    try { document.removeEventListener('visibilitychange', onVisibility) } catch {}
     try { trainerSrc.disconnect() } catch {}
     try { guestSrc?.disconnect() } catch {}
     try { audioCtx.close() } catch {}

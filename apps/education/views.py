@@ -109,10 +109,19 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         if groups:
             lesson.groups.set(groups)
 
+        # Whitelist file extensions before they make it into R2 keys —
+        # otherwise a malicious value like '../../../config' would let the
+        # client place an object outside the intended prefix or with a
+        # confusable Content-Type.
+        ALLOWED_VIDEO_EXTS = {'mp4', 'mov', 'webm', 'mkv', 'm4v'}
+        ALLOWED_AUDIO_EXTS = {'mp3', 'wav', 'webm', 'm4a', 'ogg'}
+
         try:
             if lesson_type == 'video':
                 max_dur = int(request.data.get('max_duration_sec') or 14400)
-                file_ext = (request.data.get('file_ext') or 'mp4').lstrip('.')
+                file_ext = (request.data.get('file_ext') or 'mp4').lstrip('.').lower()
+                if file_ext not in ALLOWED_VIDEO_EXTS:
+                    file_ext = 'mp4'
 
                 # Try CF Stream first; fall back to R2 if quota exceeded.
                 cf_ok = False
@@ -156,7 +165,9 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
                     }, status=status.HTTP_201_CREATED)
 
             else:  # audio
-                ext = (request.data.get('file_ext') or 'mp3').lstrip('.')
+                ext = (request.data.get('file_ext') or 'mp3').lstrip('.').lower()
+                if ext not in ALLOWED_AUDIO_EXTS:
+                    ext = 'mp3'
                 key = f"audio/{lesson.id}.{ext}"
                 audio_content_types = {
                     'mp3': 'audio/mpeg', 'wav': 'audio/wav',
@@ -584,10 +595,22 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         except Client.DoesNotExist:
             return Response({'error': 'client not found'}, status=404)
 
-        # Cancel any existing pending invites for this client in this stream
+        # Cancel ALL existing pending or active invites for this client in
+        # this stream — not just 'invited'. If a previous P2P session is
+        # half-alive (status='active' but the guest already navigated away,
+        # or trainer kicked them via guest_end which only flips status),
+        # leaving it visible would create two parallel guest_polls on the
+        # student side — they'd see double invites or even start two P2P
+        # PCs to the same trainer.
+        # We hard-flag them as ended AND set deleted_at so the student-side
+        # /cabinet/.../guest/ endpoint stops returning them.
+        from django.utils import timezone as dj_tz
+        now = dj_tz.now()
         StreamGuest.objects.filter(
-            stream=stream, client=client, status='invited',
-        ).update(status='ended')
+            stream=stream, client=client,
+            status__in=['invited', 'active'],
+            deleted_at__isnull=True,
+        ).update(status='ended', deleted_at=now)
 
         # WebRTC P2P (no Jitsi): trainer initiates the offer once guest accepts.
         guest = StreamGuest.objects.create(
@@ -1407,23 +1430,34 @@ class EducationStatsView(APIView):
         if group_id:
             lessons_qs = lessons_qs.filter(groups__id=group_id).distinct()
 
-        # Per-lesson stats
-        lessons_data = []
-        for l in lessons_qs.prefetch_related('groups').order_by('-published_at', '-created_at'):
-            agg = LessonProgress.objects.filter(lesson=l).aggregate(
+        # Per-lesson stats — single aggregated query keyed by lesson_id
+        # (used to be N+1: one .aggregate() call per lesson). On a school
+        # with hundreds of lessons that pegged the DB on every Stats open.
+        ordered_lessons = list(
+            lessons_qs.prefetch_related('groups').order_by('-published_at', '-created_at')
+        )
+        progress_by_lesson = {
+            row['lesson_id']: row
+            for row in LessonProgress.objects.filter(
+                lesson_id__in=[l.id for l in ordered_lessons]
+            ).values('lesson_id').annotate(
                 viewers_count=Count('id'),
                 avg_percent=Avg('percent_watched'),
                 completed_count=Count('id', filter=Q(is_completed=True)),
             )
+        }
+        lessons_data = []
+        for l in ordered_lessons:
+            agg = progress_by_lesson.get(l.id, {})
             lessons_data.append({
                 'id': str(l.id),
                 'title': l.title,
                 'lesson_type': l.lesson_type,
                 'duration_sec': l.duration_sec,
                 'groups': [f'Группа {g.number}' for g in l.groups.all()],
-                'viewers_count': agg['viewers_count'] or 0,
-                'avg_percent': round(agg['avg_percent'] or 0.0, 1),
-                'completed_count': agg['completed_count'] or 0,
+                'viewers_count': agg.get('viewers_count') or 0,
+                'avg_percent': round(agg.get('avg_percent') or 0.0, 1),
+                'completed_count': agg.get('completed_count') or 0,
             })
 
         # Eligible clients: those whose group has at least one published lesson.

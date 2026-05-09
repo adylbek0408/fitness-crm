@@ -63,7 +63,11 @@ class CabinetJWTAuthentication(authentication.BaseAuthentication):
         if not client_id:
             raise exceptions.AuthenticationFailed('Invalid token.')
         try:
-            client = Client.objects.get(id=client_id)
+            # Reject soft-deleted clients — even with a still-valid JWT they
+            # must lose access the moment an admin deletes them. Without this
+            # filter a deleted client could keep watching lessons / posting
+            # in chat until their token expires hours/days later.
+            client = Client.objects.get(id=client_id, deleted_at__isnull=True)
             account = client.cabinet_account
         except (Client.DoesNotExist, ClientAccount.DoesNotExist):
             raise exceptions.AuthenticationFailed('Client not found.')

@@ -380,6 +380,27 @@ export default function BroadcastPage() {
         try { await videoRef.current.play() } catch {}
       }
 
+      // Detect a dead camera/mic mid-broadcast (USB unplug, OS revoked
+      // permission, hardware switch). If the video track ends, the canvas
+      // will keep drawing the last frame to viewers and the trainer would
+      // never know — so we surface a clear warning + auto-stop.
+      ls.getTracks().forEach(t => {
+        t.addEventListener('ended', () => {
+          console.warn('[track-ended]', t.kind, 'track ended unexpectedly')
+          if (statusRef.current === 'live') {
+            setError(
+              t.kind === 'video'
+                ? 'Камера отключена. Эфир остановлен — переподключите устройство и начните заново.'
+                : 'Микрофон отключён. Звук пропал.'
+            )
+            // Only fully stop on video track loss — losing mic mid-stream
+            // is recoverable (silence) and the trainer may still want to
+            // finish gracefully.
+            if (t.kind === 'video') stopBroadcast().catch(() => {})
+          }
+        })
+      })
+
       // ── Always-on mixers ──────────────────────────────────────────────────
       // Cap mixed canvas at 720p — 1080p canvas captureStream eats too much
       // CPU on phones, especially with audio mixing on top. CF-side viewers
@@ -411,6 +432,16 @@ export default function BroadcastPage() {
       const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] })
       pcRef.current = pc
       pc.addEventListener('iceconnectionstatechange', () => setConnState(pc.iceConnectionState))
+      // WHIP can silently die (CF restart, ISP reroute) — the PC stays in
+      // a 'failed'/'disconnected' state but we keep happily writing canvas
+      // frames into a hole. Surface it loud so the trainer notices.
+      pc.addEventListener('connectionstatechange', () => {
+        const s = pc.connectionState
+        console.log('[whip] pc state:', s)
+        if ((s === 'failed' || s === 'disconnected') && statusRef.current === 'live') {
+          setError('Связь с Cloudflare прервана. Завершите эфир и начните заново.')
+        }
+      })
 
       outputStream.getTracks().forEach(t => {
         const s = pc.addTrack(t, outputStream)

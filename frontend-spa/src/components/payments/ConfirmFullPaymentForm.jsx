@@ -25,7 +25,9 @@ export default function ConfirmFullPaymentForm({ clientId, amount, onSuccess }) 
         fd.append('receipt', receipt)
         if (receiptAmount && Number(receiptAmount) > 0) fd.append('amount', receiptAmount)
         await api.post(`/payments/full/${clientId}/receipt/`, fd, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          // Don't pin Content-Type — let the browser set the multipart
+          // boundary itself, otherwise Django can't parse the body.
+          headers: { 'Content-Type': undefined },
         })
       } else {
         await api.post(`/payments/full/${clientId}/pay/`)

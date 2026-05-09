@@ -33,7 +33,11 @@ export default function AddPaymentForm({ planId, onSuccess }) {
       await api.post(
         `/payments/installment/${planId}/payments/`,
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
+        // Setting Content-Type to 'multipart/form-data' explicitly *omits*
+        // the boundary parameter — Django then can't parse the request.
+        // Pass `undefined` so axios lets the browser set the full
+        // multipart/form-data; boundary=... header itself.
+        { headers: { 'Content-Type': undefined } },
       )
 
       setAmount('')
