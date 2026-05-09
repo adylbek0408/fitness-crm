@@ -970,6 +970,13 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         # Create the lesson row + link to stream NOW so the streams list shows
         # "archive in progress" immediately. stream_uid is populated by the
         # background thread once CF accepts the upload.
+        #
+        # IMPORTANT: lesson starts as `is_published=False`. Cabinet endpoints
+        # filter on is_published=True, so a half-baked archive (no CF UID,
+        # cannot play) never leaks into the student's lessons list while the
+        # thread is still uploading. We flip it to True only when the CF
+        # upload actually succeeds (in the thread) — or when the CF webhook
+        # 'video.ready' fires later.
         from django.db import transaction
         with transaction.atomic():
             lesson = Lesson.objects.create(
@@ -980,8 +987,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                 duration_sec=0,
                 thumbnail_url='',
                 trainer=stream.trainer,
-                is_published=True,
-                published_at=timezone.now(),
+                is_published=False,
                 created_by=request.user if request.user.is_authenticated else None,
             )
             if stream.groups.exists():
@@ -1017,7 +1023,14 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                     '[bg-cf-upload] OK stream=%s video_uid=%s size=%s',
                     stream_id, video_uid, file_size,
                 )
-                Lesson.objects.filter(pk=lesson_id).update(stream_uid=video_uid)
+                # Publish the lesson now — CF still needs to transcode but
+                # the upload is on their servers, the playback URL will
+                # resolve once transcoding is done.
+                Lesson.objects.filter(pk=lesson_id).update(
+                    stream_uid=video_uid,
+                    is_published=True,
+                    published_at=timezone.now(),
+                )
                 LiveStream.objects.filter(pk=stream_id).update(recording_uid=video_uid)
             except Exception as e:
                 logger.exception('[bg-cf-upload] failed stream=%s: %s', stream_id, e)
@@ -1309,7 +1322,8 @@ class CFStreamWebhookView(APIView):
                     ])
                     return Response({'ok': True, 'archived_lesson_id': str(lesson.id)})
 
-        # Case 2: regular uploaded video became ready — backfill metadata.
+        # Case 2: regular uploaded video became ready — backfill metadata
+        # and publish if it was waiting for CF (async upload from a stream).
         if video_uid:
             lesson = Lesson.objects.filter(stream_uid=video_uid).first()
             if lesson:
@@ -1320,6 +1334,10 @@ class CFStreamWebhookView(APIView):
                 if thumbnail and not lesson.thumbnail_url:
                     lesson.thumbnail_url = thumbnail
                     update.append('thumbnail_url')
+                if not lesson.is_published:
+                    lesson.is_published = True
+                    lesson.published_at = timezone.now()
+                    update += ['is_published', 'published_at']
                 if update:
                     update.append('updated_at')
                     lesson.save(update_fields=update)

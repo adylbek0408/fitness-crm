@@ -327,6 +327,10 @@ export default function StreamLive() {
 
   const watermarkText = joined?.watermark?.text || ''
   const isLive = stream && stream.status === 'live'
+  // Show P2P trainer stream only while we have a healthy P2P link. If the
+  // connection failed (or never established), fall back to CF playback so
+  // the student isn't stuck on a black screen.
+  const showStageVideo = onStage && stageState !== 'failed'
 
   // ── Live: YouTube-style layout ───────────────────────────────────────────
   if (isLive) {
@@ -337,15 +341,14 @@ export default function StreamLive() {
         <div className="flex flex-col flex-1 min-h-0 min-w-0">
 
           {/* Video — 16:9 on mobile, fills height on desktop.
-              When the student is on stage, we hide the CF playback (which
-              already contains the student's own face composited by the
-              trainer mixer — that's what the other viewers see) and show
-              the trainer's P2P stream directly. This kills the
-              "I see myself twice" effect, and gives realtime audio with
-              no CF buffering delay. */}
+              While onStage AND P2P link is healthy, we render the trainer's
+              P2P stream and hide CF playback (which would composite the
+              student's own face into the picture). If P2P fails / hasn't
+              connected, we keep CF up so the student keeps watching the
+              broadcast instead of staring at a black screen. */}
           <div ref={playerShellRef} data-protected-root
                className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto">
-            {!onStage && (
+            {!showStageVideo && (
               <>
                 <CloudflareStreamPlayer
                   ref={playerRef}
@@ -356,12 +359,10 @@ export default function StreamLive() {
                 <Watermark text={watermarkText} />
               </>
             )}
-            {onStage && (
+            {showStageVideo && (
               <video
                 ref={el => {
                   stageRemoteRef.current = el
-                  // Re-bind whenever the element mounts, in case the
-                  // remote stream arrived before we were on stage.
                   const rs = stageRemoteStreamRef.current
                   if (el && rs && el.srcObject !== rs) {
                     el.srcObject = rs
@@ -390,10 +391,13 @@ export default function StreamLive() {
                 className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 border border-white/10 backdrop-blur text-[12px] font-medium active:bg-black/60">
                 <Users size={14} /> {viewers.length}
               </button>
-              {/* Fullscreen — desktop only; on iOS Safari нативные video-контролы дают свой fullscreen */}
+              {/* Fullscreen — visible on mobile too. The CF native controls
+                  sit at the bottom of the player and can get visually crowded
+                  by the watermark / live label, so giving an explicit button
+                  in our top bar is the more reliable affordance. */}
               <button type="button" onClick={toggleFullscreen}
                 aria-label={isFullscreen ? 'Свернуть' : 'Во весь экран'}
-                className="hidden md:inline-flex pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
+                className="inline-flex pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
                 {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
               </button>
             </div>
