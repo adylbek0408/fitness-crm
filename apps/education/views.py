@@ -478,8 +478,14 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             return Response({'detail': f'CF WHIP returned {cf.status_code}'}, status=cf.status_code)
 
         session_url = cf.headers.get('Location', '')
-        logger.info('WHIP proxy OK stream=%s CF=%s session_url=%s',
-                    stream.id, cf.status_code, session_url[:80] if session_url else 'none')
+        # CF returns a path-only Location header (no scheme/host).
+        # Make it absolute so the frontend DELETE and the backend fallback DELETE both work.
+        if session_url and session_url.startswith('/'):
+            from urllib.parse import urlparse
+            base = urlparse(stream.cf_webrtc_url)
+            session_url = f'{base.scheme}://{base.netloc}{session_url}'
+        logger.warning('WHIP proxy OK stream=%s CF=%s session_url=%s',
+                       stream.id, cf.status_code, session_url[:120] if session_url else 'none')
         return Response({'sdp': cf.text, 'session_url': session_url})
 
     @action(detail=True, methods=['post'])
