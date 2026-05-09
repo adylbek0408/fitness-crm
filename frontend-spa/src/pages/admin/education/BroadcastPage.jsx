@@ -34,6 +34,7 @@ export default function BroadcastPage() {
   const [cfStatus,     setCfStatus]     = useState(null)
   const [recordingPct,  setRecordingPct]  = useState(0)
   const [recordingDone, setRecordingDone] = useState(false)
+  const [uploadError,   setUploadError]   = useState('')
   const [flipping,     setFlipping]     = useState(false)
 
   // Chat — open by default on desktop (>=768), closed on mobile to save room.
@@ -68,6 +69,8 @@ export default function BroadcastPage() {
   const recordedChunksRef     = useRef([])
   // Resolves after onstop fires — guarantees ondataavailable has already flushed all chunks
   const recorderStopPromise   = useRef(null)
+  // mime type actually used by MediaRecorder (needed when building the upload blob)
+  const recorderMimeRef       = useRef('')
 
   const insecure = typeof window !== 'undefined' && !window.isSecureContext
   const isLive   = status === 'live'
@@ -182,17 +185,22 @@ export default function BroadcastPage() {
 
       if (chunks.length === 0) { clearUploadProgress(); nav('/admin/education/streams'); return }
 
-      const blob = new Blob(chunks, { type: 'video/webm' })
+      // Use the actual mime type recorded, so iOS mp4 blobs are sent correctly.
+      const mime = recorderMimeRef.current || 'video/webm'
+      const ext  = mime.includes('mp4') ? 'mp4' : 'webm'
+      const blob = new Blob(chunks, { type: mime })
       if (blob.size < 10_000) { clearUploadProgress(); nav('/admin/education/streams'); return }
 
       const fd = new FormData()
-      fd.append('file', blob, 'recording.webm')
+      fd.append('file', blob, `recording.${ext}`)
 
       setUploading(true)
+      setUploadError('')
       writeUploadProgress('uploading', 0)
       try {
         await api.post(`/education/streams/${id}/upload-recording/`, fd, {
           timeout: 0,  // no timeout — large files take time
+          headers: { 'Content-Type': undefined },  // let browser set multipart boundary
           onUploadProgress: (e) => {
             if (e.total) {
               const pct = Math.round(e.loaded / e.total * 95)
@@ -206,9 +214,10 @@ export default function BroadcastPage() {
         // Switch to 'processing' so the streams list can poll cf-state instead.
         writeUploadProgress('processing', 100)
         setTimeout(() => { clearUploadProgress(); nav('/admin/education/streams') }, 2500)
-      } catch {
+      } catch(e) {
+        const msg = e?.response?.data?.detail || e?.message || 'Ошибка загрузки'
+        setUploadError(msg)
         clearUploadProgress()
-        nav('/admin/education/streams')
       } finally {
         setUploading(false)
       }
@@ -358,10 +367,15 @@ export default function BroadcastPage() {
       if (sessionUrl) whipRef.current = sessionUrl
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
       try { await api.post(`/education/streams/${id}/start/`) } catch {}
-      // Start browser-side recording — fallback for CF automatic recording
+      // Start browser-side recording — fallback for CF automatic recording.
+      // video/mp4 is listed last so Chrome/Firefox prefer WebM (better quality),
+      // but Safari (iOS) which only supports mp4 will still work.
       try {
-        const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
-          .find(t => MediaRecorder.isTypeSupported(t)) || ''
+        const mimeType = [
+          'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm',
+          'video/mp4',
+        ].find(t => MediaRecorder.isTypeSupported(t)) || ''
+        recorderMimeRef.current = mimeType
         if (mimeType) {
           const mr = new MediaRecorder(ls, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 128_000 })
           recordedChunksRef.current = []
@@ -795,13 +809,18 @@ export default function BroadcastPage() {
         {isEnded && (
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-5 px-8"
             style={{ background: 'linear-gradient(to bottom,rgba(0,0,0,.9),rgba(0,0,0,.95))' }}>
-            <div className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-              <CheckCircle2 size={40} className="text-emerald-400" />
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center border ${uploadError ? 'bg-rose-500/15 border-rose-500/30' : 'bg-emerald-500/15 border-emerald-500/30'}`}>
+              <CheckCircle2 size={40} className={uploadError ? 'text-rose-400' : 'text-emerald-400'} />
             </div>
-            <div className="text-center">
+            <div className="text-center max-w-sm">
               <p className="text-2xl font-bold text-white">Эфир завершён</p>
-              {recordingDone ? (
-                <p className="text-emerald-400 text-sm font-semibold mt-2">✓ Запись сохранена!</p>
+              {uploadError ? (
+                <>
+                  <p className="text-rose-300 text-sm font-semibold mt-2">Ошибка сохранения записи</p>
+                  <p className="text-white/50 text-xs mt-1 break-words">{uploadError}</p>
+                </>
+              ) : recordingDone ? (
+                <p className="text-emerald-400 text-sm font-semibold mt-2">✓ Запись загружена, обрабатывается…</p>
               ) : (
                 <>
                   <p className="text-white/50 text-sm mt-1">Загружаем запись…</p>
@@ -817,13 +836,15 @@ export default function BroadcastPage() {
                 </>
               )}
             </div>
-            <button
-              onClick={() => nav('/admin/education/streams')}
-              disabled={uploading}
-              title={uploading ? 'Дождитесь окончания загрузки записи' : ''}
-              className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10">
-              {uploading ? 'Загружаем запись…' : 'К списку эфиров'}
-            </button>
+            <div className="flex flex-col gap-2 items-center">
+              <button
+                onClick={() => nav('/admin/education/streams')}
+                disabled={uploading}
+                title={uploading ? 'Дождитесь окончания загрузки записи' : ''}
+                className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10">
+                {uploading ? 'Загружаем запись…' : 'К списку эфиров'}
+              </button>
+            </div>
           </div>
         )}
       </div>

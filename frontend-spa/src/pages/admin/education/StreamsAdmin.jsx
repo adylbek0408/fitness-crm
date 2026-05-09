@@ -101,10 +101,8 @@ export default function StreamsAdmin() {
   const [recProgress, setRecProgress] = useState({}) // { [streamId]: { stage, pct } }
 
   useEffect(() => {
-    // Targets: streams in `ended`/`archived` state without a confirmed-ready archive.
-    const targets = streams.filter(s =>
-      ['ended', 'archived'].includes(s.status) && !(s.archived_lesson && s.archived_lesson_published)
-    )
+    // Poll all ended/archived streams — stop when CF signals 'ready'.
+    const targets = streams.filter(s => ['ended', 'archived'].includes(s.status))
     if (targets.length === 0) { setRecProgress({}); return }
 
     let stopped = false
@@ -144,7 +142,7 @@ export default function StreamsAdmin() {
         })
         // Auto-refresh card list when a recording becomes ready so the
         // archive badge + preview button show up without a manual reload.
-        if (d.stage === 'ready' && !s.archived_lesson_published) reload()
+        if (d.stage === 'ready') reload()
       } catch {}
     }
 
@@ -626,10 +624,8 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
   const hasRecording = isArchived && s.archived_lesson
   const wa = encodeURIComponent(`Прямой эфир «${s.title}» — заходи: ${studentLink}`)
 
-  // Recording preparation: show inline 0-100% bar while uploading or
-  // CF-transcoding. Hidden once the archive is ready.
-  const showRecProgress =
-    isArchived && !!recProgress && recProgress.stage !== 'ready' && !s.archived_lesson_published
+  // Show 0-100% bar while uploading or CF-transcoding. Hidden once CF signals ready.
+  const showRecProgress = isArchived && !!recProgress && recProgress.stage !== 'ready'
   const recPct = Math.max(0, Math.min(100, Number(recProgress?.pct) || 0))
   const recLabel =
     recProgress?.stage === 'uploading' ? 'Загрузка записи'

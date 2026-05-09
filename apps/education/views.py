@@ -802,13 +802,18 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                 'has_archived_lesson': bool(stream.archived_lesson_id),
             })
 
-        ready = info['ready'] and bool(stream.archived_lesson_id)
+        # Report ready when CF finished transcoding AND a lesson row exists.
+        # This ensures the progress bar stays visible during CF transcoding
+        # even when the lesson was already published (is_published=True).
+        has_lesson = bool(stream.archived_lesson_id)
+        cf_ready = info['ready']
+        ready = cf_ready and has_lesson
         return Response({
             'stage': 'ready' if ready else 'processing',
-            'pct': 100 if ready else info['pct_complete'],
+            'pct': 100 if cf_ready else info['pct_complete'],
             'ready': ready,
             'cf_state': info['state'],
-            'has_archived_lesson': bool(stream.archived_lesson_id),
+            'has_archived_lesson': has_lesson,
         })
 
     @action(detail=True, methods=['post'], url_path='manual-archive')
