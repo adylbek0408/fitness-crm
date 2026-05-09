@@ -54,12 +54,15 @@ export default function BroadcastPage() {
   const guestVideoElRef  = useRef(null)         // hidden <video> for received guest stream
   const guestPipVideoRef = useRef(null)         // visible PIP <video> in trainer preview
 
-  const videoRef          = useRef(null)
-  const pcRef             = useRef(null)
-  const localStreamRef    = useRef(null)
-  const elapsedRef        = useRef(null)
-  const statusRef         = useRef(status)
-  const whipRef           = useRef(null)
+  const videoRef              = useRef(null)
+  const pcRef                 = useRef(null)
+  const localStreamRef        = useRef(null)
+  const elapsedRef            = useRef(null)
+  const statusRef             = useRef(status)
+  const whipRef               = useRef(null)
+  // true only when trainer clicks the Stop button — prevents accidental reload
+  // from calling end() and killing the stream for all students.
+  const isIntentionalStopRef  = useRef(false)
 
   const insecure = typeof window !== 'undefined' && !window.isSecureContext
   const isLive   = status === 'live'
@@ -147,9 +150,15 @@ export default function BroadcastPage() {
   }, [status, nav])
 
   useEffect(() => () => {
-    if (statusRef.current === 'live') api.post(`/education/streams/${id}/end/`).catch(() => {})
-    const w = whipRef.current
-    if (w) { try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
+    // IMPORTANT: only end the stream in DB + delete WHIP when the trainer
+    // explicitly clicked the "Stop" button (isIntentionalStopRef = true).
+    // On page reload / navigate-away we do NOT call end() so the stream stays
+    // live in DB and the trainer can simply re-open the page and reconnect.
+    if (isIntentionalStopRef.current) {
+      if (statusRef.current === 'live') api.post(`/education/streams/${id}/end/`).catch(() => {})
+      const w = whipRef.current
+      if (w) { try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
+    }
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     cleanupGuest()
@@ -278,6 +287,7 @@ export default function BroadcastPage() {
   }
 
   const stopBroadcast = async () => {
+    isIntentionalStopRef.current = true   // mark as intentional before any async work
     cleanupGuest()
     const w = whipRef.current
     if (w) { whipRef.current = null; try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
@@ -514,6 +524,12 @@ export default function BroadcastPage() {
                     ⚠ Нужен HTTPS для доступа к камере и микрофону
                   </div>
                 )}
+                {/* Show reconnect hint when stream is still live in DB (e.g. after page reload) */}
+                {stream?.status === 'live' && status !== 'connecting' && (
+                  <div className="w-full bg-amber-900/50 border border-amber-600/50 rounded-2xl px-4 py-3 text-amber-100 text-sm mb-3">
+                    ⚡ Ваш эфир ещё идёт — студенты ждут. Нажмите кнопку ниже чтобы переподключиться.
+                  </div>
+                )}
 
                 <button onClick={startBroadcast}
                   disabled={status === 'connecting' || !stream?.cf_webrtc_url}
@@ -521,7 +537,7 @@ export default function BroadcastPage() {
                   {status === 'connecting'
                     ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     : <Radio size={18} />}
-                  <span>{status === 'connecting' ? 'Подключаемся…' : 'Начать эфир'}</span>
+                  <span>{status === 'connecting' ? 'Подключаемся…' : stream?.status === 'live' ? '⚡ Переподключиться к эфиру' : 'Начать эфир'}</span>
                 </button>
               </div>
             </div>
