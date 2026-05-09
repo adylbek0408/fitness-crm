@@ -32,7 +32,8 @@ export default function BroadcastPage() {
   const [showViewers,  setShowViewers]  = useState(false)
   const [connState,    setConnState]    = useState('')
   const [cfStatus,     setCfStatus]     = useState(null)
-  const [redirectIn,   setRedirectIn]   = useState(null)
+  const [recordingPct,  setRecordingPct]  = useState(0)
+  const [recordingDone, setRecordingDone] = useState(false)
   const [flipping,     setFlipping]     = useState(false)
 
   // Chat — open by default on desktop (>=768), closed on mobile to save room.
@@ -139,15 +140,45 @@ export default function BroadcastPage() {
     return () => { ok = false; clearInterval(t) }
   }, [status, id])
 
+  // After stream ends: poll CF for recording progress, auto-archive when ready.
+  // This replaces the old 4-second blind redirect — the trainer now sees an
+  // actual progress bar and the archive is created without needing a webhook.
   useEffect(() => {
-    if (status !== 'ended') return
-    setRedirectIn(4)
-    const t = setInterval(() => setRedirectIn(p => {
-      if (p <= 1) { clearInterval(t); nav('/admin/education/streams'); return 0 }
-      return p - 1
-    }), 1000)
-    return () => clearInterval(t)
-  }, [status, nav])
+    if (status !== 'ended' || !id) return
+    let ok = true
+    let attempts = 0
+    let timer = null
+    const MAX = 72  // ~6 min at 5s interval
+
+    const poll = async () => {
+      if (!ok || attempts >= MAX) {
+        if (ok) { ok = false; nav('/admin/education/streams') }
+        return
+      }
+      attempts++
+      try {
+        const r = await api.get(`/education/streams/${id}/cf-status/`)
+        if (!ok) return
+        const recs = r.data?.recordings || []
+        const rec = recs[0]
+        if (rec) {
+          setRecordingPct(Math.min(99, parseInt(rec.pct_complete || '0')))
+          if (rec.ready) {
+            ok = false
+            clearInterval(timer)
+            try { await api.post(`/education/streams/${id}/manual-archive/`) } catch {}
+            setRecordingPct(100)
+            setRecordingDone(true)
+            setTimeout(() => nav('/admin/education/streams'), 2500)
+          }
+        }
+      } catch {}
+    }
+
+    poll()
+    timer = setInterval(poll, 5000)
+    return () => { ok = false; clearInterval(timer) }
+  }, [status, id, nav])
 
   useEffect(() => () => {
     // IMPORTANT: only end the stream in DB + delete WHIP when the trainer
@@ -700,8 +731,22 @@ export default function BroadcastPage() {
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold text-white">Эфир завершён</p>
-              <p className="text-white/50 text-sm mt-1">Cloudflare обрабатывает запись (1–3 минуты).</p>
-              {redirectIn && <p className="text-white/50 text-sm mt-1">Переход через <span className="text-rose-400 font-bold">{redirectIn}</span> с…</p>}
+              {recordingDone ? (
+                <p className="text-emerald-400 text-sm font-semibold mt-2">✓ Запись сохранена!</p>
+              ) : (
+                <>
+                  <p className="text-white/50 text-sm mt-1">Cloudflare сохраняет запись…</p>
+                  <div className="mt-4 w-64 mx-auto">
+                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-400 rounded-full transition-all duration-500"
+                        style={{ width: `${recordingPct}%` }}
+                      />
+                    </div>
+                    <p className="text-white/40 text-xs mt-1.5">{recordingPct}%</p>
+                  </div>
+                </>
+              )}
             </div>
             <button onClick={() => nav('/admin/education/streams')}
               className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95">
