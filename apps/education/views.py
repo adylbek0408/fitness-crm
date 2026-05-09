@@ -16,7 +16,7 @@ import uuid as _uuid
 from datetime import timedelta
 
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import Avg, Count, Max, Q
+from django.db.models import Avg, Count, Max, Q, Subquery
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -56,7 +56,14 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # Exclude auto-created stream recordings — those appear in the stream archive.
-        qs = Lesson.objects.filter(deleted_at__isnull=True, source_streams__isnull=True)
+        # Double guard: also exclude by stream_uid for old recordings where the
+        # archived_lesson FK wasn't set (source_streams is null for those too).
+        _rec_uids = LiveStream.objects.filter(
+            recording_uid__gt='', deleted_at__isnull=True,
+        ).values('recording_uid')
+        qs = Lesson.objects.filter(
+            deleted_at__isnull=True, source_streams__isnull=True,
+        ).exclude(stream_uid__in=Subquery(_rec_uids))
         ltype = self.request.query_params.get('type')
         if ltype in ('video', 'audio'):
             qs = qs.filter(lesson_type=ltype)

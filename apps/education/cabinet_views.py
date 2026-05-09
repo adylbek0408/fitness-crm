@@ -12,7 +12,7 @@ import logging
 from datetime import timedelta
 
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, Q, Subquery
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -115,11 +115,21 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         # NB: applied here so it affects `list`, but `retrieve` bypasses this
         # via the explicit override below — students opening a stream-archive
         # lesson by id (deep link from the Archive page) must still get a 200.
+        # CF video UIDs of all stream recordings (for old rows missing the FK).
+        _rec_uids = LiveStream.objects.filter(
+            recording_uid__gt='', deleted_at__isnull=True,
+        ).values('recording_uid')
+
         source = self.request.query_params.get('source', 'lesson')
         if source == 'stream':
-            qs = qs.filter(source_streams__isnull=False).distinct()
+            # Include both properly linked recordings AND old orphaned ones.
+            qs = qs.filter(
+                Q(source_streams__isnull=False) | Q(stream_uid__in=Subquery(_rec_uids))
+            ).distinct()
         elif source != 'all':
-            qs = qs.filter(source_streams__isnull=True).distinct()
+            qs = qs.filter(source_streams__isnull=True).exclude(
+                stream_uid__in=Subquery(_rec_uids)
+            ).distinct()
         return qs.order_by('-published_at', '-created_at')
 
     def get_object(self):
