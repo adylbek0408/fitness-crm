@@ -24,7 +24,9 @@ DJANGO_SETTINGS_MODULE=config.settings.production $VENV/python manage.py collect
 echo "🏗   [5/6] npm build..."
 cd "$PROJECT_DIR/frontend-spa"
 npm install --silent
-npm run build
+# VPS has limited RAM — bump V8 heap so vite build doesn't OOM-kill itself
+# (falls back to old dist/ on success, leaves it intact on failure).
+NODE_OPTIONS="--max-old-space-size=3072" npm run build
 
 echo "🔁  [6/6] restart gunicorn..."
 systemctl restart fitness-crm
