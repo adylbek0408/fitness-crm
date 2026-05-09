@@ -10,6 +10,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
 }, externalRef) {
   const videoRef = useRef(null)
   const hlsRef   = useRef(null)
+  const whepRef  = useRef(null)   // RTCPeerConnection for WHEP (live only)
   const [loading,   setLoading]   = useState(true)
   const [hardError, setHardError] = useState(false)
   const [needsTap,  setNeedsTap]  = useState(false)
@@ -31,14 +32,16 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     const v = videoRef.current
     if (!v) return
 
-    const src = `https://${subdomain}/${uid}/manifest/video.m3u8`
+    const hlsSrc  = `https://${subdomain}/${uid}/manifest/video.m3u8`
+    const whepUrl = `https://${subdomain}/${uid}/webRTC/play`
+
     // Prefer hls.js whenever MSE is available (Chrome, Firefox, Edge).
     // IMPORTANT: Chrome on macOS returns 'maybe' for canPlayType('application/vnd.apple.mpegurl')
     // but cannot actually play HLS natively — it has MSE/hls.js support instead.
     // Only fall back to native HLS when hls.js is NOT supported (Safari, iOS).
     const canNative = !Hls.isSupported() && !!v.canPlayType('application/vnd.apple.mpegurl')
 
-    console.log('[player] init src:', src, 'canNative:', canNative, 'hlsSupported:', Hls.isSupported())
+    console.log('[player] init hlsSrc:', hlsSrc, 'canNative:', canNative, 'hlsSupported:', Hls.isSupported(), 'live:', live)
 
     setLoading(true)
     setHardError(false)
@@ -90,6 +93,114 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     v.addEventListener('playing',    onPlaying)
     v.addEventListener('pause',      onPause)
 
+    // ── WHEP (WebRTC egress) — runs in parallel for live streams ──────────────
+    // CF Stream with WHIP ingest may not serve HLS in time (or at all).
+    // WHEP is the native WebRTC receive protocol: immediately connects when the
+    // trainer is broadcasting. We race WHEP against HLS — first to trigger
+    // 'playing' wins. If WHEP wins it destroys the HLS instance.
+    if (live) {
+      const tryWhep = async () => {
+        while (!cleanedUp && !hasPlayed) {
+          let pc = null
+          try {
+            pc = new RTCPeerConnection({
+              iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }],
+              bundlePolicy: 'max-bundle',
+            })
+            whepRef.current = pc
+
+            pc.addTransceiver('video', { direction: 'recvonly' })
+            pc.addTransceiver('audio', { direction: 'recvonly' })
+
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+
+            // Wait up to 3 s for ICE gathering to complete
+            await new Promise(resolve => {
+              if (pc.iceGatheringState === 'complete') { resolve(); return }
+              const done = () => { if (pc.iceGatheringState === 'complete') { pc.removeEventListener('icegatheringstatechange', done); resolve() } }
+              pc.addEventListener('icegatheringstatechange', done)
+              setTimeout(resolve, 3000)
+            })
+
+            if (cleanedUp || hasPlayed) { pc.close(); whepRef.current = null; return }
+
+            console.log('[player] WHEP attempting connect to:', whepUrl)
+            const resp = await fetch(whepUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/sdp' },
+              body: pc.localDescription.sdp,
+            })
+
+            if (!resp.ok) {
+              console.warn('[player] WHEP HTTP', resp.status, '— retrying in 15s')
+              pc.close(); whepRef.current = null
+              await new Promise(r => setTimeout(r, 15000))
+              continue
+            }
+
+            const sdp = await resp.text()
+            await pc.setRemoteDescription({ type: 'answer', sdp })
+
+            // Wait for the first media track (up to 8 s)
+            const remoteStream = await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => reject(new Error('WHEP: no track in 8s')), 8000)
+              pc.ontrack = e => {
+                clearTimeout(timeout)
+                if (e.streams?.[0]) resolve(e.streams[0])
+                else {
+                  const s = new MediaStream()
+                  s.addTrack(e.track)
+                  resolve(s)
+                }
+              }
+              pc.oniceconnectionstatechange = () => {
+                if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                  clearTimeout(timeout)
+                  reject(new Error(`WHEP ICE ${pc.iceConnectionState}`))
+                }
+              }
+            })
+
+            if (cleanedUp || hasPlayed) { pc.close(); whepRef.current = null; return }
+
+            console.log('[player] WHEP track received — taking over from HLS')
+            // WHEP won — cancel HLS and start WebRTC playback
+            clearTimeout(retryTimer); retryTimer = null
+            try { hlsRef.current?.destroy() } catch {}
+            hlsRef.current = null
+            // Clear any HLS src so the browser doesn't try to play both
+            if (!v.srcObject) {
+              try { v.src = '' } catch {}
+            }
+
+            v.srcObject = remoteStream
+            try {
+              await v.play()
+            } catch (err) {
+              if (!cleanedUp) {
+                console.warn('[player] WHEP autoplay blocked:', err?.name)
+                setNeedsTap(true)
+                setLoading(false)
+              }
+            }
+            return   // done — HLS loop will also exit because hasPlayed flips via onPlaying
+
+          } catch (err) {
+            console.warn('[player] WHEP error:', err?.message, '— retrying in 15s')
+            try { pc?.close() } catch {}
+            if (whepRef.current === pc) whepRef.current = null
+            if (cleanedUp || hasPlayed) return
+            await new Promise(r => setTimeout(r, 15000))
+          }
+        }
+      }
+
+      // Fire WHEP attempt immediately (don't await — runs in background)
+      tryWhep().catch(() => {})
+    }
+    // ── End WHEP ──────────────────────────────────────────────────────────────
+
     if (canNative) {
       // ── iOS / Safari / Chrome-Mac — native HLS ─────────────────────────
       // For live streams the manifest may not be ready when the user joins
@@ -119,7 +230,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       }
 
       v.addEventListener('error', handleError)
-      v.src = src
+      v.src = hlsSrc
 
       // Attempt autoplay — any rejection means browser policy requires a tap.
       try {
@@ -159,6 +270,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         v.removeEventListener('playing',    onPlaying)
         v.removeEventListener('pause',      onPause)
         v.removeEventListener('error',      handleError)
+        try { whepRef.current?.close() } catch {}
+        whepRef.current = null
+        v.srcObject = null
         try { v.src = '' } catch {}
       }
 
@@ -183,7 +297,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         if (cleanedUp) return
         const h = new Hls(HLS_CFG)
         hlsRef.current = h
-        h.loadSource(src)
+        h.loadSource(hlsSrc)
         h.attachMedia(v)
 
         h.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -235,6 +349,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         v.removeEventListener('pause',      onPause)
         try { hlsRef.current?.destroy() } catch {}
         hlsRef.current = null
+        try { whepRef.current?.close() } catch {}
+        whepRef.current = null
+        v.srcObject = null
       }
 
     } else {
@@ -243,7 +360,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         if (!cleanedUp) { setHardError(true); onError?.(e) }
       }
       v.addEventListener('error', onErr)
-      v.src = src
+      v.src = hlsSrc
       return () => {
         cleanedUp = true
         v.removeEventListener('canplay',    onCanPlay)
@@ -251,6 +368,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         v.removeEventListener('playing',    onPlaying)
         v.removeEventListener('pause',      onPause)
         v.removeEventListener('error',      onErr)
+        try { whepRef.current?.close() } catch {}
+        whepRef.current = null
+        v.srcObject = null
       }
     }
   }, [uid, subdomain, live, onError])
@@ -287,7 +407,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             const v = videoRef.current
             if (!v) return
             console.log('[player] tap — readyState:', v.readyState,
-              'error:', v.error?.code ?? null, 'src:', v.currentSrc?.slice(-40))
+              'error:', v.error?.code ?? null, 'srcObject:', !!v.srcObject)
 
             // CRITICAL iOS rule: call v.play() FIRST (synchronously, in the gesture
             // handler) — this unlocks the media element even if it fails.
@@ -311,7 +431,11 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
                   // NotSupportedError / AbortError — stream not loaded yet.
                   // Reset the video so the periodic retry can reload the source.
                   // Element is now "gesture-unlocked" for future auto-play attempts.
-                  if (!cleanedUp) {
+                  // Don't call v.load() if WHEP already set srcObject — that would clear it.
+                  if (v.srcObject) {
+                    setNeedsTap(false)
+                    setLoading(true)
+                  } else {
                     try { v.load() } catch {}   // re-trigger manifest load
                     setNeedsTap(false)
                     setLoading(true)            // keep spinner while we wait for stream
@@ -341,8 +465,13 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
                 if (!v) return
                 setHardError(false)
                 setLoading(true)
-                try { v.load() } catch {}
-                v.play().catch(() => {})
+                // Only reload HLS src if WHEP hasn't taken over
+                if (!v.srcObject) {
+                  try { v.load() } catch {}
+                  v.play().catch(() => {})
+                } else {
+                  v.play().catch(() => {})
+                }
               }}
               className="mt-1 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white text-sm font-semibold transition"
             >
