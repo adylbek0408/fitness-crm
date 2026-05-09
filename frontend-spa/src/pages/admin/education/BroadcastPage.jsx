@@ -64,6 +64,8 @@ export default function BroadcastPage() {
   // true only when trainer clicks the Stop button — prevents accidental reload
   // from calling end() and killing the stream for all students.
   const isIntentionalStopRef  = useRef(false)
+  const mediaRecorderRef      = useRef(null)
+  const recordedChunksRef     = useRef([])
 
   const insecure = typeof window !== 'undefined' && !window.isSecureContext
   const isLive   = status === 'live'
@@ -130,6 +132,9 @@ export default function BroadcastPage() {
         const fresh = (r.data?.results || r.data || []).find(s => s.id === id)
         if (fresh && fresh.status !== 'live') {
           whipRef.current = null
+          // Stop recorder before tracks so the final chunk is flushed
+          const mr = mediaRecorderRef.current
+          if (mr && mr.state !== 'inactive') { try { mr.stop() } catch {} }
           localStreamRef.current?.getTracks().forEach(t => t.stop())
           pcRef.current?.close()
           if (videoRef.current) videoRef.current.srcObject = null
@@ -140,44 +145,48 @@ export default function BroadcastPage() {
     return () => { ok = false; clearInterval(t) }
   }, [status, id])
 
-  // After stream ends: poll CF for recording progress, auto-archive when ready.
-  // This replaces the old 4-second blind redirect — the trainer now sees an
-  // actual progress bar and the archive is created without needing a webhook.
+  // After stream ends: upload the browser-recorded video to the backend.
+  // CF automatic recording is unreliable for WebRTC/WHIP streams, so we
+  // record locally with MediaRecorder and upload the WebM file directly.
   useEffect(() => {
     if (status !== 'ended' || !id) return
-    let ok = true
-    let attempts = 0
-    let timer = null
-    const MAX = 72  // ~6 min at 5s interval
+    let aborted = false
 
-    const poll = async () => {
-      if (!ok || attempts >= MAX) {
-        if (ok) { ok = false; nav('/admin/education/streams') }
-        return
+    const doUpload = async () => {
+      // Flush the final MediaRecorder chunk (onstop fires synchronously after stop())
+      const mr = mediaRecorderRef.current
+      if (mr && mr.state !== 'inactive') {
+        await new Promise(resolve => { mr.onstop = resolve; try { mr.stop() } catch { resolve() } })
       }
-      attempts++
+      mediaRecorderRef.current = null
+
+      const chunks = recordedChunksRef.current || []
+      recordedChunksRef.current = []
+
+      if (aborted || chunks.length === 0) { if (!aborted) nav('/admin/education/streams'); return }
+
+      const blob = new Blob(chunks, { type: 'video/webm' })
+      if (blob.size < 10_000) { nav('/admin/education/streams'); return }  // < 10 KB → ignore
+
+      const fd = new FormData()
+      fd.append('file', blob, 'recording.webm')
+
       try {
-        const r = await api.get(`/education/streams/${id}/cf-status/`)
-        if (!ok) return
-        const recs = r.data?.recordings || []
-        const rec = recs[0]
-        if (rec) {
-          setRecordingPct(Math.min(99, parseInt(rec.pct_complete || '0')))
-          if (rec.ready) {
-            ok = false
-            clearInterval(timer)
-            try { await api.post(`/education/streams/${id}/manual-archive/`) } catch {}
-            setRecordingPct(100)
-            setRecordingDone(true)
-            setTimeout(() => nav('/admin/education/streams'), 2500)
-          }
-        }
-      } catch {}
+        await api.post(`/education/streams/${id}/upload-recording/`, fd, {
+          timeout: 0,  // no timeout — large files take time
+          onUploadProgress: (e) => {
+            if (!aborted && e.total)
+              setRecordingPct(Math.round(e.loaded / e.total * 95))
+          },
+        })
+        if (!aborted) { setRecordingPct(100); setRecordingDone(true); setTimeout(() => nav('/admin/education/streams'), 2500) }
+      } catch {
+        if (!aborted) nav('/admin/education/streams')
+      }
     }
 
-    poll()
-    timer = setInterval(poll, 5000)
-    return () => { ok = false; clearInterval(timer) }
+    doUpload()
+    return () => { aborted = true }
   }, [status, id, nav])
 
   useEffect(() => () => {
@@ -252,7 +261,8 @@ export default function BroadcastPage() {
 
   // ── broadcast ─────────────────────────────────────────────────────────────
   // Запись делает Cloudflare Stream Live Input автоматически — клиентский
-  // MediaRecorder не нужен (это была вторая параллельная кодировка → перегрев).
+  // MediaRecorder records locally at 1.5 Mbps for reliable archiving.
+  // CF automatic recording silently fails for WebRTC/WHIP on this account.
 
   const startBroadcast = async () => {
     if (!stream?.cf_webrtc_url) { setError('WebRTC URL не найден.'); return }
@@ -308,6 +318,18 @@ export default function BroadcastPage() {
       if (sessionUrl) whipRef.current = sessionUrl
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
       try { await api.post(`/education/streams/${id}/start/`) } catch {}
+      // Start browser-side recording — fallback for CF automatic recording
+      try {
+        const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+          .find(t => MediaRecorder.isTypeSupported(t)) || ''
+        if (mimeType) {
+          const mr = new MediaRecorder(ls, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 128_000 })
+          recordedChunksRef.current = []
+          mr.ondataavailable = e => { if (e.data?.size > 0) recordedChunksRef.current.push(e.data) }
+          mr.start(10_000)  // flush chunk every 10 s
+          mediaRecorderRef.current = mr
+        }
+      } catch(e) { console.warn('[recorder] MediaRecorder start failed:', e) }
       setBroadcasting(true); setStatus('live')
     } catch(e) {
       setError('Ошибка: ' + (e.message || e)); setStatus('idle')
@@ -320,6 +342,9 @@ export default function BroadcastPage() {
     cleanupGuest()
     const w = whipRef.current
     if (w) { whipRef.current = null; try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
+    // Stop recorder before tracks so the final chunk is flushed to recordedChunksRef
+    const mr = mediaRecorderRef.current
+    if (mr && mr.state !== 'inactive') { try { mr.stop() } catch {} }
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     if (videoRef.current) videoRef.current.srcObject = null
@@ -733,7 +758,7 @@ export default function BroadcastPage() {
                 <p className="text-emerald-400 text-sm font-semibold mt-2">✓ Запись сохранена!</p>
               ) : (
                 <>
-                  <p className="text-white/50 text-sm mt-1">Cloudflare сохраняет запись…</p>
+                  <p className="text-white/50 text-sm mt-1">Загружаем запись…</p>
                   <div className="mt-4 w-64 mx-auto">
                     <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                       <div
