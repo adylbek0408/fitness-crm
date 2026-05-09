@@ -14,20 +14,27 @@ CABINET_TOKEN_TYPE = 'cabinet'
 
 def create_cabinet_tokens(client):
     """Return dict with access_token and refresh_token for the client."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta, timezone as dt_tz
+    from datetime import datetime as _dt
     from django.conf import settings as django_settings
+    # `datetime.utcnow()` is deprecated in Python 3.12+ and produces naive
+    # datetimes; PyJWT will treat them as UTC but the deprecation noise
+    # pollutes logs and could break in Python 3.13. Use timezone-aware UTC
+    # datetimes — JWT exp/iat are seconds-since-epoch so this is safe to
+    # roll forward without invalidating any existing token.
+    now = _dt.now(dt_tz.utc)
     payload_access = {
         'client_id': str(client.id),
         'type': CABINET_TOKEN_TYPE,
-        'exp': datetime.utcnow() + timedelta(hours=12),
-        'iat': datetime.utcnow(),
+        'exp': now + timedelta(hours=12),
+        'iat': now,
     }
     payload_refresh = {
         'client_id': str(client.id),
         'type': CABINET_TOKEN_TYPE,
         'token_type': 'refresh',
-        'exp': datetime.utcnow() + timedelta(days=30),
-        'iat': datetime.utcnow(),
+        'exp': now + timedelta(days=30),
+        'iat': now,
     }
     secret = getattr(settings, 'SECRET_KEY', django_settings.SECRET_KEY)
     return {

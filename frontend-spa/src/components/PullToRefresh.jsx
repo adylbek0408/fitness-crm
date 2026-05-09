@@ -9,6 +9,16 @@ export default function PullToRefresh({ children, onRefresh }) {
   const startY = useRef(0)
   const scrollTop = useRef(0)
 
+  // Don't trigger pull-to-refresh while the user is interacting with a form
+  // field — selecting text in a textarea or scrolling a select dropdown
+  // shouldn't accidentally reload the page.
+  const isInputFocused = () => {
+    const el = (typeof document !== 'undefined') ? document.activeElement : null
+    if (!el) return false
+    const tag = el.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+  }
+
   const handleTouchStart = useCallback((e) => {
     startY.current = e.touches[0].clientY
     const el = e.currentTarget
@@ -17,6 +27,7 @@ export default function PullToRefresh({ children, onRefresh }) {
 
   const handleTouchMove = useCallback((e) => {
     if (refreshing) return
+    if (isInputFocused()) return
     const scrollEl = e.currentTarget
     if (scrollEl.scrollTop > 0) return
     const y = e.touches[0].clientY

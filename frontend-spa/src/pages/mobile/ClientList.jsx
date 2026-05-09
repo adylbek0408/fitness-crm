@@ -23,6 +23,9 @@ export default function ClientList() {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const totalPages = Math.ceil(count / 25)
   const timer = useRef(null)
+  // Cancel an in-flight search when the user types again — without this, a
+  // late response from a stale query can clobber the latest results.
+  const abortRef = useRef(null)
 
   useRefresh(() => load(1))
 
@@ -36,6 +39,14 @@ export default function ClientList() {
   ].filter(Boolean).length
 
   const load = async (p = page) => {
+    // Abort the previous in-flight request, if any. Stale responses arriving
+    // late would otherwise overwrite results that match the user's current
+    // search.
+    if (abortRef.current) {
+      try { abortRef.current.abort() } catch {}
+    }
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: p })
@@ -46,17 +57,35 @@ export default function ClientList() {
       if (registeredFrom) params.append('registered_from', registeredFrom)
       if (registeredTo) params.append('registered_to', registeredTo)
       if (fromTelegram) params.append('from_telegram', fromTelegram)
-      const r = await api.get(`/clients/?${params}`)
+      const r = await api.get(`/clients/?${params}`, { signal: ctrl.signal })
       setClients(r.data.results || []); setCount(r.data.count || 0)
+    } catch (e) {
+      // Aborted requests are expected during fast typing — only the latest
+      // call drives state. Any other error means we couldn't load; clear
+      // the loading spinner instead of leaving the user staring at it.
+      if (e?.name === 'CanceledError' || e?.name === 'AbortError') return
     } finally {
-      setLoading(false)
+      if (abortRef.current === ctrl) {
+        abortRef.current = null
+        setLoading(false)
+      }
     }
   }
 
   useEffect(() => {
     clearTimeout(timer.current)
     timer.current = setTimeout(() => { setPage(1); load(1) }, 300)
+    return () => {
+      clearTimeout(timer.current)
+    }
   }, [search, status, format, paymentStatus, registeredFrom, registeredTo, fromTelegram])
+
+  // Tear down on unmount: cancel any pending request and clear timers
+  // so we don't setState on a dead component.
+  useEffect(() => () => {
+    if (abortRef.current) { try { abortRef.current.abort() } catch {} }
+    clearTimeout(timer.current)
+  }, [])
 
   useEffect(() => { load() }, [page])
 

@@ -5,6 +5,21 @@ from rest_framework import serializers
 from .models import FullPayment, InstallmentPlan, InstallmentPayment
 
 
+# A receipt photo from a phone tops out around 8 MB; anything bigger is
+# almost certainly a mis-upload (scanned PDF as JPG, 4K screenshot of a
+# bank app, malicious giant PNG). Reject early so we don't fill the disk
+# or the response cycle on a 200 MB upload.
+MAX_RECEIPT_BYTES = 12 * 1024 * 1024
+
+
+def _validate_receipt_size(value):
+    if value and getattr(value, 'size', 0) > MAX_RECEIPT_BYTES:
+        raise serializers.ValidationError(
+            f'Файл слишком большой (>12 МБ). Сожмите фото чека и попробуйте снова.'
+        )
+    return value
+
+
 class FullPaymentReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = FullPayment
@@ -12,7 +27,7 @@ class FullPaymentReadSerializer(serializers.ModelSerializer):
 
 
 class FullPaymentReceiptSerializer(serializers.Serializer):
-    receipt = serializers.ImageField()
+    receipt = serializers.ImageField(validators=[_validate_receipt_size])
     amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
 
 
@@ -20,7 +35,7 @@ class FullPaymentUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = FullPayment
         fields = ['amount', 'is_paid', 'receipt']
-        extra_kwargs = {'receipt': {'required': False}}
+        extra_kwargs = {'receipt': {'required': False, 'validators': [_validate_receipt_size]}}
 
 
 class InstallmentPaymentReadSerializer(serializers.ModelSerializer):
@@ -33,7 +48,9 @@ class AddInstallmentPaymentSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     paid_at = serializers.DateField()
     note = serializers.CharField(required=False, allow_blank=True, default='')
-    receipt = serializers.ImageField(required=False, allow_null=True)
+    receipt = serializers.ImageField(
+        required=False, allow_null=True, validators=[_validate_receipt_size],
+    )
 
     def validate_amount(self, value):
         if value <= 0:

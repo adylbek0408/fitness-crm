@@ -219,14 +219,26 @@ export default function StreamsAdmin() {
     catch (e) { setConfirmDelete(null); setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' }) }
   }
 
-  // Bulk delete
+  // Bulk delete — Promise.allSettled so a single failed delete doesn't
+  // abandon the others. We always reload at the end so the list reflects
+  // whichever rows actually got removed.
   const performBulkDelete = async () => {
     setBulkDeleting(true)
     try {
-      await Promise.all([...selectedIds].map(id => api.delete(`/education/streams/${id}/`)))
+      const ids = [...selectedIds]
+      const results = await Promise.allSettled(
+        ids.map(id => api.delete(`/education/streams/${id}/`))
+      )
+      const failed = results.filter(r => r.status === 'rejected').length
       exitSelectMode(); setConfirmBulkDelete(false); reload()
-    } catch (e) {
-      setAlertModal({ title: 'Ошибка удаления', message: e.response?.data?.detail || e.message, variant: 'error' })
+      if (failed > 0) {
+        const first = results.find(r => r.status === 'rejected')
+        setAlertModal({
+          title: `Удалено ${ids.length - failed} из ${ids.length}`,
+          message: first?.reason?.response?.data?.detail || first?.reason?.message || 'Часть эфиров не удалось удалить — попробуйте ещё раз.',
+          variant: 'error',
+        })
+      }
     } finally { setBulkDeleting(false) }
   }
 

@@ -45,6 +45,24 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
+def _ensure_stream_group_access(stream, client):
+    """Raise Http404 if this client cannot interact with this stream.
+
+    Same access rule used by /streams/active/: a stream restricted to
+    specific groups is reachable only by clients in one of those groups.
+    A stream with no groups assigned is open to everyone.
+
+    Centralised so chat / guest / TURN / signaling endpoints can't drift
+    out of sync — multiple of them used to skip this check entirely,
+    letting a student in group A read or write into a stream meant for
+    group B (and request TURN credentials for it).
+    """
+    from django.http import Http404
+    if stream.groups.exists():
+        if not client.group_id or not stream.groups.filter(id=client.group_id).exists():
+            raise Http404('No stream access for your group.')
+
+
 # ---------------------------------------------------------------------------
 # Lessons (read-only for students)
 # ---------------------------------------------------------------------------
@@ -200,20 +218,45 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            position = int(request.data.get('position', 0))
+            position = max(0, int(request.data.get('position', 0)))
         except (TypeError, ValueError):
             position = 0
         try:
             percent = max(0, min(100, int(request.data.get('percent', 0))))
         except (TypeError, ValueError):
             percent = 0
+
+        # Anti-fabrication: a client could otherwise POST {percent: 100,
+        # position: 999} to mark a lesson "completed" without actually
+        # watching. Cross-check against the lesson's known duration:
+        #   - is_completed only when both numbers agree (≥95% watched AND
+        #     position is at least ~90% of the recorded duration).
+        #   - position cannot exceed duration (with a small grace).
+        # If duration_sec is 0 (CF still transcoding, audio without
+        # metadata), fall back to honouring the client's percent flag — it's
+        # the best we have until the webhook fills in duration.
+        duration = lesson.duration_sec or 0
+        if duration > 0:
+            position = min(position, duration + 5)
+            position_pct = (position / duration) * 100
+            is_completed = (percent >= 95) and (position_pct >= 90)
+            # Recompute percent from position so a client can't claim
+            # progress beyond what the position would support.
+            percent = min(percent, int(position_pct + 5))
+        else:
+            is_completed = percent >= 95
+
+        # last_watched_at is auto_now in the model — ensure update_or_create
+        # actually bumps it even when nothing else changed.
+        from django.utils import timezone as _tz
         progress, _ = LessonProgress.objects.update_or_create(
             client=client,
             lesson=lesson,
             defaults={
-                'last_position_sec': max(0, position),
+                'last_position_sec': position,
                 'percent_watched': percent,
-                'is_completed': percent >= 95,
+                'is_completed': is_completed,
+                'last_watched_at': _tz.now(),
             },
         )
         return Response(LessonProgressSerializer(progress).data)
@@ -361,6 +404,14 @@ class CabinetStreamHeartbeatView(APIView):
                 defaults={'is_active': True, 'left_at': None},
             )
             return Response({'ok': True, 'recreated': True})
+        # Cheap rate limit: legitimate clients heartbeat every 5–10 s. Drop
+        # spammy beats from a misbehaving (or malicious) client without
+        # writing to the DB, so /heartbeat/ can't be used to DoS the row by
+        # rewriting last_heartbeat_at thousands of times per second.
+        if viewer.last_heartbeat_at:
+            since = (timezone.now() - viewer.last_heartbeat_at).total_seconds()
+            if since < 2:
+                return Response({'ok': True, 'throttled': True})
         viewer.save(update_fields=['last_heartbeat_at', 'updated_at'])
         return Response({'ok': True})
 
@@ -509,12 +560,14 @@ class CabinetStreamChatView(APIView):
     authentication_classes = [CabinetJWTAuthentication]
     permission_classes = [IsCabinetClient]
 
-    def _stream(self, pk):
+    def _stream(self, request, pk):
         from django.shortcuts import get_object_or_404
-        return get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
+        stream = get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
+        _ensure_stream_group_access(stream, request.user.client)
+        return stream
 
     def get(self, request, pk):
-        stream = self._stream(pk)
+        stream = self._stream(request, pk)
         after = request.query_params.get('after')
         qs = StreamChatMessage.objects.filter(
             stream=stream, deleted_at__isnull=True,
@@ -529,7 +582,7 @@ class CabinetStreamChatView(APIView):
         return Response(StreamChatMessageSerializer(qs, many=True).data)
 
     def post(self, request, pk):
-        stream = self._stream(pk)
+        stream = self._stream(request, pk)
         client = request.user.client
         text = (request.data.get('text') or '').strip()
         if not text:
@@ -555,7 +608,14 @@ class CabinetStreamGuestView(APIView):
     authentication_classes = [CabinetJWTAuthentication]
     permission_classes = [IsCabinetClient]
 
+    def _stream(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        stream = get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
+        _ensure_stream_group_access(stream, request.user.client)
+        return stream
+
     def get(self, request, pk):
+        self._stream(request, pk)  # access check
         client = request.user.client
         guest = StreamGuest.objects.filter(
             stream_id=pk,
@@ -573,6 +633,7 @@ class CabinetStreamGuestView(APIView):
         })
 
     def post(self, request, pk):
+        self._stream(request, pk)  # access check
         client = request.user.client
         from django.shortcuts import get_object_or_404
         guest = get_object_or_404(
@@ -587,6 +648,7 @@ class CabinetStreamGuestView(APIView):
         return Response({'id': str(guest.id), 'status': 'active'})
 
     def delete(self, request, pk):
+        self._stream(request, pk)  # access check
         client = request.user.client
         StreamGuest.objects.filter(
             stream_id=pk,
@@ -607,6 +669,9 @@ class CabinetStreamTurnCredentialsView(APIView):
     permission_classes = [IsCabinetClient]
 
     def post(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        stream = get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
+        _ensure_stream_group_access(stream, request.user.client)
         import os, requests as req_lib
         key_id  = os.environ.get('CF_TURN_KEY_ID', '')
         key_tok = os.environ.get('CF_TURN_API_TOKEN', '')
@@ -652,6 +717,8 @@ class CabinetStreamGuestSignalView(APIView):
 
     def _guest(self, request, pk):
         from django.shortcuts import get_object_or_404
+        stream = get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
+        _ensure_stream_group_access(stream, request.user.client)
         return get_object_or_404(
             StreamGuest,
             stream_id=pk,
@@ -671,12 +738,29 @@ class CabinetStreamGuestSignalView(APIView):
     def post(self, request, pk):
         guest = self._guest(request, pk)
         data = request.data or {}
+        # SDP and ICE candidate size limits — without them an attacker (or a
+        # buggy client) could push megabytes of garbage into a JSONField row
+        # and OOM the worker on the next read. Real WebRTC SDPs are <16 KB,
+        # real ICE candidates <1 KB.
         if 'answer_sdp' in data:
-            guest.answer_sdp = data['answer_sdp'] or ''
+            sdp = data['answer_sdp'] or ''
+            if len(sdp) > 32_000:
+                return Response({'error': 'SDP too large'}, status=400)
+            guest.answer_sdp = sdp
             guest.save(update_fields=['answer_sdp'])
         if 'ice' in data and data['ice']:
+            cand = data['ice']
+            try:
+                import json as _json
+                if len(_json.dumps(cand)) > 4_000:
+                    return Response({'error': 'ICE candidate too large'}, status=400)
+            except (TypeError, ValueError):
+                return Response({'error': 'invalid ICE'}, status=400)
             ice_list = list(guest.guest_ice or [])
-            ice_list.append(data['ice'])
+            # Cap accumulated candidates — typical session has <50.
+            if len(ice_list) >= 200:
+                return Response({'error': 'too many ICE candidates'}, status=429)
+            ice_list.append(cand)
             guest.guest_ice = ice_list
             guest.save(update_fields=['guest_ice'])
         return Response({'ok': True})
