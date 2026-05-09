@@ -41,6 +41,25 @@ export default function BroadcastPage() {
   const [showChat, setShowChat] = useState(
     typeof window !== 'undefined' && window.innerWidth >= 768
   )
+  // Track portrait mode so PIP / chat layout can adapt without a refresh.
+  const [isPortrait, setIsPortrait] = useState(
+    typeof window !== 'undefined' && window.innerHeight > window.innerWidth
+  )
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' && window.innerWidth < 768
+  )
+  useEffect(() => {
+    const onResize = () => {
+      setIsPortrait(window.innerHeight > window.innerWidth)
+      setIsMobile(window.innerWidth < 768)
+    }
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+  }, [])
 
   // Guest invite
   const [showInviteModal, setShowInviteModal]  = useState(false)
@@ -51,8 +70,15 @@ export default function BroadcastPage() {
   const [guestRemoteStream, setGuestRemoteStream] = useState(null)
   const guestPollRef     = useRef(null)
   const guestP2PRef      = useRef(null)         // { pc, remoteStream, close }
-  const mixerRef         = useRef(null)         // { canvas, stream, stop }
-  const audioMixerRef    = useRef(null)         // { audioCtx, mixedTrack, close }
+  // The visual + audio mixers are now ALWAYS-ON for the duration of the
+  // broadcast. They are the single source of truth that feeds both the WHIP
+  // sender (→ Cloudflare) and the local MediaRecorder (→ archive). This way
+  // every change visible live (flip-camera, guest in/out) is captured in the
+  // recording — MediaRecorder snapshots tracks at start() so feeding it the
+  // raw camera track would freeze the recording on the original camera.
+  const mixerRef         = useRef(null)         // { canvas, stream, stop, setGuestVideo, setTrainerVideo }
+  const audioMixerRef    = useRef(null)         // { mixedTrack, addGuest, removeGuest, replaceTrainer, close }
+  const mixedOutputRef   = useRef(null)         // MediaStream — what's actually sent / recorded
   const guestVideoElRef  = useRef(null)         // hidden <video> for received guest stream
   const guestPipVideoRef = useRef(null)         // visible PIP <video> in trainer preview
 
@@ -239,6 +265,12 @@ export default function BroadcastPage() {
   }, [uploading])
 
   useEffect(() => () => {
+    // Always free the mixers on unmount — they keep a rAF loop and an
+    // AudioContext that would otherwise leak.
+    try { mixerRef.current?.stop() } catch {}
+    mixerRef.current = null
+    try { audioMixerRef.current?.close() } catch {}
+    audioMixerRef.current = null
     // IMPORTANT: only end the stream in DB + delete WHIP when the trainer
     // explicitly clicked the "Stop" button (isIntentionalStopRef = true).
     // On page reload / navigate-away we do NOT call end() so the stream stays
@@ -321,14 +353,45 @@ export default function BroadcastPage() {
       const q  = QUALITIES[quality]
       const ls = await navigator.mediaDevices.getUserMedia(constraints(q, facingMode))
       localStreamRef.current = ls
-      if (videoRef.current) videoRef.current.srcObject = ls
+      if (videoRef.current) {
+        videoRef.current.srcObject = ls
+        try { await videoRef.current.play() } catch {}
+      }
+
+      // ── Always-on mixers ──────────────────────────────────────────────────
+      // Cap mixed canvas at 720p — 1080p canvas captureStream eats too much
+      // CPU on phones, especially with audio mixing on top. CF-side viewers
+      // rarely benefit from >720p in a fitness stream.
+      const mixW = Math.min(q.width, 1280)
+      const mixH = Math.min(q.height, 720)
+      let mixedStream = null
+      try {
+        const mixer = createMixerCanvas({
+          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: 24,
+        })
+        mixerRef.current = mixer
+        const audioMix = createAudioMixer(ls)
+        audioMixerRef.current = audioMix
+        const tracks = []
+        const mv = mixer.stream.getVideoTracks()[0]
+        if (mv) tracks.push(mv)
+        if (audioMix?.mixedTrack) tracks.push(audioMix.mixedTrack)
+        // Fallback to raw audio track if Web Audio mixer failed
+        else ls.getAudioTracks().forEach(t => tracks.push(t))
+        mixedStream = new MediaStream(tracks)
+        mixedOutputRef.current = mixedStream
+      } catch(e) {
+        console.warn('[mixer] init failed, falling back to raw stream:', e)
+      }
+      // Fallback: raw camera+mic if mixers failed (very rare on modern browsers)
+      const outputStream = mixedStream || ls
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] })
       pcRef.current = pc
       pc.addEventListener('iceconnectionstatechange', () => setConnState(pc.iceConnectionState))
 
-      ls.getTracks().forEach(t => {
-        const s = pc.addTrack(t, ls)
+      outputStream.getTracks().forEach(t => {
+        const s = pc.addTrack(t, outputStream)
         try {
           const p = s.getParameters(); if (!p.encodings) p.encodings = [{}]
           if (t.kind === 'video') { p.encodings[0].maxBitrate = q.videoKbps * 1000; p.encodings[0].maxFramerate = q.frameRate }
@@ -368,8 +431,11 @@ export default function BroadcastPage() {
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
       try { await api.post(`/education/streams/${id}/start/`) } catch {}
       // Start browser-side recording — fallback for CF automatic recording.
-      // video/mp4 is listed last so Chrome/Firefox prefer WebM (better quality),
-      // but Safari (iOS) which only supports mp4 will still work.
+      // We feed it `outputStream` (the SAME stream the WHIP sender uses), so
+      // anything visible to viewers — flip-camera, guest in PIP — also lands
+      // in the recorded archive. video/mp4 is listed last so Chrome/Firefox
+      // prefer WebM (better quality), but Safari (iOS) which only supports
+      // mp4 will still record.
       try {
         const mimeType = [
           'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm',
@@ -377,7 +443,7 @@ export default function BroadcastPage() {
         ].find(t => MediaRecorder.isTypeSupported(t)) || ''
         recorderMimeRef.current = mimeType
         if (mimeType) {
-          const mr = new MediaRecorder(ls, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 128_000 })
+          const mr = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 128_000 })
           recordedChunksRef.current = []
           // stopPromise resolves only after onstop — by then ondataavailable has already fired
           recorderStopPromise.current = new Promise(res => { mr.onstop = res })
@@ -405,6 +471,13 @@ export default function BroadcastPage() {
       try { mr.stop() } catch {}
       try { await recorderStopPromise.current } catch {}  // wait for final ondataavailable
     }
+    // Tear down mixers AFTER recorder.stop() so the final canvas frames /
+    // audio samples have already been flushed into chunks.
+    try { mixerRef.current?.stop() } catch {}
+    mixerRef.current = null
+    try { audioMixerRef.current?.close() } catch {}
+    audioMixerRef.current = null
+    mixedOutputRef.current = null
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     if (videoRef.current) videoRef.current.srcObject = null
@@ -423,18 +496,24 @@ export default function BroadcastPage() {
     try {
       const q   = QUALITIES[quality]
       const ns  = await navigator.mediaDevices.getUserMedia(constraints(q, next))
-      const nvt = ns.getVideoTracks()[0]
-      // If guest is on stage, the WHIP sender currently has the canvas track —
-      // we don't want to overwrite that. Just update the trainer preview source.
-      if (!guestP2PRef.current) {
-        const snd = pcRef.current?.getSenders().find(s => s.track?.kind === 'video')
-        if (snd) await snd.replaceTrack(nvt)
+      // The mixer reads from videoRef every frame, so updating srcObject is
+      // enough — both WHIP (CF) and MediaRecorder pick up the new camera
+      // automatically. Nothing to replaceTrack.
+      const oldLs = localStreamRef.current
+      localStreamRef.current = ns
+      if (videoRef.current) {
+        videoRef.current.srcObject = ns
+        try { await videoRef.current.play() } catch {}
       }
-      // Stop old camera tracks and rebuild local stream
-      localStreamRef.current?.getVideoTracks().forEach(t => t.stop())
-      const combined = new MediaStream([...(localStreamRef.current?.getAudioTracks() || []), nvt])
-      localStreamRef.current = combined
-      if (videoRef.current) videoRef.current.srcObject = combined
+      // Swap audio source in the always-on Web Audio mixer so the new mic
+      // (different gain on front vs back) is what gets sent + recorded.
+      try { audioMixerRef.current?.replaceTrainer(ns) } catch {}
+      // Free old camera + mic only AFTER the new stream is wired up — stopping
+      // earlier creates a black flash and a silent audio gap on iOS.
+      oldLs?.getTracks().forEach(t => { try { t.stop() } catch {} })
+      // Toggle states — new tracks start enabled
+      const at = ns.getAudioTracks()[0]; if (at) { at.enabled = micOn }
+      const vt = ns.getVideoTracks()[0]; if (vt) { vt.enabled = camOn }
     } catch(e) { console.warn('flipCamera:', e) }
     finally { setFlipping(false) }
   }
@@ -517,67 +596,29 @@ export default function BroadcastPage() {
     }
   }
 
+  // Wire the just-arrived guest into the always-on mixers. The mixers were
+  // created in startBroadcast and are already feeding WHIP + MediaRecorder,
+  // so we only need to point them at the guest sources.
   const startMixer = (passedGuestStream) => {
-    if (mixerRef.current || !videoRef.current || !guestVideoElRef.current) return
-    const q = QUALITIES[quality]
-    const mixer = createMixerCanvas({
-      trainerVideo: videoRef.current,
-      guestVideo:   guestVideoElRef.current,
-      width:        Math.min(q.width, 1280),
-      height:       Math.min(q.height, 720),
-      fps:          24,
-    })
-    mixerRef.current = mixer
-
-    // Replace WHIP video sender's track with composite
-    const videoSender = pcRef.current?.getSenders().find(s => s.track?.kind === 'video')
-    const mixedVideo = mixer.stream.getVideoTracks()[0]
-    if (videoSender && mixedVideo) videoSender.replaceTrack(mixedVideo).catch(() => {})
-
-    // Audio: mix trainer mic + guest audio via Web Audio API.
-    // We use the stream passed in by onRemoteStream (more reliable than
-    // re-reading guestVideoEl.srcObject, which can be null during ICE
-    // flaps). Skip audio mixing if the stream has no audio tracks yet —
-    // it'll be set up next time onRemoteStream fires with audio.
+    if (!mixerRef.current || !guestVideoElRef.current) return
+    try { mixerRef.current.setGuestVideo(guestVideoElRef.current) } catch {}
     try {
       const guestStream = passedGuestStream
         || (guestVideoElRef.current?.srcObject instanceof MediaStream
             ? guestVideoElRef.current.srcObject
             : null)
-      if (!guestStream || !(guestStream instanceof MediaStream)) {
-        console.warn('[audio mix] no guest stream yet, will retry')
-        // Reset flag so the next onRemoteStream call retries.
-        // Actually mixerRef is set at this point; clear it to allow retry?
-        // No — video mixing is fine; only audio is missing. Leave it.
-        return
+      if (guestStream instanceof MediaStream && guestStream.getAudioTracks().length > 0) {
+        audioMixerRef.current?.addGuest(guestStream)
       }
-      if (guestStream.getAudioTracks().length === 0) {
-        console.warn('[audio mix] guest stream has no audio tracks yet')
-        return
-      }
-      const am = createAudioMixer(localStreamRef.current, guestStream)
-      audioMixerRef.current = am
-      const audioSender = pcRef.current?.getSenders().find(s => s.track?.kind === 'audio')
-      if (audioSender && am?.mixedTrack) audioSender.replaceTrack(am.mixedTrack).catch(() => {})
     } catch(e) { console.warn('[audio mix] failed:', e) }
   }
 
   const cleanupGuest = () => {
     setGuestStatus('')
     setGuestRemoteStream(null)
-    // Restore original camera + mic tracks on WHIP sender
-    if (pcRef.current && localStreamRef.current) {
-      const camTrack = localStreamRef.current.getVideoTracks()[0]
-      const micTrack = localStreamRef.current.getAudioTracks()[0]
-      const vs = pcRef.current.getSenders().find(s => s.track?.kind === 'video')
-      const as = pcRef.current.getSenders().find(s => s.track?.kind === 'audio')
-      if (vs && camTrack) vs.replaceTrack(camTrack).catch(() => {})
-      if (as && micTrack) as.replaceTrack(micTrack).catch(() => {})
-    }
-    try { mixerRef.current?.stop() } catch {}
-    mixerRef.current = null
-    try { audioMixerRef.current?.close() } catch {}
-    audioMixerRef.current = null
+    // Detach guest from mixers — trainer-only stream resumes automatically.
+    try { mixerRef.current?.setGuestVideo(null) } catch {}
+    try { audioMixerRef.current?.removeGuest() } catch {}
     try { guestP2PRef.current?.close() } catch {}
     guestP2PRef.current = null
     if (guestVideoElRef.current) {
@@ -671,12 +712,18 @@ export default function BroadcastPage() {
             )}
 
             {/* PIP guest preview overlay — visible during connecting too,
-                so trainer always sees that something is happening. */}
+                so trainer always sees that something is happening.
+                Portrait phones get a larger PIP and a 9/16 aspect to match
+                the typical guest camera orientation. */}
             {(guestStatus === 'live' || guestStatus === 'connecting') && (
               <div className="absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80"
                 style={{
-                  bottom: '6.25%', right: '2.5%',
-                  width: '24%', aspectRatio: '16/9',
+                  // In portrait, the bottom controls + safe-area eat ~22% —
+                  // anchor PIP above that so the guest stays fully visible.
+                  bottom: isPortrait ? '24%' : '6.25%',
+                  right: isPortrait ? '4%' : '2.5%',
+                  width: isPortrait ? '40%' : '24%',
+                  aspectRatio: isPortrait ? '9/16' : '16/9',
                 }}>
                 <video
                   ref={el => {
@@ -771,8 +818,16 @@ export default function BroadcastPage() {
               )}
             </div>
 
-            {/* Bottom control bar */}
-            <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-3 px-4 pb-8">
+            {/* Bottom control bar — lifted above the chat bottom-sheet on
+                mobile so all controls (stop, mic, flip…) stay reachable
+                while chatting. Stays anchored to the bottom on desktop. */}
+            <div
+              className="absolute left-0 right-0 z-20 flex flex-col items-center gap-3 px-4 transition-[bottom] duration-200"
+              style={{
+                bottom: showChat && isMobile ? 'calc(50dvh + 12px)' : 0,
+                paddingBottom: showChat && isMobile ? '12px' : '32px',
+              }}
+            >
               <div className="px-3 py-1 rounded-full text-[11px] font-medium bg-black/30 text-white/75 border border-white/10">
                 {previewMirrored ? 'Передняя камера: зеркальное превью' : 'Основная камера: обычное превью'}
               </div>
@@ -849,15 +904,33 @@ export default function BroadcastPage() {
         )}
       </div>
 
-      {/* Chat sidebar */}
+      {/* Chat — sidebar on desktop, bottom-sheet overlay on mobile so the
+          video frame never gets squeezed (which was causing the layout to
+          shift when the chat opened on a phone). */}
       {showChat && isLive && (
-        <div className="w-72 shrink-0 flex flex-col" style={{ height: '100dvh' }}>
-          <StreamChat
-            streamId={id}
-            isTrainer={true}
-            onClose={() => setShowChat(false)}
-          />
-        </div>
+        isMobile ? (
+          <div
+            className="fixed inset-x-0 bottom-0 z-30 rounded-t-3xl overflow-hidden flex flex-col shadow-[0_-12px_40px_rgba(0,0,0,0.6)] border-t border-white/10"
+            style={{ height: '50dvh', background: '#0e1018' }}
+          >
+            <div className="h-1 w-12 bg-white/20 rounded-full mx-auto mt-2 mb-1 shrink-0" />
+            <div className="flex-1 min-h-0 flex flex-col">
+              <StreamChat
+                streamId={id}
+                isTrainer={true}
+                onClose={() => setShowChat(false)}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="w-72 shrink-0 flex flex-col" style={{ height: '100dvh' }}>
+            <StreamChat
+              streamId={id}
+              isTrainer={true}
+              onClose={() => setShowChat(false)}
+            />
+          </div>
+        )
       )}
 
       {/* Viewers drawer — list with names */}

@@ -25,8 +25,13 @@ const DEFAULT_ICE_SERVERS = [
 // ── Canvas mixer ────────────────────────────────────────────────────────────
 
 /**
- * Builds a canvas that draws trainer's video full-frame + guest video in PIP.
- * Returns { canvas, stream, stop }.
+ * Builds a canvas that draws trainer's video full-frame + (optional) guest in PIP.
+ * Returns { canvas, stream, stop, setGuestVideo, setTrainerVideo }.
+ *
+ * `guestVideo` is optional. Use `setGuestVideo(elOrNull)` to attach/detach a
+ * guest stream after creation. The canvas keeps drawing — replaceTrack on the
+ * WHIP sender / MediaRecorder is unnecessary, since both are already wired to
+ * `mixer.stream` and pick up the new layout automatically.
  */
 export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, height = 720, fps = 24 }) {
   const canvas = document.createElement('canvas')
@@ -38,11 +43,14 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
   ctx.fillRect(0, 0, width, height)
 
   let running = true
-  let rvfcSupported = typeof trainerVideo.requestVideoFrameCallback === 'function'
+  let currentTrainer = trainerVideo
+  let currentGuest = guestVideo || null
+  let rvfcSupported = currentTrainer && typeof currentTrainer.requestVideoFrameCallback === 'function'
   let lastDraw = 0
   const minFrameMs = 1000 / fps
 
   const drawPip = () => {
+    const guestVideo = currentGuest
     // PIP: 25% width, 16:9 ratio, bottom-right with margin
     const gw = Math.round(width * 0.25)
     const gh = Math.round(gw * 9 / 16)
@@ -98,16 +106,17 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
 
   const drawAll = (now = performance.now()) => {
     if (!running) return
+    const trainerVideo = currentTrainer
     if (now - lastDraw < minFrameMs) {
       // throttle
-      if (rvfcSupported) {
+      if (rvfcSupported && trainerVideo) {
         try { trainerVideo.requestVideoFrameCallback(drawAll); return } catch {}
       }
       requestAnimationFrame(drawAll); return
     }
     lastDraw = now
 
-    if (trainerVideo.readyState >= 2) {
+    if (trainerVideo && trainerVideo.readyState >= 2) {
       // Cover-fit trainer (object-cover behaviour)
       const vw = trainerVideo.videoWidth || width
       const vh = trainerVideo.videoHeight || height
@@ -127,7 +136,7 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
 
     drawPip()
 
-    if (rvfcSupported) {
+    if (rvfcSupported && trainerVideo) {
       try { trainerVideo.requestVideoFrameCallback(drawAll); return } catch {}
     }
     requestAnimationFrame(drawAll)
@@ -153,31 +162,76 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
 
   const stream = canvas.captureStream(fps)
   const stop = () => { running = false }
+  const setGuestVideo = (el) => { currentGuest = el || null }
+  const setTrainerVideo = (el) => {
+    currentTrainer = el
+    rvfcSupported = el && typeof el.requestVideoFrameCallback === 'function'
+  }
 
-  return { canvas, stream, stop }
+  return { canvas, stream, stop, setGuestVideo, setTrainerVideo }
 }
 
 // ── Audio mixer (Web Audio API) ─────────────────────────────────────────────
 
+/**
+ * Always-on audio mixer. Trainer audio is required at creation. Guest audio
+ * can be added/removed dynamically via the returned methods, and the trainer
+ * source can be swapped (used during flip-camera) without rebuilding the
+ * destination track — so MediaRecorder and WHIP keep working.
+ *
+ * Signature is overloaded for backwards compatibility:
+ *   createAudioMixer(trainerStream)                 — preferred
+ *   createAudioMixer(trainerStream, guestStream)    — legacy 2-arg form
+ */
 export function createAudioMixer(trainerStream, guestStream) {
   const AudioCtx = window.AudioContext || window.webkitAudioContext
   if (!AudioCtx) return null
   const audioCtx = new AudioCtx()
   const dest = audioCtx.createMediaStreamDestination()
 
-  const trainerSrc = audioCtx.createMediaStreamSource(trainerStream)
+  let trainerSrc = audioCtx.createMediaStreamSource(trainerStream)
   trainerSrc.connect(dest)
 
-  const guestSrc = audioCtx.createMediaStreamSource(guestStream)
-  guestSrc.connect(dest)
+  let guestSrc = null
+  if (guestStream) {
+    try {
+      guestSrc = audioCtx.createMediaStreamSource(guestStream)
+      guestSrc.connect(dest)
+    } catch {}
+  }
+
+  const addGuest = (s) => {
+    if (!s) return
+    try { guestSrc?.disconnect() } catch {}
+    try {
+      guestSrc = audioCtx.createMediaStreamSource(s)
+      guestSrc.connect(dest)
+    } catch {}
+  }
+  const removeGuest = () => {
+    try { guestSrc?.disconnect() } catch {}
+    guestSrc = null
+  }
+  const replaceTrainer = (s) => {
+    if (!s) return
+    try { trainerSrc.disconnect() } catch {}
+    try {
+      trainerSrc = audioCtx.createMediaStreamSource(s)
+      trainerSrc.connect(dest)
+    } catch {}
+  }
 
   const close = () => {
     try { trainerSrc.disconnect() } catch {}
-    try { guestSrc.disconnect() } catch {}
+    try { guestSrc?.disconnect() } catch {}
     try { audioCtx.close() } catch {}
   }
 
-  return { audioCtx, mixedTrack: dest.stream.getAudioTracks()[0], close }
+  return {
+    audioCtx,
+    mixedTrack: dest.stream.getAudioTracks()[0],
+    addGuest, removeGuest, replaceTrainer, close,
+  }
 }
 
 // ── Trainer-side P2P (offerer) ──────────────────────────────────────────────

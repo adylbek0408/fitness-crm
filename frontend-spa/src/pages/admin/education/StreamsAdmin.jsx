@@ -99,11 +99,20 @@ export default function StreamsAdmin() {
   //   2. backend recording-status — CF transcoding pct after upload completes.
   // Cleared once the recording is ready (full archive available).
   const [recProgress, setRecProgress] = useState({}) // { [streamId]: { stage, pct } }
+  // Tracks which streams already triggered reload() on becoming ready, so we
+  // don't trigger a fresh reload every poll cycle (= visible flicker).
+  const reloadedReadyRef = useRef(new Set())
+  // Tracks which streams CF has confirmed ready, so we can skip them in
+  // subsequent poll cycles instead of hammering the API forever.
+  const readyStreamsRef = useRef(new Set())
 
   useEffect(() => {
-    // Poll all ended/archived streams — stop when CF signals 'ready'.
-    const targets = streams.filter(s => ['ended', 'archived'].includes(s.status))
-    if (targets.length === 0) { setRecProgress({}); return }
+    // Poll only ended/archived streams whose recording isn't confirmed ready yet.
+    const targets = streams.filter(s =>
+      ['ended', 'archived'].includes(s.status)
+      && !readyStreamsRef.current.has(s.id)
+    )
+    if (targets.length === 0) { return }
 
     let stopped = false
 
@@ -140,9 +149,16 @@ export default function StreamsAdmin() {
           else next[s.id] = { stage: d.stage, pct: d.pct ?? 0 }
           return next
         })
-        // Auto-refresh card list when a recording becomes ready so the
-        // archive badge + preview button show up without a manual reload.
-        if (d.stage === 'ready') reload()
+        // Auto-refresh card list ONCE per stream when it transitions to ready,
+        // so the archive badge + preview button appear without flickering the
+        // list every poll cycle.
+        if (d.stage === 'ready') {
+          readyStreamsRef.current.add(s.id)
+          if (!reloadedReadyRef.current.has(s.id)) {
+            reloadedReadyRef.current.add(s.id)
+            reload()
+          }
+        }
       } catch {}
     }
 
