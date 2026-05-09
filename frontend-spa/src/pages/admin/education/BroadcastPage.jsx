@@ -300,14 +300,12 @@ export default function BroadcastPage() {
         pc.addEventListener('icegatheringstatechange', chk); setTimeout(res, 3000)
       })
 
-      const resp = await fetch(stream.cf_webrtc_url, { method: 'POST', headers: { 'Content-Type': 'application/sdp' }, body: pc.localDescription.sdp })
-      if (!resp.ok) throw new Error(`WHIP ${resp.status}`)
-      const answer = await resp.text()
-      const loc    = resp.headers.get('Location') || ''
-      if (loc) {
-        try { whipRef.current = new URL(loc, stream.cf_webrtc_url).href }
-        catch { const seg = loc.split('/').pop(); if (seg?.length > 4) whipRef.current = stream.cf_webrtc_url.replace(/\/$/, '') + '/' + seg }
-      }
+      // Proxy WHIP through backend so server can capture the CF Location header.
+      // Browser can't read Location from a cross-origin response due to CORS.
+      const whipResp = await api.post(`/education/streams/${id}/whip-proxy/`, { sdp: pc.localDescription.sdp })
+      const answer     = whipResp.data.sdp
+      const sessionUrl = whipResp.data.session_url || ''
+      if (sessionUrl) whipRef.current = sessionUrl
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
       try { await api.post(`/education/streams/${id}/start/`) } catch {}
       setBroadcasting(true); setStatus('live')

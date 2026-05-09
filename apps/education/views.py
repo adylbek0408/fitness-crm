@@ -445,6 +445,43 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         stream.save(update_fields=['status', 'started_at', 'updated_at'])
         return Response(LiveStreamAdminSerializer(stream).data)
 
+    @action(detail=True, methods=['post'], url_path='whip-proxy')
+    def whip_proxy(self, request, pk=None):
+        """Proxy WHIP SDP offer to Cloudflare Stream server-side.
+
+        The browser can't read CF's Location response header due to CORS, so we
+        proxy the WHIP POST here. We capture the session URL from Location and
+        return it as 'session_url' so stopBroadcast can send a reliable DELETE.
+        """
+        stream = self.get_object()
+        if not stream.cf_webrtc_url:
+            return Response({'detail': 'cf_webrtc_url not set on this stream'}, status=400)
+
+        sdp = (request.data or {}).get('sdp', '')
+        if not sdp:
+            return Response({'detail': 'sdp field required'}, status=400)
+
+        import requests as _req
+        try:
+            cf = _req.post(
+                stream.cf_webrtc_url,
+                data=sdp.encode(),
+                headers={'Content-Type': 'application/sdp'},
+                timeout=15,
+            )
+        except Exception as e:
+            logger.warning('WHIP proxy request failed stream=%s: %s', stream.id, e)
+            return Response({'detail': str(e)}, status=503)
+
+        if not cf.ok:
+            logger.warning('WHIP proxy CF error stream=%s status=%s', stream.id, cf.status_code)
+            return Response({'detail': f'CF WHIP returned {cf.status_code}'}, status=cf.status_code)
+
+        session_url = cf.headers.get('Location', '')
+        logger.info('WHIP proxy OK stream=%s CF=%s session_url=%s',
+                    stream.id, cf.status_code, session_url[:80] if session_url else 'none')
+        return Response({'sdp': cf.text, 'session_url': session_url})
+
     @action(detail=True, methods=['post'])
     def end(self, request, pk=None):
         stream = self.get_object()
@@ -463,16 +500,17 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         )
 
         # Proxy WHIP DELETE to Cloudflare so recording is triggered reliably.
-        # Browser fetch() for DELETE may be silently blocked by CORS or network;
-        # doing it server-side guarantees delivery and lets us log the result.
+        # Prefer the session URL (from whip-proxy response); fall back to the
+        # publish URL so CF at least gets *some* signal to finalize recording.
         whip_resource_url = (request.data or {}).get('whip_resource_url', '')
-        if whip_resource_url:
+        whip_delete_url = whip_resource_url or stream.cf_webrtc_url
+        if whip_delete_url:
             try:
                 import requests as _req
-                del_resp = _req.delete(whip_resource_url, timeout=10)
+                del_resp = _req.delete(whip_delete_url, timeout=10)
                 logger.warning(
-                    'WHIP DELETE stream=%s status=%s body=%s',
-                    stream.id, del_resp.status_code, del_resp.text[:200],
+                    'WHIP DELETE stream=%s url=%s status=%s body=%s',
+                    stream.id, whip_delete_url[:80], del_resp.status_code, del_resp.text[:200],
                 )
             except Exception:
                 logger.warning('WHIP DELETE failed for stream=%s', stream.id, exc_info=True)
