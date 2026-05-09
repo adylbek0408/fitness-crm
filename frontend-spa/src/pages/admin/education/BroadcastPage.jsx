@@ -150,9 +150,21 @@ export default function BroadcastPage() {
   // After stream ends: upload the browser-recorded video to the backend.
   // CF automatic recording is unreliable for WebRTC/WHIP streams, so we
   // record locally with MediaRecorder and upload the WebM file directly.
+  //
+  // sessionStorage key `recording_upload:{streamId}` mirrors progress so the
+  // streams list can render it after the trainer leaves this page.
+  const ssKey = `recording_upload:${id}`
+  const writeUploadProgress = (stage, pct) => {
+    try { sessionStorage.setItem(ssKey, JSON.stringify({ stage, pct, ts: Date.now() })) } catch {}
+  }
+  const clearUploadProgress = () => { try { sessionStorage.removeItem(ssKey) } catch {} }
+
+  // [uploading] — true while the WebM POST is in flight; gates the
+  // "К списку эфиров" button so a click can't kill the upload.
+  const [uploading, setUploading] = useState(false)
+
   useEffect(() => {
     if (status !== 'ended' || !id) return
-    let aborted = false
 
     const doUpload = async () => {
       // If recorder is still running (external stop), stop it and wait for final chunk
@@ -168,31 +180,54 @@ export default function BroadcastPage() {
       const chunks = recordedChunksRef.current || []
       recordedChunksRef.current = []
 
-      if (aborted || chunks.length === 0) { if (!aborted) nav('/admin/education/streams'); return }
+      if (chunks.length === 0) { clearUploadProgress(); nav('/admin/education/streams'); return }
 
       const blob = new Blob(chunks, { type: 'video/webm' })
-      if (blob.size < 10_000) { nav('/admin/education/streams'); return }  // < 10 KB → ignore
+      if (blob.size < 10_000) { clearUploadProgress(); nav('/admin/education/streams'); return }
 
       const fd = new FormData()
       fd.append('file', blob, 'recording.webm')
 
+      setUploading(true)
+      writeUploadProgress('uploading', 0)
       try {
         await api.post(`/education/streams/${id}/upload-recording/`, fd, {
           timeout: 0,  // no timeout — large files take time
           onUploadProgress: (e) => {
-            if (!aborted && e.total)
-              setRecordingPct(Math.round(e.loaded / e.total * 95))
+            if (e.total) {
+              const pct = Math.round(e.loaded / e.total * 95)
+              setRecordingPct(pct)
+              writeUploadProgress('uploading', pct)
+            }
           },
         })
-        if (!aborted) { setRecordingPct(100); setRecordingDone(true); setTimeout(() => nav('/admin/education/streams'), 2500) }
+        setRecordingPct(100); setRecordingDone(true)
+        // Browser→backend done; CF transcoding picks up from here.
+        // Switch to 'processing' so the streams list can poll cf-state instead.
+        writeUploadProgress('processing', 100)
+        setTimeout(() => { clearUploadProgress(); nav('/admin/education/streams') }, 2500)
       } catch {
-        if (!aborted) nav('/admin/education/streams')
+        clearUploadProgress()
+        nav('/admin/education/streams')
+      } finally {
+        setUploading(false)
       }
     }
 
     doUpload()
-    return () => { aborted = true }
-  }, [status, id, nav])
+    // No abort/cleanup here: we want the upload to complete even if the user
+    // navigates away. The button is disabled while `uploading` is true; that
+    // is the actual safeguard against losing the recording.
+  }, [status, id, nav])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Warn before unload if upload is still in flight — closing the tab WILL
+  // abort the XHR and the recording will be lost.
+  useEffect(() => {
+    if (!uploading) return
+    const h = e => { e.preventDefault(); e.returnValue = 'Запись эфира ещё загружается. Если уйти сейчас, она пропадёт.'; return e.returnValue }
+    window.addEventListener('beforeunload', h)
+    return () => window.removeEventListener('beforeunload', h)
+  }, [uploading])
 
   useEffect(() => () => {
     // IMPORTANT: only end the stream in DB + delete WHIP when the trainer
@@ -782,9 +817,12 @@ export default function BroadcastPage() {
                 </>
               )}
             </div>
-            <button onClick={() => nav('/admin/education/streams')}
-              className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95">
-              К списку эфиров
+            <button
+              onClick={() => nav('/admin/education/streams')}
+              disabled={uploading}
+              title={uploading ? 'Дождитесь окончания загрузки записи' : ''}
+              className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10">
+              {uploading ? 'Загружаем запись…' : 'К списку эфиров'}
             </button>
           </div>
         )}

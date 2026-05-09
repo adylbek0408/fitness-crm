@@ -759,6 +759,58 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             'has_archived_lesson': bool(stream.archived_lesson_id),
         })
 
+    @action(detail=True, methods=['get'], url_path='recording-status')
+    def recording_status(self, request, pk=None):
+        """Lightweight: return recording preparation progress for the streams list.
+
+        Pipeline stages reflected to the client:
+          - 'ready':       archived_lesson exists AND CF says video is ready.
+          - 'processing':  upload to CF complete, but CF still transcoding.
+          - 'uploading':   browser is still uploading the WebM (UI hint only;
+                           tracked client-side via sessionStorage).
+          - 'missing':     stream is ended but no recording_uid yet.
+
+        We only own 'ready'/'processing'/'missing'; 'uploading' is reported by
+        the frontend itself when an XHR is in flight.
+        """
+        stream = self.get_object()
+        # Ready if we have a published archive lesson.
+        # Verify with CF in case CF is still transcoding (the lesson row was
+        # created right after upload but the video isn't playable yet).
+        video_uid = ''
+        if stream.archived_lesson_id:
+            try:
+                video_uid = stream.archived_lesson.stream_uid or ''
+            except Lesson.DoesNotExist:
+                video_uid = ''
+        if not video_uid:
+            video_uid = stream.recording_uid or ''
+
+        if not video_uid:
+            return Response({
+                'stage': 'missing',
+                'pct': 0,
+                'ready': False,
+                'has_archived_lesson': False,
+            })
+
+        try:
+            info = CloudflareStreamService.get_video_status(video_uid)
+        except ImproperlyConfigured:
+            return Response({
+                'stage': 'missing', 'pct': 0, 'ready': False,
+                'has_archived_lesson': bool(stream.archived_lesson_id),
+            })
+
+        ready = info['ready'] and bool(stream.archived_lesson_id)
+        return Response({
+            'stage': 'ready' if ready else 'processing',
+            'pct': 100 if ready else info['pct_complete'],
+            'ready': ready,
+            'cf_state': info['state'],
+            'has_archived_lesson': bool(stream.archived_lesson_id),
+        })
+
     @action(detail=True, methods=['post'], url_path='manual-archive')
     def manual_archive(self, request, pk=None):
         """Manually create an archive lesson for a completed stream (when CF webhook failed).

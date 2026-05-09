@@ -276,6 +276,45 @@ class CloudflareStreamService:
         return resp.json().get('result') or []
 
     @classmethod
+    def get_video_status(cls, video_uid: str) -> dict:
+        """Get transcoding state for a single CF Stream video.
+
+        Works for both live-recorded videos and direct-uploaded videos (e.g.,
+        the WebM clips uploaded by `upload-recording`).
+
+        Returns: {
+            'state': 'queued'|'inprogress'|'ready'|'error'|'pendingupload'|...,
+            'pct_complete': 0-100 int,
+            'ready': bool,
+            'duration': float seconds,
+        }
+        """
+        import requests
+        if not video_uid:
+            return {'state': '', 'pct_complete': 0, 'ready': False, 'duration': 0}
+        url = f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream/{video_uid}"
+        try:
+            resp = requests.get(url, headers=cls._headers(), timeout=10)
+            resp.raise_for_status()
+            r = resp.json().get('result') or {}
+        except Exception:
+            logger.warning('CF Stream get_video_status failed', exc_info=True)
+            return {'state': '', 'pct_complete': 0, 'ready': False, 'duration': 0}
+        status_obj = r.get('status') or {}
+        # CF returns pctComplete as a string ("0", "100"); normalize to int.
+        pct_raw = status_obj.get('pctComplete', 0)
+        try:
+            pct = int(float(pct_raw)) if pct_raw not in ('', None) else 0
+        except (TypeError, ValueError):
+            pct = 0
+        return {
+            'state': status_obj.get('state', '') or '',
+            'pct_complete': max(0, min(100, pct)),
+            'ready': bool(r.get('readyToStream', False)),
+            'duration': r.get('duration', 0) or 0,
+        }
+
+    @classmethod
     def get_live_input_status(cls, live_input_uid: str) -> dict:
         """Get current state of a live input — whether it's actively receiving data.
 

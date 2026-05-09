@@ -92,6 +92,67 @@ export default function StreamsAdmin() {
 
   useEffect(() => { reload() }, [page]) // eslint-disable-line
 
+  // Recording preparation progress per stream id.
+  // Sources merged in priority order:
+  //   1. sessionStorage `recording_upload:{id}` — set by BroadcastPage while
+  //      the WebM is being POSTed; survives navigation away from BroadcastPage.
+  //   2. backend recording-status — CF transcoding pct after upload completes.
+  // Cleared once the recording is ready (full archive available).
+  const [recProgress, setRecProgress] = useState({}) // { [streamId]: { stage, pct } }
+
+  useEffect(() => {
+    // Targets: streams in `ended`/`archived` state without a confirmed-ready archive.
+    const targets = streams.filter(s =>
+      ['ended', 'archived'].includes(s.status) && !(s.archived_lesson && s.archived_lesson_published)
+    )
+    if (targets.length === 0) { setRecProgress({}); return }
+
+    let stopped = false
+
+    const readSessionStorage = (sid) => {
+      try {
+        const raw = sessionStorage.getItem(`recording_upload:${sid}`)
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        // Stale entries (older than 30 min) are ignored — guards against
+        // sessionStorage sticking around after a failed upload tab close.
+        if (Date.now() - (parsed.ts || 0) > 30 * 60 * 1000) return null
+        return parsed
+      } catch { return null }
+    }
+
+    const refreshOne = async (s) => {
+      const local = readSessionStorage(s.id)
+      // While the browser upload is in flight, trust sessionStorage —
+      // recording-status would falsely report 'missing' (no recording_uid yet).
+      if (local && local.stage === 'uploading') {
+        if (!stopped) setRecProgress(p => ({ ...p, [s.id]: { stage: 'uploading', pct: local.pct ?? 0 } }))
+        return
+      }
+      try {
+        const r = await api.get(`/education/streams/${s.id}/recording-status/`)
+        if (stopped) return
+        const d = r.data || {}
+        // 'missing' with no local upload → don't render a bar (stays as
+        // existing "manual archive" affordance).
+        setRecProgress(p => {
+          const next = { ...p }
+          if (d.stage === 'ready') delete next[s.id]
+          else if (d.stage === 'missing' && !local) delete next[s.id]
+          else next[s.id] = { stage: d.stage, pct: d.pct ?? 0 }
+          return next
+        })
+        // Auto-refresh card list when a recording becomes ready so the
+        // archive badge + preview button show up without a manual reload.
+        if (d.stage === 'ready' && !s.archived_lesson_published) reload()
+      } catch {}
+    }
+
+    targets.forEach(refreshOne)
+    const t = setInterval(() => { targets.forEach(refreshOne) }, 6000)
+    return () => { stopped = true; clearInterval(t) }
+  }, [streams]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     api.get('/groups/?page_size=200').then(r => setGroups(r.data?.results || r.data || [])).catch(() => {})
   }, [])
@@ -356,6 +417,7 @@ export default function StreamsAdmin() {
             onCopy={copy}
             copied={copied}
             studentLink={studentLink(s.id)}
+            recProgress={recProgress[s.id]}
           />
         ))}
         {totalPages > 1 && (
@@ -546,7 +608,7 @@ function StreamCreateModal({ form, setForm, groups, creating, onClose, onSubmit 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, onDelete, onManualArchive, onPreviewRecording, onEdit, onCopy, copied, studentLink }) {
+function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, onDelete, onManualArchive, onPreviewRecording, onEdit, onCopy, copied, studentLink, recProgress }) {
   const [viewers, setViewers] = useState([])
 
   useEffect(() => {
@@ -563,6 +625,16 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
   const isArchived = ['ended', 'archived'].includes(s.status)
   const hasRecording = isArchived && s.archived_lesson
   const wa = encodeURIComponent(`Прямой эфир «${s.title}» — заходи: ${studentLink}`)
+
+  // Recording preparation: show inline 0-100% bar while uploading or
+  // CF-transcoding. Hidden once the archive is ready.
+  const showRecProgress =
+    isArchived && !!recProgress && recProgress.stage !== 'ready' && !s.archived_lesson_published
+  const recPct = Math.max(0, Math.min(100, Number(recProgress?.pct) || 0))
+  const recLabel =
+    recProgress?.stage === 'uploading' ? 'Загрузка записи'
+      : recProgress?.stage === 'processing' ? 'Подготовка записи'
+      : 'Подготовка записи'
 
   return (
     <div
@@ -666,6 +738,23 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
           <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs hover:bg-emerald-100 shrink-0">
             <MessageCircle size={11} /> WA
           </a>
+        </div>
+      )}
+
+      {/* Recording preparation progress (after broadcast ends) */}
+      {showRecProgress && !selectMode && (
+        <div className="px-4 sm:px-5 pb-4">
+          <div className="flex items-center gap-2 text-[11px] text-gray-500 mb-1.5">
+            <span className="w-3 h-3 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" />
+            <span className="font-medium">{recLabel}</span>
+            <span className="ml-auto font-mono text-gray-700 tabular-nums">{recPct}%</span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full transition-all duration-500"
+              style={{ width: `${recPct}%` }}
+            />
+          </div>
         </div>
       )}
 
