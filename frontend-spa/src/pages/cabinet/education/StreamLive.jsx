@@ -35,11 +35,12 @@ export default function StreamLive() {
   const [stageState,     setStageState]     = useState('')   // 'requesting-media' | 'connecting' | 'live' | 'failed'
   const [stageMicOn,     setStageMicOn]     = useState(true)
   const [stageCamOn,     setStageCamOn]     = useState(true)
-  const stageLocalRef    = useRef(null)
-  const stagePcRef       = useRef(null)
-  const stageRemoteRef   = useRef(null)        // <video> element for trainer's incoming stream
-  const stagePreviewRef  = useRef(null)        // <video> for our own camera preview
-  const guestPollRef     = useRef(null)
+  const stageLocalRef       = useRef(null)
+  const stagePcRef          = useRef(null)
+  const stageRemoteRef      = useRef(null)        // <video> element for trainer's incoming stream
+  const stageRemoteStreamRef = useRef(null)       // latest MediaStream from P2P (so we can re-bind on remount)
+  const stagePreviewRef     = useRef(null)        // <video> for our own camera preview
+  const guestPollRef        = useRef(null)
 
   const videoRef       = useRef(null)
   const playerRef      = useRef(null)   // CloudflareStreamPlayer imperative handle
@@ -208,7 +209,11 @@ export default function StreamLive() {
         postAnswer:  async (sdp) => { await api.post(baseUrl, { answer_sdp: sdp }) },
         postIce:     async (cand) => { await api.post(baseUrl, { ice: cand }).catch(() => {}) },
         onRemoteStream: (rs) => {
-          if (stageRemoteRef.current) {
+          stageRemoteStreamRef.current = rs
+          // Bind immediately if the <video> is already in the DOM. The
+          // ref-callback below also re-binds the next time it mounts, so
+          // an early arrival here doesn't get lost.
+          if (stageRemoteRef.current && stageRemoteRef.current.srcObject !== rs) {
             stageRemoteRef.current.srcObject = rs
             stageRemoteRef.current.play().catch(() => {})
           }
@@ -251,6 +256,7 @@ export default function StreamLive() {
     stageLocalRef.current = null
     if (stagePreviewRef.current) stagePreviewRef.current.srcObject = null
     if (stageRemoteRef.current) stageRemoteRef.current.srcObject = null
+    stageRemoteStreamRef.current = null
     setOnStage(false)
     setStageState('')
     setStageMicOn(true)
@@ -330,16 +336,42 @@ export default function StreamLive() {
         {/* ── Left/Main column ──────────────────────────────────────────── */}
         <div className="flex flex-col flex-1 min-h-0 min-w-0">
 
-          {/* Video — 16:9 on mobile, fills height on desktop */}
+          {/* Video — 16:9 on mobile, fills height on desktop.
+              When the student is on stage, we hide the CF playback (which
+              already contains the student's own face composited by the
+              trainer mixer — that's what the other viewers see) and show
+              the trainer's P2P stream directly. This kills the
+              "I see myself twice" effect, and gives realtime audio with
+              no CF buffering delay. */}
           <div ref={playerShellRef} data-protected-root
                className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto">
-            <CloudflareStreamPlayer
-              ref={playerRef}
-              uid={stream.cf_playback_id}
-              subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK}
-              live
-            />
-            <Watermark text={watermarkText} />
+            {!onStage && (
+              <>
+                <CloudflareStreamPlayer
+                  ref={playerRef}
+                  uid={stream.cf_playback_id}
+                  subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK}
+                  live
+                />
+                <Watermark text={watermarkText} />
+              </>
+            )}
+            {onStage && (
+              <video
+                ref={el => {
+                  stageRemoteRef.current = el
+                  // Re-bind whenever the element mounts, in case the
+                  // remote stream arrived before we were on stage.
+                  const rs = stageRemoteStreamRef.current
+                  if (el && rs && el.srcObject !== rs) {
+                    el.srcObject = rs
+                    el.play().catch(() => {})
+                  }
+                }}
+                autoPlay playsInline
+                className="absolute inset-0 w-full h-full object-cover bg-black"
+              />
+            )}
 
             {/* Top bar */}
             <div className="absolute top-0 inset-x-0 z-20 flex items-center gap-2 px-3 py-2.5
@@ -425,11 +457,8 @@ export default function StreamLive() {
           <StreamChat streamId={stream.id} isTrainer={false} />
         </aside>
 
-        {/* Hidden audio for trainer's voice (P2P) */}
-        {onStage && (
-          <video ref={stageRemoteRef} autoPlay playsInline
-            style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
-        )}
+        {/* P2P trainer video is now rendered above (inside playerShell) when
+            onStage — no separate hidden element needed. */}
 
         {warning && (
           <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-4 py-2 rounded-xl shadow-lg flex items-center gap-2 text-[13px]">

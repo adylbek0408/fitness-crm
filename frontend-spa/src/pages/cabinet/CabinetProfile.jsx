@@ -178,7 +178,7 @@ export default function CabinetProfile() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
-      <div className="max-w-md mx-auto pb-10">
+      <div className="max-w-md sm:max-w-2xl mx-auto pb-10">
 
         {/* ── Hero ─────────────────────────────────────────────── */}
         <header

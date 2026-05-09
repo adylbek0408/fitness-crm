@@ -125,7 +125,7 @@ export default function LessonView() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6">
+      <main className="max-w-5xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         {error && (
           <div className="p-4 rounded-xl bg-rose-50 text-rose-700 mb-4">{error}</div>
         )}
@@ -210,8 +210,8 @@ export default function LessonView() {
             )}
 
             {/* Lesson info */}
-            <div className="mt-4 bg-white rounded-2xl border border-rose-100 p-6 shadow-sm">
-              <h2 className="text-xl font-bold mb-2" style={{ color: '#1f1f1f' }}>{lesson.title}</h2>
+            <div className="mt-4 bg-white rounded-2xl border border-rose-100 p-4 sm:p-6 shadow-sm">
+              <h2 className="text-lg sm:text-xl font-bold mb-2" style={{ color: '#1f1f1f' }}>{lesson.title}</h2>
               {lesson.description && (
                 <p className="text-gray-600 whitespace-pre-line text-sm leading-relaxed">{lesson.description}</p>
               )}
@@ -219,11 +219,11 @@ export default function LessonView() {
 
             {/* Prev / Next navigation */}
             {lessons.length > 1 && (
-              <div className="mt-4 flex items-center gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
                 {prevLesson ? (
                   <Link
                     to={`/cabinet/lessons/${prevLesson.id}`}
-                    className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white border border-rose-100 hover:border-rose-300 hover:shadow-sm transition flex-1 min-w-0"
+                    className="flex items-center gap-2 px-3 py-2.5 sm:px-4 sm:py-3 rounded-2xl bg-white border border-rose-100 hover:border-rose-300 hover:shadow-sm transition min-w-0"
                   >
                     <ChevronLeft size={18} className="text-rose-400 shrink-0" />
                     <div className="min-w-0">
@@ -231,12 +231,12 @@ export default function LessonView() {
                       <p className="text-sm font-medium text-gray-800 truncate">{prevLesson.title}</p>
                     </div>
                   </Link>
-                ) : <div className="flex-1" />}
+                ) : <div />}
 
                 {nextLesson ? (
                   <Link
                     to={`/cabinet/lessons/${nextLesson.id}`}
-                    className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white border border-rose-100 hover:border-rose-300 hover:shadow-sm transition flex-1 min-w-0 text-right justify-end"
+                    className="flex items-center gap-2 px-3 py-2.5 sm:px-4 sm:py-3 rounded-2xl bg-white border border-rose-100 hover:border-rose-300 hover:shadow-sm transition min-w-0 text-right justify-end"
                   >
                     <div className="min-w-0">
                       <p className="text-[10px] text-gray-400 uppercase tracking-wider">Следующий</p>
@@ -245,9 +245,9 @@ export default function LessonView() {
                     <ChevronRight size={18} className="text-rose-400 shrink-0" />
                   </Link>
                 ) : (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-rose-50 border border-rose-100 flex-1 min-w-0 text-right justify-end">
+                  <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4 sm:py-3 rounded-2xl bg-rose-50 border border-rose-100 min-w-0 text-right justify-end">
                     <div className="min-w-0">
-                      <p className="text-[10px] text-rose-400 uppercase tracking-wider">Все уроки просмотрены</p>
+                      <p className="text-[10px] text-rose-400 uppercase tracking-wider">Все уроки</p>
                       <p className="text-sm font-medium text-rose-600">Так держать! 🎉</p>
                     </div>
                   </div>

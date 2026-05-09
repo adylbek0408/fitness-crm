@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Radio, Mic, MicOff, Video, VideoOff, Square,
-  Users, ChevronLeft, CheckCircle2,
+  Users, ChevronLeft, CheckCircle2, AlertCircle,
   RefreshCcw, MessageCircle, UserPlus, X, PhoneOff,
 } from 'lucide-react'
 import api from '../../../api/axios'
@@ -36,6 +36,10 @@ export default function BroadcastPage() {
   const [recordingDone, setRecordingDone] = useState(false)
   const [uploadError,   setUploadError]   = useState('')
   const [flipping,     setFlipping]     = useState(false)
+  // When CF reports the live input is already connected (i.e. the trainer is
+  // streaming from somewhere else), we ask before clobbering the other
+  // session — so the other device's broadcast doesn't silently die.
+  const [conflictPrompt, setConflictPrompt] = useState(null)  // { onProceed }
 
   // Chat — open by default on desktop (>=768), closed on mobile to save room.
   const [showChat, setShowChat] = useState(
@@ -236,10 +240,12 @@ export default function BroadcastPage() {
           },
         })
         setRecordingPct(100); setRecordingDone(true)
-        // Browser→backend done; CF transcoding picks up from here.
-        // Switch to 'processing' so the streams list can poll cf-state instead.
+        // Backend returned 202 → it has the file and is uploading to CF in
+        // a background thread. Switch the sessionStorage flag to 'processing'
+        // so the streams list keeps the bar visible, then bail. Trainer can
+        // close the tab now without losing anything.
         writeUploadProgress('processing', 100)
-        setTimeout(() => { clearUploadProgress(); nav('/admin/education/streams') }, 2500)
+        setTimeout(() => { clearUploadProgress(); nav('/admin/education/streams') }, 1200)
       } catch(e) {
         const msg = e?.response?.data?.detail || e?.message || 'Ошибка загрузки'
         setUploadError(msg)
@@ -345,9 +351,25 @@ export default function BroadcastPage() {
   // MediaRecorder records locally at 1.5 Mbps for reliable archiving.
   // CF automatic recording silently fails for WebRTC/WHIP on this account.
 
-  const startBroadcast = async () => {
+  const startBroadcast = async (force = false) => {
     if (!stream?.cf_webrtc_url) { setError('WebRTC URL не найден.'); return }
     if (insecure) { setError('Нужен HTTPS для камеры и микрофона.'); return }
+
+    // Guard against accidentally starting a second WHIP push when the trainer
+    // is already streaming from another device/tab. CF accepts only one
+    // publisher per live input — kicking the existing one would interrupt
+    // every viewer mid-broadcast. We poll cf-status; if someone else is
+    // already publishing, surface a confirm prompt instead of barging in.
+    if (!force) {
+      try {
+        const r = await api.get(`/education/streams/${id}/cf-status/`)
+        if (r.data?.live_input_state === 'connected') {
+          setConflictPrompt({ onProceed: () => { setConflictPrompt(null); startBroadcast(true) } })
+          return
+        }
+      } catch { /* network hiccup — fall through, CF/WHIP will reject if busy */ }
+    }
+
     setError(''); setStatus('connecting')
     try {
       const q  = QUALITIES[quality]
@@ -828,32 +850,37 @@ export default function BroadcastPage() {
                 paddingBottom: showChat && isMobile ? '12px' : '32px',
               }}
             >
-              <div className="px-3 py-1 rounded-full text-[11px] font-medium bg-black/30 text-white/75 border border-white/10">
-                {previewMirrored ? 'Передняя камера: зеркальное превью' : 'Основная камера: обычное превью'}
-              </div>
+              {/* Preview hint — hide on mobile portrait, where space is
+                  precious and the trainer already sees which camera is
+                  active. Keep it on desktop / landscape as a useful nudge. */}
+              {!isPortrait && (
+                <div className="px-3 py-1 rounded-full text-[11px] font-medium bg-black/30 text-white/75 border border-white/10">
+                  {previewMirrored ? 'Передняя камера: зеркальное превью' : 'Основная камера: обычное превью'}
+                </div>
+              )}
 
-              <div className="bg-black/55 backdrop-blur-2xl border border-white/[0.12] rounded-3xl px-4 py-3 flex items-center gap-3 shadow-2xl">
-                <CtrlBtn on={micOn} onClick={toggleMic} onIcon={<Mic size={20}/>} offIcon={<MicOff size={20}/>} label={micOn ? 'Микрофон вкл.' : 'Микрофон выкл.'} />
-                <CtrlBtn on={camOn} onClick={toggleCam} onIcon={<Video size={20}/>} offIcon={<VideoOff size={20}/>} label={camOn ? 'Камера вкл.' : 'Камера выкл.'} />
+              <div className={`bg-black/55 backdrop-blur-2xl border border-white/[0.12] rounded-3xl shadow-2xl flex items-center ${isMobile ? 'px-3 py-2 gap-2' : 'px-4 py-3 gap-3'}`}>
+                <CtrlBtn isMobile={isMobile} on={micOn} onClick={toggleMic} onIcon={<Mic size={isMobile ? 17 : 20}/>} offIcon={<MicOff size={isMobile ? 17 : 20}/>} label={micOn ? 'Микрофон вкл.' : 'Микрофон выкл.'} />
+                <CtrlBtn isMobile={isMobile} on={camOn} onClick={toggleCam} onIcon={<Video size={isMobile ? 17 : 20}/>} offIcon={<VideoOff size={isMobile ? 17 : 20}/>} label={camOn ? 'Камера вкл.' : 'Камера выкл.'} />
 
                 <button onClick={stopBroadcast} title="Завершить эфир"
-                  className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center shadow-[0_0_30px_rgba(244,63,94,0.45)] border border-rose-300/40 active:scale-90 hover:from-rose-400 hover:to-rose-600 transition">
-                  <Square size={22} fill="white" className="text-white" />
+                  className={`${isMobile ? 'w-12 h-12 rounded-2xl' : 'w-14 h-14 rounded-2xl'} bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center shadow-[0_0_24px_rgba(244,63,94,0.4)] border border-rose-300/40 active:scale-90 hover:from-rose-400 hover:to-rose-600 transition`}>
+                  <Square size={isMobile ? 18 : 22} fill="white" className="text-white" />
                 </button>
 
                 <button onClick={flipCamera} disabled={flipping} title="Сменить камеру"
-                  className="w-12 h-12 rounded-full bg-white/12 border border-white/20 flex items-center justify-center text-white active:scale-90 disabled:opacity-40 hover:bg-white/20 transition">
-                  <RefreshCcw size={19} className={flipping ? 'animate-spin' : ''} />
+                  className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} rounded-full bg-white/12 border border-white/20 flex items-center justify-center text-white active:scale-90 disabled:opacity-40 hover:bg-white/20 transition`}>
+                  <RefreshCcw size={isMobile ? 16 : 19} className={flipping ? 'animate-spin' : ''} />
                 </button>
 
                 <button onClick={() => setShowChat(p => !p)} title="Чат"
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-white active:scale-90 hover:opacity-80 transition border ${showChat ? 'bg-rose-600 border-rose-400' : 'bg-white/12 border-white/20'}`}>
-                  <MessageCircle size={19} />
+                  className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} rounded-full flex items-center justify-center text-white active:scale-90 hover:opacity-80 transition border ${showChat ? 'bg-rose-600 border-rose-400' : 'bg-white/12 border-white/20'}`}>
+                  <MessageCircle size={isMobile ? 16 : 19} />
                 </button>
 
                 <button onClick={openInviteModal} title="Пригласить ученицу"
-                  className="w-12 h-12 rounded-full bg-white/12 border border-white/20 flex items-center justify-center text-white active:scale-90 hover:bg-white/20 transition">
-                  <UserPlus size={19} />
+                  className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} rounded-full bg-white/12 border border-white/20 flex items-center justify-center text-white active:scale-90 hover:bg-white/20 transition`}>
+                  <UserPlus size={isMobile ? 16 : 19} />
                 </button>
               </div>
             </div>
@@ -875,7 +902,10 @@ export default function BroadcastPage() {
                   <p className="text-white/50 text-xs mt-1 break-words">{uploadError}</p>
                 </>
               ) : recordingDone ? (
-                <p className="text-emerald-400 text-sm font-semibold mt-2">✓ Запись загружена, обрабатывается…</p>
+                <p className="text-emerald-400 text-sm font-semibold mt-2">
+                  ✓ Запись принята<br />
+                  <span className="text-white/50 text-xs font-normal">Можно закрыть страницу — обработка идёт в фоне</span>
+                </p>
               ) : (
                 <>
                   <p className="text-white/50 text-sm mt-1">Загружаем запись…</p>
@@ -899,6 +929,42 @@ export default function BroadcastPage() {
                 className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10">
                 {uploading ? 'Загружаем запись…' : 'К списку эфиров'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Conflict prompt — shown when CF reports another publisher already
+            on this live input. The trainer can either back off and stop the
+            other session, or take over (kicks the other device). */}
+        {conflictPrompt && (
+          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#181b28] border border-amber-500/30 rounded-3xl p-6 max-w-sm w-full shadow-2xl">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <AlertCircle size={20} className="text-amber-400" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-white font-semibold text-base">Эфир уже идёт</h3>
+                  <p className="text-white/60 text-sm mt-1">
+                    Похоже вы уже стримите этот эфир с другого устройства или вкладки.
+                    Если запустить сейчас — там трансляция оборвётся для всех зрителей.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => setConflictPrompt(null)}
+                  className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-medium border border-white/10"
+                >
+                  Сначала закрою там
+                </button>
+                <button
+                  onClick={() => conflictPrompt?.onProceed?.()}
+                  className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold"
+                >
+                  Перехватить эфир
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1017,10 +1083,10 @@ export default function BroadcastPage() {
   )
 }
 
-function CtrlBtn({ on, onClick, onIcon, offIcon, label }) {
+function CtrlBtn({ on, onClick, onIcon, offIcon, label, isMobile }) {
   return (
     <button onClick={onClick} title={label}
-      className={`w-12 h-12 rounded-full flex items-center justify-center text-white active:scale-90 hover:opacity-80 transition ${on ? 'bg-white/12 border border-white/20' : 'bg-rose-600 shadow-lg shadow-rose-900/40'}`}>
+      className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} rounded-full flex items-center justify-center text-white active:scale-90 hover:opacity-80 transition ${on ? 'bg-white/12 border border-white/20' : 'bg-rose-600 shadow-lg shadow-rose-900/40'}`}>
       {on ? onIcon : offIcon}
     </button>
   )

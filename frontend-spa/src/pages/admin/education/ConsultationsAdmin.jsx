@@ -587,10 +587,22 @@ function JitsiRoomModal({ info, consultationId, onClose }) {
         </span>
         <div className="flex items-center gap-2 ml-auto">
           {roomUrl && (
-            <a href={roomUrl} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/90 text-white hover:bg-violet-600 text-xs font-medium">
+            // Open in a new tab AND tear down the embedded modal — otherwise
+            // the trainer ends up joined twice to the same room (once in the
+            // iframe, once in the popup), which the student sees as two
+            // "administrator" tiles and breaks the conversation flow.
+            <button
+              type="button"
+              onClick={() => {
+                const win = window.open(roomUrl, '_blank', 'noopener,noreferrer')
+                // Only close embedded if the popup actually opened — popup
+                // blockers would otherwise leave the trainer with no session.
+                if (win) handleClose()
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/90 text-white hover:bg-violet-600 text-xs font-medium"
+            >
               <LogIn size={13} /> Открыть в браузере
-            </a>
+            </button>
           )}
           <button onClick={handleClose}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/80 text-white hover:bg-rose-600 text-xs font-medium">

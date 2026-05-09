@@ -787,6 +787,17 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             video_uid = stream.recording_uid or ''
 
         if not video_uid:
+            # archived_lesson exists but no CF uid yet → background thread is
+            # still pushing the WebM up to Cloudflare. Distinguish from
+            # 'missing' (no upload happened at all) so the UI keeps the
+            # progress bar visible.
+            if stream.archived_lesson_id:
+                return Response({
+                    'stage': 'uploading',
+                    'pct': 0,
+                    'ready': False,
+                    'has_archived_lesson': True,
+                })
             return Response({
                 'stage': 'missing',
                 'pct': 0,
@@ -907,11 +918,18 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='upload-recording')
     def upload_recording(self, request, pk=None):
-        """Receive a WebM recording from the browser, upload it to CF Stream, create lesson archive.
+        """Receive a WebM recording from the browser and hand it off to CF.
 
-        Browser → Django (multipart, field='file') → CF Stream (server-to-server PUT).
-        Server-side upload avoids the CORS limitation that blocks direct browser PUT to
-        upload.cloudflarestream.com.
+        Pipeline (returns 202 as soon as the file is on disk so the trainer
+        can leave the broadcast page immediately):
+          1. Browser → Django: multipart upload, saved to a temp file.
+          2. Django creates the Lesson row + links it to the stream.
+          3. A daemon thread picks up the temp file and uploads it to CF
+             Stream server-to-server. recording_uid is filled in once CF
+             accepts the upload.
+          4. /recording-status/ reports stage='uploading' until the thread
+             finishes the CF push, then 'processing' while CF transcodes,
+             then 'ready'.
 
         Requires nginx: client_max_body_size 2g (see deploy/nginx.conf).
         """
@@ -923,68 +941,101 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         if not video_file:
             return Response({'detail': 'Нет файла (поле: file).'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1) Get a one-time CF Stream direct-upload URL
+        # Save the upload to a temp file on disk — Django's
+        # TemporaryUploadedFile is auto-deleted when this request finishes,
+        # but the background thread needs the bytes to live longer than that.
+        import os
+        import tempfile
+        import threading
+        tmp_fd, tmp_path = tempfile.mkstemp(prefix='stream-rec-', suffix='.webm')
         try:
-            upload_info = CloudflareStreamService.create_direct_upload_url(
-                max_duration_sec=3 * 3600,
-                name=f'Эфир: {stream.title}',
-            )
-        except ImproperlyConfigured as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            with os.fdopen(tmp_fd, 'wb') as out:
+                for chunk in video_file.chunks():
+                    out.write(chunk)
         except Exception as e:
-            logger.warning('CF upload URL error stream=%s: %s', stream.id, e)
-            return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        upload_url = upload_info['upload_url']
-        video_uid = upload_info['video_uid']
-
-        # 2) Stream file to CF (server-to-server — no CORS limitations)
-        # CF direct_upload URL expects POST multipart/form-data with field 'file',
-        # NOT a raw PUT (which returns 400 Bad Request).
-        try:
-            import requests as _req
-            content_type = video_file.content_type or 'video/webm'
-            resp = _req.post(
-                upload_url,
-                files={'file': ('recording.webm', video_file, content_type)},
-                timeout=600,  # 10 min ceiling for very long sessions
-            )
-            resp.raise_for_status()
-            logger.warning('CF upload OK stream=%s video_uid=%s size=%s', stream.id, video_uid, video_file.size)
-        except Exception as e:
-            logger.warning('CF upload failed stream=%s: %s', stream.id, e, exc_info=True)
+            try:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+            except OSError:
+                pass
+            logger.exception('failed to spool upload to disk stream=%s', stream.id)
             return Response(
-                {'detail': f'Ошибка загрузки в Cloudflare: {e}'},
-                status=status.HTTP_502_BAD_GATEWAY,
+                {'detail': f'Не смог сохранить временный файл: {e}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # 3) Create lesson archive
+        content_type = video_file.content_type or 'video/webm'
+        file_size = os.path.getsize(tmp_path)
+
+        # Create the lesson row + link to stream NOW so the streams list shows
+        # "archive in progress" immediately. stream_uid is populated by the
+        # background thread once CF accepts the upload.
         from django.db import transaction
         with transaction.atomic():
-            lesson = Lesson.objects.filter(stream_uid=video_uid).first()
-            if not lesson:
-                lesson = Lesson.objects.create(
-                    title=f"Эфир: {stream.title}",
-                    description=stream.description or '',
-                    lesson_type='video',
-                    stream_uid=video_uid,
-                    duration_sec=0,
-                    thumbnail_url='',
-                    trainer=stream.trainer,
-                    is_published=True,
-                    published_at=timezone.now(),
-                    created_by=request.user if request.user.is_authenticated else None,
-                )
-                if stream.groups.exists():
-                    lesson.groups.set(list(stream.groups.values_list('id', flat=True)))
+            lesson = Lesson.objects.create(
+                title=f"Эфир: {stream.title}",
+                description=stream.description or '',
+                lesson_type='video',
+                stream_uid='',
+                duration_sec=0,
+                thumbnail_url='',
+                trainer=stream.trainer,
+                is_published=True,
+                published_at=timezone.now(),
+                created_by=request.user if request.user.is_authenticated else None,
+            )
+            if stream.groups.exists():
+                lesson.groups.set(list(stream.groups.values_list('id', flat=True)))
             stream.archived_lesson = lesson
-            stream.recording_uid = video_uid
             stream.status = 'archived'
             if not stream.ended_at:
                 stream.ended_at = timezone.now()
-            stream.save(update_fields=['archived_lesson', 'recording_uid', 'status', 'ended_at', 'updated_at'])
+            stream.save(update_fields=['archived_lesson', 'status', 'ended_at', 'updated_at'])
 
-        return Response(LiveStreamAdminSerializer(stream).data)
+        stream_id = stream.id
+        lesson_id = lesson.id
+        title = stream.title
+
+        def _upload_to_cf():
+            try:
+                upload_info = CloudflareStreamService.create_direct_upload_url(
+                    max_duration_sec=3 * 3600,
+                    name=f'Эфир: {title}',
+                )
+                video_uid = upload_info['video_uid']
+                upload_url = upload_info['upload_url']
+
+                import requests as _req
+                with open(tmp_path, 'rb') as f:
+                    resp = _req.post(
+                        upload_url,
+                        files={'file': ('recording.webm', f, content_type)},
+                        timeout=1200,  # 20 min ceiling for huge sessions
+                    )
+                    resp.raise_for_status()
+                logger.warning(
+                    '[bg-cf-upload] OK stream=%s video_uid=%s size=%s',
+                    stream_id, video_uid, file_size,
+                )
+                Lesson.objects.filter(pk=lesson_id).update(stream_uid=video_uid)
+                LiveStream.objects.filter(pk=stream_id).update(recording_uid=video_uid)
+            except Exception as e:
+                logger.exception('[bg-cf-upload] failed stream=%s: %s', stream_id, e)
+            finally:
+                try:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+        threading.Thread(target=_upload_to_cf, daemon=True).start()
+
+        # Refresh the instance so the response reflects the new archived_lesson link
+        stream.refresh_from_db()
+        return Response(
+            LiveStreamAdminSerializer(stream).data,
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=False, methods=['get'])
     def trash(self, request):
