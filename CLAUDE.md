@@ -28,6 +28,8 @@
 6. **Сервис-слой** (`core.services.BaseService`) — бизнес-логика отдельно от views.
 
 ## Команды
+
+### Локально (bash)
 ```bash
 # Backend
 cd fitness-crm
@@ -40,6 +42,26 @@ python manage.py runserver
 cd frontend-spa
 npm install
 npm run dev
+```
+
+### Деплой на сервер (Fish shell, Timeweb VPS)
+Сервер использует **Fish shell** — синтаксис отличается от bash.
+venv находится в `/var/www/fitness-crm/venv/` (без точки).
+Systemd-сервис называется `fitness-crm` (не `gunicorn`).
+Node.js на сервере требует увеличенного heap (иначе OOM при сборке).
+
+```fish
+# Полный деплой одной командой (выполнять из /var/www/fitness-crm):
+source /var/www/fitness-crm/venv/bin/activate.fish
+python manage.py migrate
+systemctl restart fitness-crm
+cd frontend-spa
+NODE_OPTIONS='--max-old-space-size=1024' npm run build
+```
+
+Или одной строкой:
+```fish
+cd /var/www/fitness-crm; and source venv/bin/activate.fish; and python manage.py migrate; and systemctl restart fitness-crm; and cd frontend-spa; and NODE_OPTIONS='--max-old-space-size=1024' npm run build
 ```
 
 ## Где что лежит
