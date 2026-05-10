@@ -666,14 +666,27 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
   const dateIso = s.started_at || s.scheduled_at || s.created_at
 
   // ── LIVE — "breaking news" full card ──────────────────────────────────────
-  if (isLive && !selectMode) {
+  if (isLive) {
     return (
-      <div className="rounded-2xl overflow-hidden shadow-md border border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50">
+      <div
+        className={`rounded-2xl overflow-hidden shadow-md border border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50 ${selected ? 'ring-2 ring-rose-400' : ''}`}
+        onClick={selectMode ? onToggleSelect : undefined}
+        style={selectMode ? { cursor: 'pointer' } : {}}
+      >
         {/* Top bar */}
         <div className="px-4 sm:px-5 pt-4 pb-3 flex items-start gap-3">
-          {/* Pulsing live dot */}
-          <div className="shrink-0 mt-1 w-8 h-8 rounded-full bg-rose-600 flex items-center justify-center shadow-[0_0_12px_rgba(225,29,72,0.5)]">
-            <span className="w-3 h-3 rounded-full bg-white animate-pulse" />
+          {/* Checkbox (selectMode) or pulsing live dot */}
+          <div className="shrink-0 mt-1" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
+            {selectMode
+              ? selected
+                ? <CheckSquare size={20} className="text-rose-500" />
+                : <SquareIcon size={20} className="text-gray-400" />
+              : (
+                <div className="w-8 h-8 rounded-full bg-rose-600 flex items-center justify-center shadow-[0_0_12px_rgba(225,29,72,0.5)]">
+                  <span className="w-3 h-3 rounded-full bg-white animate-pulse" />
+                </div>
+              )
+            }
           </div>
 
           <div className="flex-1 min-w-0">
@@ -689,48 +702,52 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
             <p className="text-xs text-rose-400 mt-0.5">{fmtDate(dateIso)}</p>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 shadow-sm active:scale-95 transition">
-              <ExternalLink size={13} /> Студия
-            </a>
-            <button onClick={onEnd}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-rose-200 text-rose-600 text-xs font-semibold hover:bg-rose-50 active:scale-95 transition">
-              <Square size={11} fill="currentColor" /> Завершить
-            </button>
-            <button onClick={onDelete} title="В корзину"
-              className="p-2 rounded-xl text-rose-300 hover:text-rose-500 hover:bg-white/60 transition active:scale-95">
-              <Trash2 size={14} />
-            </button>
-          </div>
+          {/* Actions — hidden in selectMode */}
+          {!selectMode && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 shadow-sm active:scale-95 transition">
+                <ExternalLink size={13} /> Студия
+              </a>
+              <button onClick={onEnd}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-rose-200 text-rose-600 text-xs font-semibold hover:bg-rose-50 active:scale-95 transition">
+                <Square size={11} fill="currentColor" /> Завершить
+              </button>
+              <button onClick={onDelete} title="В корзину"
+                className="p-2 rounded-xl text-rose-300 hover:text-rose-500 hover:bg-white/60 transition active:scale-95">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Link bar */}
-        <div className="px-4 sm:px-5 pb-3 flex items-center gap-2 border-t border-rose-100/60 pt-2.5">
-          <span className="text-[11px] text-rose-400 truncate flex-1 font-mono">{studentLink}</span>
-          <button onClick={() => onCopy(studentLink, `link-${s.id}`)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-rose-100 text-xs text-gray-600 hover:bg-gray-50 transition shrink-0">
-            {copied === `link-${s.id}` ? <><Check size={11} className="text-emerald-500" /> Скопировано</> : <><Copy size={11} /> Копировать</>}
-          </button>
-          <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer"
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600 transition shrink-0">
-            <MessageCircle size={11} /> WA
-          </a>
-        </div>
-
-        {/* Viewers */}
-        {viewers.length > 0 && (
-          <div className="px-4 sm:px-5 pb-3 flex flex-wrap gap-1.5">
-            {viewers.map(v => (
-              <div key={v.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/70 border border-rose-100 text-xs">
-                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 text-white flex items-center justify-center text-[10px] font-bold">
-                  {(v.client_name || '?').charAt(0).toUpperCase()}
-                </div>
-                {v.client_name || 'Гость'}
+        {/* Link bar + Viewers — hidden in selectMode */}
+        {!selectMode && (
+          <>
+            <div className="px-4 sm:px-5 pb-3 flex items-center gap-2 border-t border-rose-100/60 pt-2.5">
+              <span className="text-[11px] text-rose-400 truncate flex-1 font-mono">{studentLink}</span>
+              <button onClick={() => onCopy(studentLink, `link-${s.id}`)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-rose-100 text-xs text-gray-600 hover:bg-gray-50 transition shrink-0">
+                {copied === `link-${s.id}` ? <><Check size={11} className="text-emerald-500" /> Скопировано</> : <><Copy size={11} /> Копировать</>}
+              </button>
+              <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600 transition shrink-0">
+                <MessageCircle size={11} /> WA
+              </a>
+            </div>
+            {viewers.length > 0 && (
+              <div className="px-4 sm:px-5 pb-3 flex flex-wrap gap-1.5">
+                {viewers.map(v => (
+                  <div key={v.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/70 border border-rose-100 text-xs">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 text-white flex items-center justify-center text-[10px] font-bold">
+                      {(v.client_name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    {v.client_name || 'Гость'}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
     )

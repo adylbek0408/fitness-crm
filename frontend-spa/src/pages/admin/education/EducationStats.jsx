@@ -191,7 +191,7 @@ export default function EducationStats() {
                   <div className="font-medium truncate">{l.title}</div>
                   <div className="text-xs text-gray-500 truncate">
                     {l.lesson_type === 'audio' ? 'Аудио' : 'Видео'}
-                    {l.groups.length > 0 && ` · ${l.groups.join(', ')}`}
+                    {l.groups.length > 0 && ` · ${l.groups.map(g => typeof g === 'object' ? `Группа ${g.number}` : g).join(', ')}`}
                   </div>
                 </div>
                 <div className="hidden sm:flex items-center gap-6 shrink-0">
@@ -331,8 +331,8 @@ function LessonDetailModal({ lesson, onClose }) {
                     {v.last_name} {v.first_name}
                   </div>
                   <div className="text-xs text-gray-500 truncate">
-                    {v.phone} ·{' '}
-                    {new Date(v.last_watched_at).toLocaleDateString('ru')}
+                    {v.phone}
+                    {v.last_watched_at && ` · ${new Date(v.last_watched_at).toLocaleDateString('ru')}`}
                   </div>
                 </div>
                 <div className="shrink-0 w-32">

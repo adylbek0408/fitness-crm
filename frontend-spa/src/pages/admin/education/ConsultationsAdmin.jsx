@@ -3,8 +3,10 @@ import {
   Video, Copy, MessageCircle, Plus, Check,
   Clock, Users, AlertCircle, Search,
   StopCircle, LogIn, Calendar, Trash2, X,
-  CheckSquare, Square as SquareIcon,
+  CheckSquare, Square as SquareIcon, PhoneCall,
 } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+import { ru } from 'date-fns/locale'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
@@ -26,6 +28,11 @@ const fmtDuration = sec => {
   const m = Math.floor(sec / 60)
   const s = sec % 60
   return `${m} мин ${s} с`
+}
+const relDate = iso => {
+  if (!iso) return ''
+  try { return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ru }) }
+  catch { return '' }
 }
 
 const STATUS_TABS = [
@@ -171,14 +178,17 @@ export default function ConsultationsAdmin() {
     }
   }
 
-  // Bulk delete
+  // Bulk delete — allSettled so a single failure doesn't abort the rest
   const performBulkDelete = async () => {
     setBulkDeleting(true)
+    const ids = [...selectedIds]
     try {
-      await Promise.all([...selectedIds].map(id => api.delete(`/education/consultations/${id}/`)))
+      const results = await Promise.allSettled(ids.map(id => api.delete(`/education/consultations/${id}/`)))
+      const failed = results.filter(r => r.status === 'rejected').length
       exitSelectMode(); setConfirmBulkDelete(false); reload()
-    } catch (e) {
-      setAlertModal({ title: 'Ошибка удаления', message: e.response?.data?.detail || e.message, variant: 'error' })
+      if (failed > 0) {
+        setAlertModal({ title: `Удалено ${ids.length - failed} из ${ids.length}`, message: 'Часть консультаций не удалось удалить — попробуйте ещё раз.', variant: 'error' })
+      }
     } finally { setBulkDeleting(false) }
   }
 
@@ -262,7 +272,7 @@ export default function ConsultationsAdmin() {
       )}
 
       {/* List */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {loading && (
           <div className="p-10 text-center text-gray-400">
             <div className="w-8 h-8 border-2 border-violet-200 border-t-violet-500 rounded-full animate-spin mx-auto mb-2" />
@@ -336,107 +346,142 @@ export default function ConsultationsAdmin() {
 // ─────────────────────────────────────────────────────────────────────────────
 function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl, waLink, copied, onCopy, onJoinRoom, joiningId, onStop, onDelete }) {
   const isActive = item.status === 'active'
-  const badge = STATUS_MAP[item.status] || { label: item.status, cls: 'bg-gray-100 text-gray-500' }
+  const isExpired = item.status === 'expired'
   const isJoining = joiningId === item.id
+  const dateIso = item.started_at || item.created_at
+
+  // ── ACTIVE — "live call" full card ─────────────────────────────────────────
+  if (isActive) {
+    return (
+      <div
+        className={`rounded-2xl overflow-hidden shadow-md border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 ${selected ? 'ring-2 ring-violet-400' : ''}`}
+        onClick={selectMode ? onToggleSelect : undefined}
+        style={selectMode ? { cursor: 'pointer' } : {}}
+      >
+        <div className="px-4 sm:px-5 pt-4 pb-3 flex items-start gap-3">
+          {/* Checkbox or pulsing dot */}
+          <div className="shrink-0 mt-1" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
+            {selectMode
+              ? selected
+                ? <CheckSquare size={20} className="text-violet-500" />
+                : <SquareIcon size={20} className="text-gray-400" />
+              : (
+                <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center shadow-[0_0_12px_rgba(109,40,217,0.4)]">
+                  <PhoneCall size={14} className="text-white" />
+                </div>
+              )
+            }
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-black tracking-widest text-violet-600 uppercase">● Активна</span>
+              {!item.started_at && (
+                <span className="text-[11px] text-violet-400">Ожидает участников</span>
+              )}
+            </div>
+            <h3 className="font-bold text-gray-900 text-[15px] leading-tight mt-0.5 truncate">
+              {item.title || 'Консультация'}
+            </h3>
+            <p className="text-xs text-violet-400 mt-0.5 flex items-center gap-2">
+              {item.trainer_name && <span className="flex items-center gap-1"><Users size={10} />{item.trainer_name}</span>}
+              {dateIso && <span>{fmtDate(dateIso)}</span>}
+            </p>
+          </div>
+
+          {/* Actions — hidden in selectMode */}
+          {!selectMode && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button onClick={onJoinRoom} disabled={isJoining}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 shadow-sm active:scale-95 transition disabled:opacity-60">
+                {isJoining
+                  ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : <LogIn size={13} />}
+                {isJoining ? 'Подкл…' : 'Войти'}
+              </button>
+              <button onClick={onStop}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-violet-200 text-violet-600 text-xs font-semibold hover:bg-violet-50 active:scale-95 transition">
+                <StopCircle size={13} /> Завершить
+              </button>
+              <button onClick={onDelete} title="В корзину"
+                className="p-2 rounded-xl text-violet-300 hover:text-rose-500 hover:bg-white/60 transition active:scale-95">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Link bar — hidden in selectMode */}
+        {!selectMode && (
+          <div className="px-4 sm:px-5 pb-3 flex items-center gap-2 border-t border-violet-100/60 pt-2.5">
+            <span className="text-[11px] text-violet-400 truncate flex-1 font-mono">{roomUrl}</span>
+            <button onClick={() => onCopy(roomUrl, `link-${item.id}`)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-violet-100 text-xs text-gray-600 hover:bg-gray-50 transition shrink-0">
+              {copied === `link-${item.id}` ? <><Check size={11} className="text-emerald-500" /> Скопировано</> : <><Copy size={11} /> Копировать</>}
+            </button>
+            <a href={waLink} target="_blank" rel="noreferrer"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600 transition shrink-0">
+              <MessageCircle size={11} /> WA
+            </a>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Compact row — used / cancelled / expired ───────────────────────────────
+  const dotCls = isExpired ? 'bg-amber-400' : 'bg-gray-300'
+  const badge = STATUS_MAP[item.status] || { label: item.status, cls: 'bg-gray-100 text-gray-500' }
 
   return (
     <div
-      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition ${selected ? 'border-violet-400 ring-2 ring-violet-200' : isActive ? 'border-violet-200' : 'border-gray-100'}`}
+      className={`bg-white rounded-xl border overflow-hidden transition-all hover:shadow-sm hover:border-gray-300 ${selected ? 'border-violet-300 ring-2 ring-violet-100' : 'border-gray-200'}`}
       onClick={selectMode ? onToggleSelect : undefined}
       style={selectMode ? { cursor: 'pointer' } : {}}
     >
-      <div className="p-4 sm:p-5 flex items-start gap-3">
-        {/* Checkbox or icon */}
-        <div className="shrink-0 mt-0.5" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
+      <div className="px-4 py-3 flex items-center gap-3">
+        {/* Checkbox or status dot */}
+        <div className="shrink-0" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
           {selectMode
             ? selected
-              ? <CheckSquare size={20} className="text-violet-500" />
-              : <SquareIcon size={20} className="text-gray-300" />
-            : (
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${isActive ? 'bg-violet-600 text-white shadow shadow-violet-200 border-violet-400/40' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
-                <Video size={18} />
-              </div>
-            )
+              ? <CheckSquare size={18} className="text-violet-500" />
+              : <SquareIcon size={18} className="text-gray-300" />
+            : <div className={`w-2.5 h-2.5 rounded-full ${dotCls}`} />
           }
         </div>
 
-        {/* Meta */}
+        {/* Title + meta */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900 truncate">{item.title || 'Консультация'}</span>
-            <span className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold ${badge.cls}`}>{badge.label}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-medium text-gray-900 text-[14px] truncate">{item.title || 'Консультация'}</span>
+            <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${badge.cls}`}>{badge.label}</span>
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500">
-            {item.trainer_name && (
-              <span className="flex items-center gap-1"><Users size={10} />{item.trainer_name}</span>
-            )}
-            {(item.started_at || item.created_at) && (
-              <span className="flex items-center gap-1"><Calendar size={10} />{fmtDate(item.started_at || item.created_at)}</span>
-            )}
-            {item.duration_sec > 0 && (
-              <span className="flex items-center gap-1"><Clock size={10} />{fmtDuration(item.duration_sec)}</span>
-            )}
-            {!item.started_at && isActive && (
-              <span className="text-violet-500">Ожидает участников</span>
-            )}
+          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-gray-400 flex-wrap">
+            {item.trainer_name && <span className="flex items-center gap-1"><Users size={10} />{item.trainer_name}</span>}
+            {dateIso && <><span>·</span><span>{fmtDate(dateIso)}</span></>}
+            {item.duration_sec > 0 && <><span>·</span><span>{fmtDuration(item.duration_sec)}</span></>}
+            {dateIso && relDate(dateIso) && <><span>·</span><span className="text-gray-300">{relDate(dateIso)}</span></>}
           </div>
         </div>
 
         {/* Actions */}
         {!selectMode && (
           <div className="flex items-center gap-1 shrink-0">
-            {isActive && (
-              <>
-                <button onClick={onJoinRoom} disabled={isJoining} title="Войти в комнату"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold shadow-sm disabled:opacity-60 transition active:scale-95">
-                  {isJoining
-                    ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : <LogIn size={14} />}
-                  <span className="hidden sm:inline">{isJoining ? 'Подкл…' : 'Войти'}</span>
-                </button>
-                <button onClick={onStop} title="Завершить консультацию"
-                  className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 border border-rose-100 transition active:scale-95">
-                  <StopCircle size={15} />
-                </button>
-              </>
-            )}
             <button onClick={onDelete} title="В корзину"
-              className="p-2 rounded-xl text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition active:scale-95">
-              <Trash2 size={15} />
+              className="p-1.5 rounded-lg text-gray-300 hover:text-rose-500 hover:bg-rose-50 transition active:scale-95">
+              <Trash2 size={14} />
             </button>
           </div>
         )}
       </div>
 
-      {/* Link bar — only for active */}
-      {isActive && !selectMode && (
-        <div className="px-4 sm:px-5 pb-3 -mt-1">
-          <div className="flex items-center gap-1.5 bg-violet-50/70 border border-violet-100 rounded-xl p-1 pl-3">
-            <code className="flex-1 min-w-0 text-xs text-violet-900/80 truncate font-mono">{roomUrl}</code>
-            <button
-              onClick={() => onCopy(roomUrl, `link-${item.id}`)}
-              className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white text-violet-700 text-xs font-medium hover:bg-violet-100 border border-violet-100"
-            >
-              {copied === `link-${item.id}` ? <><Check size={12} /> Готово</> : <><Copy size={12} /> Копировать</>}
-            </button>
-            <a
-              href={waLink} target="_blank" rel="noreferrer"
-              className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600"
-            >
-              <MessageCircle size={12} />
-              <span className="hidden sm:inline">WhatsApp</span>
-            </a>
-          </div>
-        </div>
-      )}
-
-      {/* Finished info */}
-      {!isActive && !selectMode && (item.ended_at || item.duration_sec > 0) && (
-        <div className="px-4 pb-4 -mt-1">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-500">
-            <AlertCircle size={14} className="shrink-0 text-gray-400" />
-            {item.ended_at ? `Завершена ${fmtDate(item.ended_at)}` : ''}
-            {item.duration_sec > 0 ? `${item.ended_at ? ' · ' : ''}Длительность: ${fmtDuration(item.duration_sec)}` : ''}
+      {/* Finished info — only if has meaningful data */}
+      {!selectMode && item.ended_at && (
+        <div className="px-4 pb-2.5 -mt-0.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+            <AlertCircle size={11} className="text-gray-300 shrink-0" />
+            Завершена {fmtDate(item.ended_at)}
+            {item.duration_sec > 0 && ` · ${fmtDuration(item.duration_sec)}`}
           </div>
         </div>
       )}
