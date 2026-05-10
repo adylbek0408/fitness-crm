@@ -167,12 +167,6 @@ export default function EducationStats() {
                   layout="vertical"
                   margin={{ top: 4, right: 48, left: 4, bottom: 0 }}
                   barCategoryGap="32%"
-                  onClick={e => {
-                    if (e?.activePayload?.[0]?.payload?.id) {
-                      reload(e.activePayload[0].payload.id)
-                    }
-                  }}
-                  style={{ cursor: 'pointer' }}
                 >
                   <XAxis
                     type="number"
@@ -218,7 +212,13 @@ export default function EducationStats() {
                       )
                     }}
                   />
-                  <Bar dataKey="avg" radius={[0, 8, 8, 0]} maxBarSize={22}>
+                  <Bar
+                    dataKey="avg"
+                    radius={[0, 8, 8, 0]}
+                    maxBarSize={22}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(data) => { if (data?.id) reload(data.id) }}
+                  >
                     {chartData.map((d, i) => (
                       <Cell key={i} fill={barColor(d.avg)} fillOpacity={0.85} />
                     ))}

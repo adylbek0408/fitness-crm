@@ -825,12 +825,7 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
                 <Eye size={12} /> Запись
               </button>
             )}
-            {isArchived && !hasRecording && (
-              <button onClick={onManualArchive} title="Создать архив"
-                className="p-1.5 rounded-lg text-amber-500 hover:bg-amber-50 transition active:scale-95">
-                <BookMarked size={14} />
-              </button>
-            )}
+
             {isArchived && (
               <button onClick={onEdit} title="Редактировать"
                 className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition active:scale-95">

@@ -430,62 +430,67 @@ function ConsultationCard({ item, selectMode, selected, onToggleSelect, roomUrl,
     )
   }
 
-  // ── Compact row — used / cancelled / expired ───────────────────────────────
-  const dotCls = isExpired ? 'bg-amber-400' : 'bg-gray-300'
+  // ── Compact row — completed / expired ─────────────────────────────────────
   const badge = STATUS_MAP[item.status] || { label: item.status, cls: 'bg-gray-100 text-gray-500' }
 
   return (
     <div
-      className={`bg-white rounded-xl border overflow-hidden transition-all hover:shadow-sm hover:border-gray-300 ${selected ? 'border-violet-300 ring-2 ring-violet-100' : 'border-gray-200'}`}
+      className={`bg-white rounded-xl border transition-all hover:shadow-sm hover:border-gray-200 ${selected ? 'border-violet-300 ring-2 ring-violet-100' : 'border-gray-100'}`}
       onClick={selectMode ? onToggleSelect : undefined}
       style={selectMode ? { cursor: 'pointer' } : {}}
     >
       <div className="px-4 py-3 flex items-center gap-3">
+
         {/* Checkbox or status dot */}
         <div className="shrink-0" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
           {selectMode
             ? selected
               ? <CheckSquare size={18} className="text-violet-500" />
               : <SquareIcon size={18} className="text-gray-300" />
-            : <div className={`w-2.5 h-2.5 rounded-full ${dotCls}`} />
+            : (
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                isExpired ? 'bg-amber-50 text-amber-400' : 'bg-gray-100 text-gray-400'
+              }`}>
+                <PhoneCall size={14} />
+              </div>
+            )
           }
         </div>
 
-        {/* Title + meta */}
+        {/* Title + trainer */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="font-medium text-gray-900 text-[14px] truncate">{item.title || 'Консультация'}</span>
+            <span className="font-semibold text-gray-800 text-[13px] truncate">{item.title || 'Консультация'}</span>
             <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${badge.cls}`}>{badge.label}</span>
           </div>
-          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-gray-400 flex-wrap">
-            {item.trainer_name && <span className="flex items-center gap-1"><Users size={10} />{item.trainer_name}</span>}
-            {dateIso && <><span>·</span><span>{fmtDate(dateIso)}</span></>}
-            {item.duration_sec > 0 && <><span>·</span><span>{fmtDuration(item.duration_sec)}</span></>}
-            {dateIso && relDate(dateIso) && <><span>·</span><span className="text-gray-300">{relDate(dateIso)}</span></>}
-          </div>
+          {item.trainer_name && (
+            <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1 truncate">
+              <Users size={9} /> {item.trainer_name}
+            </p>
+          )}
         </div>
 
-        {/* Actions */}
-        {!selectMode && (
-          <div className="flex items-center gap-1 shrink-0">
-            <button onClick={onDelete} title="В корзину"
-              className="p-1.5 rounded-lg text-gray-300 hover:text-rose-500 hover:bg-rose-50 transition active:scale-95">
-              <Trash2 size={14} />
-            </button>
+        {/* Right side: date + duration + delete */}
+        <div className="shrink-0 flex flex-col items-end gap-0.5">
+          {dateIso && (
+            <span className="text-[12px] font-medium text-gray-600">{fmtDate(dateIso)}</span>
+          )}
+          <div className="flex items-center gap-2">
+            {item.duration_sec > 0 && (
+              <span className="text-[11px] text-gray-400">{fmtDuration(item.duration_sec)}</span>
+            )}
+            {dateIso && relDate(dateIso) && (
+              <span className="text-[11px] text-gray-300">{relDate(dateIso)}</span>
+            )}
+            {!selectMode && (
+              <button onClick={onDelete} title="В корзину"
+                className="p-1.5 rounded-lg text-gray-300 hover:text-rose-500 hover:bg-rose-50 transition active:scale-95 ml-1">
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </div>
-
-      {/* Finished info — only if has meaningful data */}
-      {!selectMode && item.ended_at && (
-        <div className="px-4 pb-2.5 -mt-0.5">
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-            <AlertCircle size={11} className="text-gray-300 shrink-0" />
-            Завершена {fmtDate(item.ended_at)}
-            {item.duration_sec > 0 && ` · ${fmtDuration(item.duration_sec)}`}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
