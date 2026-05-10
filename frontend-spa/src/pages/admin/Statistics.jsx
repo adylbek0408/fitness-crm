@@ -284,7 +284,45 @@ function GroupAttendanceHistory({ group, clients, onAttendanceLoaded, containerR
       </div>
 
       {expanded && (
-        <div className="overflow-x-auto">
+        /* Mobile: summary cards — table has 50+ columns so not usable on small screens */
+        <>
+        <div className="sm:hidden px-4 py-4 space-y-2">
+          <p className="text-xs text-gray-400 mb-3 flex items-center gap-1.5">
+            <span className="w-3 h-px bg-gray-300 rounded" />
+            Полная таблица доступна на широком экране
+          </p>
+          {offlineClients.map((client) => {
+            const clientAbsent = lessonDates.filter(d => att[d]?.[client.id] === true).length
+            const pct = lessonDates.length > 0 ? Math.round(100 - (clientAbsent / lessonDates.length) * 100) : 100
+            return (
+              <div key={client.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                <div className="w-7 h-7 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 font-bold text-xs shrink-0">
+                  {client.full_name[0]?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{client.full_name}</p>
+                  <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${pct}%`,
+                        background: pct >= 80 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#f43f5e'
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  {clientAbsent > 0
+                    ? <span className="text-xs font-bold text-rose-600">НБ: {clientAbsent}</span>
+                    : <span className="text-xs font-semibold text-emerald-600">✓ 0</span>
+                  }
+                  <p className="text-[10px] text-gray-400">{pct}%</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-xs" style={{ minWidth:600 }}>
             <thead style={{ background:'#fdf8fa', borderBottom:'1px solid var(--border)' }}>
               <tr>
@@ -357,6 +395,7 @@ function GroupAttendanceHistory({ group, clients, onAttendanceLoaded, containerR
             </tfoot>
           </table>
         </div>
+        </>
       )}
     </div>
   )
@@ -758,7 +797,28 @@ export default function Statistics() {
 
       {/* Доход по группам */}
       <div className="crm-card overflow-hidden mb-6">
-        <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по группам</h3></div>
+        <div className="px-5 py-4 border-b flex items-center justify-between gap-2">
+          <h3 className="font-medium text-gray-700">Доход по группам</h3>
+          {byGroup.length > 0 && (
+            <span className="text-xs text-gray-400 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100">{byGroup.length}</span>
+          )}
+        </div>
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-gray-50">
+          {byGroup.length === 0
+            ? <p className="text-center py-6 text-sm text-gray-400">Нет данных</p>
+            : byGroup.map(g => (
+              <div key={g.group_id} className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-gray-800">Группа #{g.group_number}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{g.trainer||'—'} · {STATUS_LABEL_UI[g.status]||g.status} · {g.client_count} чел.</p>
+                </div>
+                <p className="font-bold text-blue-600 text-sm shrink-0">{fmtMoney(g.revenue)}</p>
+              </div>
+            ))
+          }
+        </div>
+        {/* Desktop table */}
         <div className="crm-table-wrap hidden md:block">
           <table className="crm-table min-w-[760px]">
             <thead><tr><th>Группа</th><th>Тренер</th><th>Статус</th><th>Клиентов</th><th className="text-right">Доход</th></tr></thead>
@@ -782,7 +842,28 @@ export default function Statistics() {
 
       {/* Доход по тренерам */}
       <div className="crm-card overflow-hidden mb-8">
-        <div className="px-5 py-4 border-b"><h3 className="font-medium text-gray-700">Доход по тренерам</h3></div>
+        <div className="px-5 py-4 border-b flex items-center justify-between gap-2">
+          <h3 className="font-medium text-gray-700">Доход по тренерам</h3>
+          {byTrainer.length > 0 && (
+            <span className="text-xs text-gray-400 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100">{byTrainer.length}</span>
+          )}
+        </div>
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-gray-50">
+          {byTrainer.length === 0
+            ? <p className="text-center py-6 text-sm text-gray-400">Нет данных</p>
+            : byTrainer.map(t => (
+              <div key={t.trainer_id} className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-gray-800">{t.trainer_name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t.client_count} клиентов</p>
+                </div>
+                <p className="font-bold text-blue-600 text-sm shrink-0">{fmtMoney(t.revenue)}</p>
+              </div>
+            ))
+          }
+        </div>
+        {/* Desktop table */}
         <div className="crm-table-wrap hidden md:block">
           <table className="crm-table min-w-[620px]">
             <thead><tr><th>Тренер</th><th>Клиентов</th><th className="text-right">Доход</th></tr></thead>

@@ -191,42 +191,57 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
 
       {view==='journal' && (
         <>
-          <div className="crm-card p-4 mb-4">
-            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <button onClick={()=>currentIdx<lessonDates.length-1&&setSelectedDate(lessonDates[currentIdx+1])}
-                  disabled={currentIdx>=lessonDates.length-1}
-                  className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition">
-                  <ChevronLeft size={16}/>
-                </button>
-                <div className="text-center min-w-[160px]">
-                  <div className="font-semibold text-slate-800 text-sm">{formatDateWithDay(selectedDate)}</div>
-                  <div className="text-xs text-indigo-600 font-medium">{scheduleLabel(schedule)}</div>
-                </div>
-                <button onClick={()=>currentIdx>0&&setSelectedDate(lessonDates[currentIdx-1])}
-                  disabled={currentIdx<=0}
-                  className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition">
-                  <ChevronRight size={16}/>
-                </button>
+          <div className="crm-card p-4 mb-4 space-y-3">
+            {/* Row 1: date navigation + picker */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={()=>currentIdx<lessonDates.length-1&&setSelectedDate(lessonDates[currentIdx+1])}
+                disabled={currentIdx>=lessonDates.length-1}
+                className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition shrink-0">
+                <ChevronLeft size={16}/>
+              </button>
+              <div className="text-center min-w-[140px]">
+                <div className="font-semibold text-slate-800 text-sm">{formatDateWithDay(selectedDate)}</div>
+                <div className="text-xs text-indigo-600 font-medium">{scheduleLabel(schedule)}</div>
               </div>
-              <AppSelect value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="w-auto">
+              <button onClick={()=>currentIdx>0&&setSelectedDate(lessonDates[currentIdx-1])}
+                disabled={currentIdx<=0}
+                className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-30 transition shrink-0">
+                <ChevronRight size={16}/>
+              </button>
+              <AppSelect value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="flex-1 sm:flex-none sm:w-auto min-w-0">
                 {lessonDates.map(d=><option key={d} value={d}>{formatDateWithDay(d)}</option>)}
               </AppSelect>
-              <div className="flex gap-2 text-sm">
-                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full font-semibold border border-emerald-100">✓ {presentCount}</span>
-                <span className="px-3 py-1 bg-red-50 text-red-600 rounded-full font-semibold border border-red-100">НБ: {absentCount}</span>
-                {hasUnsaved&&!loading&&<span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-full font-medium text-xs border border-amber-100">● Не сохранено</span>}
-              </div>
-              <div className="flex gap-2 ml-auto flex-wrap">
-                <button onClick={()=>markAll(false)} className="px-3 py-1.5 text-xs rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-medium transition">Сбросить НБ</button>
-                <button onClick={()=>markAll(true)} className="px-3 py-1.5 text-xs rounded-xl bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 font-medium transition">Все НБ</button>
-                <button onClick={generatePDF} disabled={pdfGenerating}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition disabled:opacity-50">
-                  <FileDown size={13}/>{pdfGenerating?'Формирую...':'Скачать PDF'}
+            </div>
+
+            {/* Row 2: stats + actions */}
+            <div className="flex items-center gap-2 flex-wrap border-t border-slate-100 pt-3">
+              {/* Attendance stats */}
+              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full font-semibold text-xs border border-emerald-100">✓ {presentCount}</span>
+              <span className="px-2.5 py-1 bg-red-50 text-red-600 rounded-full font-semibold text-xs border border-red-100">НБ: {absentCount}</span>
+              {hasUnsaved&&!loading&&(
+                <span className="px-2.5 py-1 bg-amber-50 text-amber-600 rounded-full font-medium text-xs border border-amber-100">● Не сохранено</span>
+              )}
+
+              {/* Secondary actions: always visible as icon buttons on mobile */}
+              <div className="flex items-center gap-1.5 ml-auto">
+                <button onClick={()=>markAll(false)} title="Сбросить все НБ"
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-medium transition">
+                  <span className="hidden sm:inline">Сбросить НБ</span>
+                  <span className="sm:hidden">✓ все</span>
+                </button>
+                <button onClick={()=>markAll(true)} title="Поставить НБ всем"
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-xl bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 font-medium transition">
+                  <span className="hidden sm:inline">Все НБ</span>
+                  <span className="sm:hidden">НБ все</span>
+                </button>
+                <button onClick={generatePDF} disabled={pdfGenerating} title="Скачать PDF"
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition disabled:opacity-50">
+                  <FileDown size={13}/>
+                  <span className="hidden sm:inline">{pdfGenerating?'Формирую...':'PDF'}</span>
                 </button>
                 <button onClick={saveAll} disabled={saving||loading}
-                  className={`px-4 py-1.5 text-xs rounded-xl text-white font-semibold transition disabled:opacity-50 ${hasUnsaved?'bg-indigo-600 hover:bg-indigo-700 shadow-md':'bg-slate-400'}`}>
-                  {saving?'Сохранение...':'Сохранить'}
+                  className={`px-3 py-1.5 text-xs rounded-xl text-white font-semibold transition disabled:opacity-50 ${hasUnsaved?'bg-indigo-600 hover:bg-indigo-700 shadow-md':'bg-slate-400'}`}>
+                  {saving?'Сохр...':'Сохранить'}
                 </button>
               </div>
             </div>
@@ -302,46 +317,86 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
             <h3 className="font-bold text-slate-800">История занятий</h3>
             <p className="text-xs text-slate-400 mt-0.5">Группа #{groupNumber} · {scheduleLabel(schedule)}</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="crm-table min-w-[700px]">
-              <thead><tr>
-                <th>Дата занятия</th><th className="text-center">Присутствовали</th>
-                <th className="text-center">НБ</th><th className="text-center">Посещаемость</th><th></th>
-              </tr></thead>
-              <tbody>
+          {lessonDates.length===0 ? (
+            <div className="text-center py-12 text-slate-400">Занятий ещё не было</div>
+          ) : (
+            <>
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-slate-50">
                 {lessonDates.map(date => {
                   const h = history[date]
                   const pct = h ? Math.round((h.present/h.total)*100) : null
                   return (
-                    <tr key={date}>
-                      <td className="font-semibold text-slate-800">{formatDateWithDay(date)}</td>
-                      <td className="text-center">{!h?<span className="text-slate-200">—</span>:<span className="text-emerald-700 font-semibold">{h.present}</span>}</td>
-                      <td className="text-center">
-                        {!h?<span className="text-slate-200">—</span>
-                          :h.absent>0?<span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold text-xs">{h.absent} НБ</span>
-                          :<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs">все</span>}
-                      </td>
-                      <td className="text-center">
-                        {pct!==null&&(
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="w-20 h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full ${pct>=80?'bg-emerald-500':pct>=60?'bg-amber-400':'bg-red-400'}`} style={{width:`${pct}%`}}/>
-                            </div>
-                            <span className="text-xs text-slate-500">{pct}%</span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="text-right">
-                        <button onClick={()=>{setSelectedDate(date);setView('journal')}}
-                          className="text-xs text-indigo-500 hover:text-indigo-700 font-medium transition">Открыть →</button>
-                      </td>
-                    </tr>
+                    <div key={date} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-slate-800">{formatDateWithDay(date)}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {h ? (
+                            <>
+                              <span className="text-xs text-emerald-600 font-medium">✓ {h.present}</span>
+                              {h.absent > 0 && <span className="text-xs text-red-500 font-medium">НБ: {h.absent}</span>}
+                              {pct !== null && (
+                                <div className="flex items-center gap-1.5 flex-1">
+                                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${pct>=80?'bg-emerald-500':pct>=60?'bg-amber-400':'bg-red-400'}`} style={{width:`${pct}%`}}/>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 shrink-0">{pct}%</span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-300">Нет данных</span>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={()=>{setSelectedDate(date);setView('journal')}}
+                        className="text-xs text-indigo-500 hover:text-indigo-700 font-medium transition shrink-0">→</button>
+                    </div>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
-          {lessonDates.length===0&&<div className="text-center py-12 text-slate-400">Занятий ещё не было</div>}
+              </div>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="crm-table min-w-[700px]">
+                  <thead><tr>
+                    <th>Дата занятия</th><th className="text-center">Присутствовали</th>
+                    <th className="text-center">НБ</th><th className="text-center">Посещаемость</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {lessonDates.map(date => {
+                      const h = history[date]
+                      const pct = h ? Math.round((h.present/h.total)*100) : null
+                      return (
+                        <tr key={date}>
+                          <td className="font-semibold text-slate-800">{formatDateWithDay(date)}</td>
+                          <td className="text-center">{!h?<span className="text-slate-200">—</span>:<span className="text-emerald-700 font-semibold">{h.present}</span>}</td>
+                          <td className="text-center">
+                            {!h?<span className="text-slate-200">—</span>
+                              :h.absent>0?<span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-semibold text-xs">{h.absent} НБ</span>
+                              :<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs">все</span>}
+                          </td>
+                          <td className="text-center">
+                            {pct!==null&&(
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="w-20 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${pct>=80?'bg-emerald-500':pct>=60?'bg-amber-400':'bg-red-400'}`} style={{width:`${pct}%`}}/>
+                                </div>
+                                <span className="text-xs text-slate-500">{pct}%</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="text-right">
+                            <button onClick={()=>{setSelectedDate(date);setView('journal')}}
+                              className="text-xs text-indigo-500 hover:text-indigo-700 font-medium transition">Открыть →</button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

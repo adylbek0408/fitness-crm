@@ -194,19 +194,22 @@ function IncomeHistorySection() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          {Object.entries(EVENT_CONFIG).map(([key, cfg]) => (
-            <div key={key} className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-              <span className="text-xs text-slate-400">{cfg.label}</span>
-            </div>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Legend dots — visible on sm+, collapsed on mobile */}
+          <div className="hidden sm:flex items-center gap-3 mr-1">
+            {Object.entries(EVENT_CONFIG).map(([key, cfg]) => (
+              <div key={key} className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                <span className="text-xs text-slate-400">{cfg.label}</span>
+              </div>
+            ))}
+          </div>
           <button onClick={() => setShowFilter(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition ${
               hasFilter ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
             }`}>
             <Filter size={12} />
-            {hasFilter ? 'Изменить' : 'Фильтр по дате'}
+            {hasFilter ? 'Изменить фильтр' : 'Фильтр по дате'}
           </button>
         </div>
       </div>
@@ -318,13 +321,14 @@ export default function Dashboard() {
 
   return (
     <AdminLayout user={user}>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div>
           <p className="text-xs text-slate-400 font-medium uppercase tracking-widest mb-1">Обзор системы</p>
           <h2 className="crm-page-title">Дашборд</h2>
           <p className="crm-page-subtitle">Оперативные метрики Асылзада CRM</p>
         </div>
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm">
+        {/* Date only on sm+ to avoid crushing the header on mobile */}
+        <div className="hidden sm:flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm">
           <Calendar size={15} className="text-indigo-500" />
           <span className="text-sm text-slate-600 capitalize">{today}</span>
         </div>
