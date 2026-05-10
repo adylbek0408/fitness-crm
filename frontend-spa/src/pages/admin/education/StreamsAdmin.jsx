@@ -3,8 +3,10 @@ import {
   Radio, Copy, Square, Plus, Check, Search,
   Users, MessageCircle, ExternalLink, AlertCircle, Trash2,
   Eye, X, BookMarked, Clock, Pencil, CheckSquare,
-  Square as SquareIcon,
+  Square as SquareIcon, Play,
 } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+import { ru } from 'date-fns/locale'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
@@ -27,6 +29,11 @@ const fmtDuration = sec => {
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
   return h > 0 ? `${h} ч ${m} мин` : `${m} мин`
+}
+const relDate = iso => {
+  if (!iso) return ''
+  try { return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ru }) }
+  catch { return '' }
 }
 
 const STATUS_TABS = [
@@ -415,7 +422,7 @@ export default function StreamsAdmin() {
       )}
 
       {/* Stream list */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {loading && (
           <div className="p-10 text-center text-gray-400">
             <div className="w-8 h-8 border-2 border-rose-200 border-t-rose-500 rounded-full animate-spin mx-auto mb-2" />
@@ -646,184 +653,194 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
     return () => { stopped = true; clearInterval(t) }
   }, [s.id, s.status])
 
-  const isLive = s.status === 'live'
+  const isLive      = s.status === 'live'
   const isScheduled = s.status === 'scheduled'
-  const isArchived = ['ended', 'archived'].includes(s.status)
+  const isArchived  = ['ended', 'archived'].includes(s.status)
   const hasRecording = isArchived && s.archived_lesson
   const wa = encodeURIComponent(`Прямой эфир «${s.title}» — заходи: ${studentLink}`)
 
   const showRecProgress = isArchived && !!recProgress && recProgress.stage !== 'ready'
-  const recPct = Math.max(0, Math.min(100, Number(recProgress?.pct) || 0))
+  const recPct  = Math.max(0, Math.min(100, Number(recProgress?.pct) || 0))
   const recLabel = recProgress?.stage === 'uploading' ? 'Загрузка записи' : 'Подготовка записи'
 
-  // Left accent stripe + background tint per status
-  const accentCls = isLive
-    ? 'border-l-[3px] border-l-rose-500 bg-rose-50/40'
-    : isScheduled
-      ? 'border-l-[3px] border-l-violet-400 bg-violet-50/30'
-      : hasRecording
-        ? 'border-l-[3px] border-l-emerald-400'
-        : 'border-l-[3px] border-l-gray-200'
+  const dateIso = s.started_at || s.scheduled_at || s.created_at
 
+  // ── LIVE — "breaking news" full card ──────────────────────────────────────
+  if (isLive && !selectMode) {
+    return (
+      <div className="rounded-2xl overflow-hidden shadow-md border border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50">
+        {/* Top bar */}
+        <div className="px-4 sm:px-5 pt-4 pb-3 flex items-start gap-3">
+          {/* Pulsing live dot */}
+          <div className="shrink-0 mt-1 w-8 h-8 rounded-full bg-rose-600 flex items-center justify-center shadow-[0_0_12px_rgba(225,29,72,0.5)]">
+            <span className="w-3 h-3 rounded-full bg-white animate-pulse" />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-black tracking-widest text-rose-600 uppercase">● Live</span>
+              {viewers.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                  <Users size={10} /> {viewers.length} зрит.
+                </span>
+              )}
+            </div>
+            <h3 className="font-bold text-gray-900 text-[15px] leading-tight mt-0.5 truncate">{s.title}</h3>
+            <p className="text-xs text-rose-400 mt-0.5">{fmtDate(dateIso)}</p>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 shadow-sm active:scale-95 transition">
+              <ExternalLink size={13} /> Студия
+            </a>
+            <button onClick={onEnd}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-rose-200 text-rose-600 text-xs font-semibold hover:bg-rose-50 active:scale-95 transition">
+              <Square size={11} fill="currentColor" /> Завершить
+            </button>
+            <button onClick={onDelete} title="В корзину"
+              className="p-2 rounded-xl text-rose-300 hover:text-rose-500 hover:bg-white/60 transition active:scale-95">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Link bar */}
+        <div className="px-4 sm:px-5 pb-3 flex items-center gap-2 border-t border-rose-100/60 pt-2.5">
+          <span className="text-[11px] text-rose-400 truncate flex-1 font-mono">{studentLink}</span>
+          <button onClick={() => onCopy(studentLink, `link-${s.id}`)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-rose-100 text-xs text-gray-600 hover:bg-gray-50 transition shrink-0">
+            {copied === `link-${s.id}` ? <><Check size={11} className="text-emerald-500" /> Скопировано</> : <><Copy size={11} /> Копировать</>}
+          </button>
+          <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600 transition shrink-0">
+            <MessageCircle size={11} /> WA
+          </a>
+        </div>
+
+        {/* Viewers */}
+        {viewers.length > 0 && (
+          <div className="px-4 sm:px-5 pb-3 flex flex-wrap gap-1.5">
+            {viewers.map(v => (
+              <div key={v.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/70 border border-rose-100 text-xs">
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 text-white flex items-center justify-center text-[10px] font-bold">
+                  {(v.client_name || '?').charAt(0).toUpperCase()}
+                </div>
+                {v.client_name || 'Гость'}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Compact row — scheduled / archived ────────────────────────────────────
   return (
     <div
-      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition hover:shadow-md ${accentCls} ${selected ? 'border-rose-400 ring-2 ring-rose-200' : 'border-gray-200'}`}
+      className={`bg-white rounded-xl border overflow-hidden transition-all hover:shadow-sm hover:border-gray-300 ${selected ? 'border-rose-300 ring-2 ring-rose-100' : 'border-gray-200'}`}
       onClick={selectMode ? onToggleSelect : undefined}
       style={selectMode ? { cursor: 'pointer' } : {}}
     >
-      <div className="p-4 sm:p-5 flex items-start gap-3">
-        {/* Checkbox or icon */}
-        <div className="shrink-0 mt-0.5" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
+      <div className="px-4 py-3 flex items-center gap-3">
+        {/* Checkbox or status dot */}
+        <div className="shrink-0" onClick={e => { if (selectMode) { e.stopPropagation(); onToggleSelect() } }}>
           {selectMode
             ? selected
-              ? <CheckSquare size={20} className="text-rose-500" />
-              : <SquareIcon size={20} className="text-gray-300" />
+              ? <CheckSquare size={18} className="text-rose-500" />
+              : <SquareIcon size={18} className="text-gray-300" />
             : (
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${isLive ? 'bg-rose-500 text-white shadow-md border-rose-400/30' : isScheduled ? 'bg-violet-100 text-violet-600 border-violet-200' : hasRecording ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
-                <Radio size={18} className={isLive ? 'animate-pulse' : ''} />
-              </div>
+              <div className={`w-2.5 h-2.5 rounded-full ${isScheduled ? 'bg-violet-400' : hasRecording ? 'bg-emerald-400' : 'bg-gray-300'}`} />
             )
           }
         </div>
 
-        {/* Content */}
+        {/* Title + meta */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900 truncate">{s.title}</span>
-            {isLive && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-600 text-white shadow-sm">
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-medium text-gray-900 text-[14px] truncate">{s.title}</span>
+            {isScheduled && (
+              <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 font-semibold border border-violet-100">Готов</span>
+            )}
+            {isArchived && (
+              <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-semibold border border-gray-200">
+                {s.status === 'archived' ? 'Архив' : 'Завершён'}
               </span>
             )}
-            {isLive && viewers.length > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                <Users size={10} /> {viewers.length}
-              </span>
-            )}
-            {isScheduled && <span className="text-[11px] px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 font-semibold border border-violet-100">Готов к эфиру</span>}
-            {isArchived && <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold border border-gray-200">{s.status === 'archived' ? 'Архив' : 'Завершён'}</span>}
             {hasRecording && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold flex items-center gap-1 border border-emerald-100">
-                <BookMarked size={10} /> Запись
+              <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-semibold border border-emerald-100 flex items-center gap-1">
+                <BookMarked size={9} /> Запись
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {(s.started_at || s.scheduled_at || s.created_at) && (
-              <span className="flex items-center gap-1 text-xs text-gray-400">
-                <Clock size={10} /> {fmtDate(s.started_at || s.scheduled_at || s.created_at)}
-              </span>
-            )}
-            {s.duration_sec > 0 && <span className="text-xs text-gray-400">· {fmtDuration(s.duration_sec)}</span>}
+          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-gray-400">
+            {dateIso && <span>{fmtDate(dateIso)}</span>}
+            {s.duration_sec > 0 && <><span>·</span><span>{fmtDuration(s.duration_sec)}</span></>}
+            {dateIso && relDate(dateIso) && <><span>·</span><span className="text-gray-300">{relDate(dateIso)}</span></>}
           </div>
         </div>
 
-        {/* Actions — icon buttons for secondary, stays compact */}
+        {/* Actions */}
         {!selectMode && (
           <div className="flex items-center gap-1 shrink-0">
+            {isScheduled && (
+              <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-[11px] font-semibold hover:bg-violet-700 transition active:scale-95 shadow-sm">
+                <Play size={11} fill="white" /> Начать
+              </a>
+            )}
+            {isScheduled && (
+              <>
+                <button onClick={() => onCopy(studentLink, `link-${s.id}`)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition" title="Скопировать ссылку">
+                  {copied === `link-${s.id}` ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                </button>
+                <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer"
+                  className="p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-50 transition" title="Отправить в WhatsApp">
+                  <MessageCircle size={14} />
+                </a>
+              </>
+            )}
+            {hasRecording && (
+              <button onClick={onPreviewRecording} title="Просмотреть запись"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-semibold hover:bg-violet-100 transition active:scale-95">
+                <Eye size={12} /> Запись
+              </button>
+            )}
             {isArchived && !hasRecording && (
-              <button onClick={onManualArchive} title="Создать архив из записи CF"
-                className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition active:scale-95">
-                <BookMarked size={15} />
+              <button onClick={onManualArchive} title="Создать архив"
+                className="p-1.5 rounded-lg text-amber-500 hover:bg-amber-50 transition active:scale-95">
+                <BookMarked size={14} />
               </button>
             )}
             {isArchived && (
               <button onClick={onEdit} title="Редактировать"
-                className="p-2 rounded-xl text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition active:scale-95">
-                <Pencil size={15} />
+                className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition active:scale-95">
+                <Pencil size={14} />
               </button>
             )}
             <button onClick={onDelete} title="В корзину"
-              className="p-2 rounded-xl text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition active:scale-95">
-              <Trash2 size={15} />
+              className="p-1.5 rounded-lg text-gray-300 hover:text-rose-500 hover:bg-rose-50 transition active:scale-95">
+              <Trash2 size={14} />
             </button>
           </div>
         )}
       </div>
 
-      {/* Primary action bar — status-specific, with text labels */}
-      {!selectMode && (
-        <div className="px-4 sm:px-5 pb-4 -mt-1 flex flex-wrap items-center gap-2">
-          {isLive && (
-            <>
-              <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition active:scale-95 shadow-sm">
-                <ExternalLink size={13} /> Открыть студию
-              </a>
-              <button onClick={onEnd}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-600 text-xs font-semibold hover:bg-rose-50 transition active:scale-95">
-                <Square size={12} fill="currentColor" /> Завершить
-              </button>
-              <div className="flex-1" />
-              <button onClick={() => onCopy(studentLink, `link-${s.id}`)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition shrink-0">
-                {copied === `link-${s.id}` ? <><Check size={11} className="text-emerald-600" /> Скопировано</> : <><Copy size={11} /> Ссылка</>}
-              </button>
-              <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer"
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 shrink-0">
-                <MessageCircle size={11} /> WA
-              </a>
-            </>
-          )}
-
-          {isScheduled && (
-            <>
-              <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition active:scale-95 shadow-sm">
-                <ExternalLink size={13} /> Начать эфир
-              </a>
-              <div className="flex-1" />
-              <button onClick={() => onCopy(studentLink, `link-${s.id}`)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition shrink-0">
-                {copied === `link-${s.id}` ? <><Check size={11} className="text-emerald-600" /> Скопировано</> : <><Copy size={11} /> Ссылка</>}
-              </button>
-              <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer"
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 shrink-0">
-                <MessageCircle size={11} /> WA
-              </a>
-            </>
-          )}
-
-          {hasRecording && (
-            <button onClick={onPreviewRecording}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition active:scale-95">
-              <Eye size={13} /> Просмотреть запись
-            </button>
-          )}
-
-          {isArchived && !hasRecording && !showRecProgress && (
-            <span className="text-[11px] text-gray-400 italic">Запись отсутствует</span>
-          )}
-        </div>
-      )}
-
-      {/* Recording preparation progress */}
+      {/* Recording progress bar */}
       {showRecProgress && !selectMode && (
-        <div className="px-4 sm:px-5 pb-4">
+        <div className="px-4 pb-3 border-t border-gray-50 pt-2">
           <div className="flex items-center gap-2 text-[11px] text-gray-500 mb-1.5">
             <span className="w-3 h-3 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" />
             <span className="font-medium">{recLabel}</span>
-            <span className="ml-auto font-mono text-gray-700 tabular-nums">{recPct}%</span>
+            <span className="ml-auto font-mono text-gray-600 tabular-nums">{recPct}%</span>
           </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full transition-all duration-500"
               style={{ width: `${recPct}%` }}
             />
-          </div>
-        </div>
-      )}
-
-      {/* Live viewers list */}
-      {isLive && viewers.length > 0 && !selectMode && (
-        <div className="px-4 pb-4">
-          <div className="flex flex-wrap gap-1.5">
-            {viewers.map(v => (
-              <div key={v.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-100 text-xs">
-                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-rose-300 to-pink-400 text-white flex items-center justify-center text-[10px] font-bold">{(v.client_name || '?').charAt(0).toUpperCase()}</div>
-                {v.client_name || 'Гость'}
-              </div>
-            ))}
           </div>
         </div>
       )}
