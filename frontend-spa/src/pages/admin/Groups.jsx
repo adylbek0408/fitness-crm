@@ -4,6 +4,7 @@ import { Plus, Users, ChevronRight, X, Search, Clock, CheckCircle, Loader } from
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import { STATUS_BADGE, STATUS_LABEL, GROUP_TYPE_LABEL } from '../../utils/format'
+import AppSelect from '../../components/ui/AppSelect'
 
 const DAY_LABELS = { Mon:'Пн', Tue:'Вт', Wed:'Ср', Thu:'Чт', Fri:'Пт', Sat:'Сб', Sun:'Вс' }
 function fmtSchedule(s) {
@@ -189,22 +190,22 @@ export default function Groups() {
           {/* Тренер */}
           <div className="crm-filter-group">
             <span className="crm-filter-label">Тренер</span>
-            <select value={trainer} onChange={e => setTrainer(e.target.value)}
-              className="crm-input w-44">
+            <AppSelect value={trainer} onChange={e => setTrainer(e.target.value)}
+              className="w-44">
               <option value="">Все тренеры</option>
               {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
-            </select>
+            </AppSelect>
           </div>
 
           {/* Формат */}
           <div className="crm-filter-group">
             <span className="crm-filter-label">Формат</span>
-            <select value={format} onChange={e => setFormat(e.target.value)}
-              className="crm-input w-36">
+            <AppSelect value={format} onChange={e => setFormat(e.target.value)}
+              className="w-36">
               <option value="">Все форматы</option>
               <option value="online">Онлайн</option>
               <option value="offline">Оффлайн</option>
-            </select>
+            </AppSelect>
           </div>
 
           {/* Сброс */}

@@ -19,6 +19,7 @@ import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPayment
 import ConfirmModal from '../../components/ConfirmModal'
 import AlertModal from '../../components/AlertModal'
 import RefundModal from '../../components/RefundModal'
+import AppSelect from '../../components/ui/AppSelect'
 
 const GROUP_TYPE_SHORT = { '1.5h': '1.5 ч', '2.5h': '2.5 ч' }
 
@@ -309,8 +310,8 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
                   Загрузка...
                 </div>
               ) : (
-                <select value={groupId} onChange={e => setGroupId(e.target.value)}
-                  className="crm-input w-full">
+                <AppSelect value={groupId} onChange={e => setGroupId(e.target.value)}
+                  className="w-full">
                   <option value="">— Без группы —</option>
                   {groups.map(g => (
                     <option key={g.id} value={g.id}>
@@ -320,7 +321,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
                       {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
                     </option>
                   ))}
-                </select>
+                </AppSelect>
               )}
             </div>
           )}

@@ -9,6 +9,7 @@ import {
 } from 'recharts'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
+import AppSelect from '../../../components/ui/AppSelect'
 
 const PAGE = 20
 
@@ -83,14 +84,13 @@ export default function EducationStats() {
       <div className="flex items-center gap-3 mb-5 flex-wrap">
         <h1 className="text-2xl font-bold text-gray-900 flex-1">Аналитика</h1>
 
-        <select
+        <AppSelect
           value={filterGroup}
           onChange={e => setFilterGroup(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-rose-300"
         >
           <option value="">Все группы</option>
           {groups.map(g => <option key={g.id} value={g.id}>Группа {g.number}</option>)}
-        </select>
+        </AppSelect>
 
         <button
           onClick={() => reload()}

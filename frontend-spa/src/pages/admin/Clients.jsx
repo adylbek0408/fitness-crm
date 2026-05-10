@@ -11,6 +11,7 @@ import AdminLayout from '../../components/AdminLayout'
 import DateField from '../../components/DateField'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate } from '../../utils/format'
 import { attachRobotoFontsToPdf, PDF_BODY_FONT } from '../../utils/pdfRobotoFonts'
+import AppSelect from '../../components/ui/AppSelect'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATUS DROPDOWN
@@ -651,7 +652,7 @@ export default function Clients() {
 
           <div className="crm-filter-group">
             <span className="crm-filter-label">Статус</span>
-            <select value={status} onChange={e => setStatus(e.target.value)} className="crm-input w-36">
+            <AppSelect value={status} onChange={e => setStatus(e.target.value)} className="w-36">
               <option value="">Все</option>
               <option value="new">Новые</option>
               <option value="trial">Пробные</option>
@@ -659,49 +660,49 @@ export default function Clients() {
               <option value="frozen">Заморозка</option>
               <option value="completed">Завершили</option>
               <option value="expelled">Отчислены</option>
-            </select>
+            </AppSelect>
           </div>
 
           <div className="crm-filter-group">
             <span className="crm-filter-label">Формат</span>
-            <select
+            <AppSelect
               value={format}
               onChange={e => { setFormat(e.target.value); setGroupType(''); setOnlineTagFilter('') }}
-              className="crm-input w-36"
+              className="w-36"
             >
               <option value="">Все</option>
               <option value="online">Онлайн</option>
               <option value="offline">Оффлайн</option>
-            </select>
+            </AppSelect>
           </div>
 
           {format !== 'online' && (
             <div className="crm-filter-group">
               <span className="crm-filter-label">Тип</span>
-              <select value={groupType} onChange={e => setGroupType(e.target.value)} className="crm-input w-28">
+              <AppSelect value={groupType} onChange={e => setGroupType(e.target.value)} className="w-28">
                 <option value="">Все</option>
                 <option value="1.5h">1.5 ч</option>
                 <option value="2.5h">2.5 ч</option>
-              </select>
+              </AppSelect>
             </div>
           )}
           {format === 'online' && onlineTags.length > 0 && (
             <div className="crm-filter-group">
               <span className="crm-filter-label">Подписка</span>
-              <select value={onlineTagFilter} onChange={e => setOnlineTagFilter(e.target.value)} className="crm-input w-36">
+              <AppSelect value={onlineTagFilter} onChange={e => setOnlineTagFilter(e.target.value)} className="w-36">
                 <option value="">Все</option>
                 {onlineTags.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+              </AppSelect>
             </div>
           )}
 
           <div className="crm-filter-group">
             <span className="crm-filter-label">Источник</span>
-            <select value={fromTelegram} onChange={e => setFromTelegram(e.target.value)} className="crm-input w-36">
+            <AppSelect value={fromTelegram} onChange={e => setFromTelegram(e.target.value)} className="w-36">
               <option value="">Все</option>
               <option value="yes">Из Telegram</option>
               <option value="no">Обычные</option>
-            </select>
+            </AppSelect>
           </div>
 
           <button
@@ -723,36 +724,36 @@ export default function Clients() {
           <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-3 items-end animate-fade-in">
             <div className="crm-filter-group">
               <span className="crm-filter-label">Группа</span>
-              <select value={group} onChange={e => setGroup(e.target.value)} className="crm-input w-40">
+              <AppSelect value={group} onChange={e => setGroup(e.target.value)} className="w-40">
                 <option value="">Все группы</option>
                 {groups.map(g => <option key={g.id} value={g.id}>Группа {g.number}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div className="crm-filter-group">
               <span className="crm-filter-label">Тренер</span>
-              <select value={trainerFilter} onChange={e => setTrainerFilter(e.target.value)} className="crm-input w-40">
+              <AppSelect value={trainerFilter} onChange={e => setTrainerFilter(e.target.value)} className="w-40">
                 <option value="">Все тренеры</option>
                 {trainersList.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div className="crm-filter-group">
               <span className="crm-filter-label">Менеджер</span>
-              <select value={registeredBy} onChange={e => setRegisteredBy(e.target.value)} className="crm-input w-44">
+              <AppSelect value={registeredBy} onChange={e => setRegisteredBy(e.target.value)} className="w-44">
                 <option value="">Все менеджеры</option>
                 {managersList.filter(m => m.user_id).map(m => (
                   <option key={m.id} value={String(m.user_id)}>
                     {[m.last_name, m.first_name].filter(Boolean).join(' ') || m.username}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
             <div className="crm-filter-group">
               <span className="crm-filter-label">Оплата</span>
-              <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)} className="crm-input w-40">
+              <AppSelect value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)} className="w-40">
                 <option value="">Все</option>
                 <option value="paid">Оплачено</option>
                 <option value="unpaid">Есть остаток</option>
-              </select>
+              </AppSelect>
             </div>
             <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none pb-1">
               <input

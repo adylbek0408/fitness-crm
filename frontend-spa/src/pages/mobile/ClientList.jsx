@@ -6,6 +6,7 @@ import MobileDateField from '../../components/MobileDateField'
 import { useRefresh } from '../../contexts/RefreshContext'
 import { CheckCircle, Clock, Globe, Dumbbell, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
 import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate, GROUP_TYPE_LABEL } from '../../utils/format'
+import AppSelect from '../../components/ui/AppSelect'
 
 export default function ClientList() {
   const { user } = useOutletContext()
@@ -165,7 +166,7 @@ export default function ClientList() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Статус</label>
-                <select value={status} onChange={e => setStatus(e.target.value)} className="crm-mobile-input crm-mobile-select">
+                <AppSelect variant="mobile" value={status} onChange={e => setStatus(e.target.value)}>
                   <option value="">Все</option>
                   <option value="new">Новые</option>
                   <option value="trial">Пробные</option>
@@ -173,32 +174,32 @@ export default function ClientList() {
                   <option value="frozen">Заморозка</option>
                   <option value="completed">Завершили</option>
                   <option value="expelled">Отчислены</option>
-                </select>
+                </AppSelect>
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Формат</label>
-                <select value={format} onChange={e => setFormat(e.target.value)} className="crm-mobile-input crm-mobile-select">
+                <AppSelect variant="mobile" value={format} onChange={e => setFormat(e.target.value)}>
                   <option value="">Все</option>
                   <option value="online">Онлайн</option>
                   <option value="offline">Оффлайн</option>
-                </select>
+                </AppSelect>
               </div>
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Оплата</label>
-              <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)} className="crm-mobile-input crm-mobile-select">
+              <AppSelect variant="mobile" value={paymentStatus} onChange={e => setPaymentStatus(e.target.value)}>
                 <option value="">Все</option>
                 <option value="paid">Оплачено</option>
                 <option value="unpaid">Есть остаток</option>
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Источник клиента</label>
-              <select value={fromTelegram} onChange={e => setFromTelegram(e.target.value)} className="crm-mobile-input crm-mobile-select">
+              <AppSelect variant="mobile" value={fromTelegram} onChange={e => setFromTelegram(e.target.value)}>
                 <option value="">Все</option>
                 <option value="yes">Из Telegram</option>
                 <option value="no">Обычные</option>
-              </select>
+              </AppSelect>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <MobileDateField label="Регистрация с" value={registeredFrom} onChange={setRegisteredFrom} />

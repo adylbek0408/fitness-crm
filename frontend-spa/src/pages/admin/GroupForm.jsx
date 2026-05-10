@@ -5,6 +5,7 @@ import { Save, ArrowLeft, Calendar, Clock, Check } from 'lucide-react'
 const DEFAULT_ONLINE_SUBSCRIPTION_TAGS = ['Вип', 'Про', 'Интенсив', 'Марафон']
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
+import AppSelect from '../../components/ui/AppSelect'
 
 const DAYS = [
   { key: 'Mon', label: 'Пн' },
@@ -258,14 +259,14 @@ export default function GroupForm() {
             <p className="crm-section-title">Основная информация</p>
 
             <Field label="Формат обучения" required hint="Для онлайн тип группы (1.5/2.5 ч) не обязателен">
-              <select
+              <AppSelect
                 value={form.training_format}
                 onChange={e => setTrainingFormat(e.target.value)}
-                className="crm-input max-w-md"
+                className="max-w-md"
               >
                 <option value="offline">Офлайн</option>
                 <option value="online">Онлайн</option>
-              </select>
+              </AppSelect>
             </Field>
 
             {form.training_format === 'online' && (
@@ -284,24 +285,22 @@ export default function GroupForm() {
               </Field>
               {form.training_format !== 'online' && (
                 <Field label="Тип группы" required>
-                  <select required value={form.group_type}
-                    onChange={e => set('group_type', e.target.value)}
-                    className="crm-input">
+                  <AppSelect required value={form.group_type}
+                    onChange={e => set('group_type', e.target.value)}>
                     <option value="">Выберите тип</option>
                     <option value="1.5h">1.5 часа</option>
                     <option value="2.5h">2.5 часа</option>
-                  </select>
+                  </AppSelect>
                 </Field>
               )}
             </div>
 
             <Field label="Тренер" required>
-              <select required value={form.trainer}
-                onChange={e => set('trainer', e.target.value)}
-                className="crm-input">
+              <AppSelect required value={form.trainer}
+                onChange={e => set('trainer', e.target.value)}>
                 <option value="">Выберите тренера</option>
                 {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
-              </select>
+              </AppSelect>
             </Field>
 
             <Field label="Статус">

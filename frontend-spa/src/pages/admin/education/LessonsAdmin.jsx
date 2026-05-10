@@ -13,6 +13,7 @@ import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import VodPlayer from '../../../components/education/VodPlayer'
 import LessonThumb from '../../../components/education/LessonThumb'
+import AppSelect from '../../../components/ui/AppSelect'
 
 const PAGE_SIZE = 12
 
@@ -474,17 +475,17 @@ export default function LessonsAdmin() {
 
           {/* Group filter */}
           {groups.length > 0 && (
-            <select
+            <AppSelect
               value={groupFilter}
               onChange={e => setGroupFilter(e.target.value)}
               aria-label="Фильтр по группе"
-              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 bg-white text-gray-700 flex-1 sm:flex-none"
+              className="flex-1 sm:flex-none"
             >
               <option value="">Все группы</option>
               {groups.map(g => (
                 <option key={g.id} value={g.id}>Группа {g.number}</option>
               ))}
-            </select>
+            </AppSelect>
           )}
 
           <div className="relative w-full sm:w-auto sm:ml-auto">

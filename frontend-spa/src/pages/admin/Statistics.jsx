@@ -8,6 +8,7 @@ import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import DateField from '../../components/DateField'
 import { fmtMoney, STATUS_LABEL } from '../../utils/format'
+import AppSelect from '../../components/ui/AppSelect'
 
 // ── Константы дней ─────────────────────────────────────────────────────────────
 const DAY_KEYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -613,27 +614,27 @@ export default function Statistics() {
           {/* Формат и тренер */}
           <div className="crm-filter-group">
             <span className="crm-filter-label">Формат</span>
-            <select value={filters.training_format} onChange={e => set('training_format', e.target.value)} className="crm-input w-36">
+            <AppSelect value={filters.training_format} onChange={e => set('training_format', e.target.value)} className="w-36">
               <option value="">Все</option>
               <option value="online">Онлайн</option>
               <option value="offline">Оффлайн</option>
-            </select>
+            </AppSelect>
           </div>
           <div className="crm-filter-group">
             <span className="crm-filter-label">Тренер</span>
-            <select value={filters.trainer_id} onChange={e => set('trainer_id', e.target.value)} className="crm-input w-44">
+            <AppSelect value={filters.trainer_id} onChange={e => set('trainer_id', e.target.value)} className="w-44">
               <option value="">Все тренеры</option>
               {trainers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div className="crm-filter-group">
             <span className="crm-filter-label">Менеджер</span>
-            <select value={filters.registered_by_id} onChange={e => set('registered_by_id', e.target.value)} className="crm-input w-44">
+            <AppSelect value={filters.registered_by_id} onChange={e => set('registered_by_id', e.target.value)} className="w-44">
               <option value="">Все</option>
               {managers.map(m => (
                 <option key={m.id} value={m.user_id}>{m.last_name} {m.first_name}</option>
               ))}
-            </select>
+            </AppSelect>
           </div>
         </div>
 
@@ -685,12 +686,12 @@ export default function Statistics() {
                 </div>
                 <div className="crm-filter-group">
                   <span className="crm-filter-label">Статус</span>
-                  <select value={pickerStatus} onChange={e => setPickerStatus(e.target.value)} className="crm-input w-36">
+                  <AppSelect value={pickerStatus} onChange={e => setPickerStatus(e.target.value)} className="w-36">
                     <option value="">Все</option>
                     <option value="active">Активные</option>
                     <option value="recruitment">Набор</option>
                     <option value="completed">Завершённые</option>
-                  </select>
+                  </AppSelect>
                 </div>
                 <div className="crm-filter-group">
                   <span className="crm-filter-label">Старт от</span>

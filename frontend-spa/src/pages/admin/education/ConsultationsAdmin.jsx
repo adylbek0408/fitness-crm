@@ -13,6 +13,7 @@ import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import Pagination from '../../../components/Pagination'
+import AppSelect from '../../../components/ui/AppSelect'
 
 const PAGE_SIZE = 15
 
@@ -510,19 +511,19 @@ function ConsultationCreateModal({ form, setForm, trainers, clients, creating, o
           </div>
           <div>
             <label className="block text-xs text-gray-500 font-medium mb-1">Тренер (необязательно)</label>
-            <select value={form.trainer} onChange={e => setForm({ ...form, trainer: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-200 bg-white">
+            <AppSelect value={form.trainer} onChange={e => setForm({ ...form, trainer: e.target.value })}
+              className="w-full">
               <option value="">Не указан</option>
               {trainers.map(t => <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-xs text-gray-500 font-medium mb-1">Ученик (необязательно)</label>
-            <select value={form.client} onChange={e => setForm({ ...form, client: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-200 bg-white">
+            <AppSelect value={form.client} onChange={e => setForm({ ...form, client: e.target.value })}
+              className="w-full">
               <option value="">Открытая ссылка</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <button onClick={onSubmit} disabled={creating}
             className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold shadow-sm hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">

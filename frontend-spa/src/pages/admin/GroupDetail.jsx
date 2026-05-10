@@ -7,6 +7,7 @@ import html2canvas from 'html2canvas'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import { STATUS_BADGE, STATUS_LABEL, GROUP_TYPE_LABEL } from '../../utils/format'
+import AppSelect from '../../components/ui/AppSelect'
 
 const DAY_KEYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const DAY_LABELS = { Mon:'Пн', Tue:'Вт', Wed:'Ср', Thu:'Чт', Fri:'Пт', Sat:'Сб', Sun:'Вс' }
@@ -208,9 +209,9 @@ function AttendanceTab({ groupId, groupClients, groupNumber, groupType, trainerN
                   <ChevronRight size={16}/>
                 </button>
               </div>
-              <select value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="crm-input w-auto">
+              <AppSelect value={selectedDate} onChange={e=>setSelectedDate(e.target.value)} className="w-auto">
                 {lessonDates.map(d=><option key={d} value={d}>{formatDateWithDay(d)}</option>)}
-              </select>
+              </AppSelect>
               <div className="flex gap-2 text-sm">
                 <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full font-semibold border border-emerald-100">✓ {presentCount}</span>
                 <span className="px-3 py-1 bg-red-50 text-red-600 rounded-full font-semibold border border-red-100">НБ: {absentCount}</span>
