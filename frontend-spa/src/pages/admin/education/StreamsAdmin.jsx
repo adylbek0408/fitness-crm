@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Radio, Copy, Square, Plus, Link2, Check, Search,
+  Radio, Copy, Square, Plus, Check, Search,
   Users, MessageCircle, ExternalLink, AlertCircle, Trash2,
   Eye, X, BookMarked, Clock, Pencil, CheckSquare,
   Square as SquareIcon,
@@ -652,17 +652,22 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
   const hasRecording = isArchived && s.archived_lesson
   const wa = encodeURIComponent(`Прямой эфир «${s.title}» — заходи: ${studentLink}`)
 
-  // Show 0-100% bar while uploading or CF-transcoding. Hidden once CF signals ready.
   const showRecProgress = isArchived && !!recProgress && recProgress.stage !== 'ready'
   const recPct = Math.max(0, Math.min(100, Number(recProgress?.pct) || 0))
-  const recLabel =
-    recProgress?.stage === 'uploading' ? 'Загрузка записи'
-      : recProgress?.stage === 'processing' ? 'Подготовка записи'
-      : 'Подготовка записи'
+  const recLabel = recProgress?.stage === 'uploading' ? 'Загрузка записи' : 'Подготовка записи'
+
+  // Left accent stripe + background tint per status
+  const accentCls = isLive
+    ? 'border-l-[3px] border-l-rose-500 bg-rose-50/40'
+    : isScheduled
+      ? 'border-l-[3px] border-l-violet-400 bg-violet-50/30'
+      : hasRecording
+        ? 'border-l-[3px] border-l-emerald-400'
+        : 'border-l-[3px] border-l-gray-200'
 
   return (
     <div
-      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition hover:shadow-md ${selected ? 'border-rose-400 ring-2 ring-rose-200' : 'border-gray-200'}`}
+      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition hover:shadow-md ${accentCls} ${selected ? 'border-rose-400 ring-2 ring-rose-200' : 'border-gray-200'}`}
       onClick={selectMode ? onToggleSelect : undefined}
       style={selectMode ? { cursor: 'pointer' } : {}}
     >
@@ -674,7 +679,7 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
               ? <CheckSquare size={20} className="text-rose-500" />
               : <SquareIcon size={20} className="text-gray-300" />
             : (
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${isLive ? 'bg-rose-500 text-white shadow-md border-rose-400/30' : isScheduled ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${isLive ? 'bg-rose-500 text-white shadow-md border-rose-400/30' : isScheduled ? 'bg-violet-100 text-violet-600 border-violet-200' : hasRecording ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-gray-50 text-gray-400 border-gray-200'}`}>
                 <Radio size={18} className={isLive ? 'animate-pulse' : ''} />
               </div>
             )
@@ -685,11 +690,20 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900 truncate">{s.title}</span>
-            {isLive && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-600 text-white"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE</span>}
-            {isScheduled && <span className="text-[11px] px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-100">Готов к эфиру</span>}
+            {isLive && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-600 text-white shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
+              </span>
+            )}
+            {isLive && viewers.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                <Users size={10} /> {viewers.length}
+              </span>
+            )}
+            {isScheduled && <span className="text-[11px] px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 font-semibold border border-violet-100">Готов к эфиру</span>}
             {isArchived && <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 font-semibold border border-gray-200">{s.status === 'archived' ? 'Архив' : 'Завершён'}</span>}
             {hasRecording && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 font-semibold flex items-center gap-1">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold flex items-center gap-1 border border-emerald-100">
                 <BookMarked size={10} /> Запись
               </span>
             )}
@@ -701,36 +715,12 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
               </span>
             )}
             {s.duration_sec > 0 && <span className="text-xs text-gray-400">· {fmtDuration(s.duration_sec)}</span>}
-            {isLive && viewers.length > 0 && (
-              <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                <Users size={10} /> {viewers.length} зрит.
-              </span>
-            )}
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions — icon buttons for secondary, stays compact */}
         {!selectMode && (
           <div className="flex items-center gap-1 shrink-0">
-            {isLive && (
-              <button onClick={onEnd} title="Завершить эфир"
-                className="p-2 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition active:scale-95 shadow-sm">
-                <Square size={15} />
-              </button>
-            )}
-            {!isArchived && (
-              <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
-                title={isLive ? 'Открыть студию' : 'Начать эфир'}
-                className="p-2 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 hover:bg-rose-100 transition flex items-center active:scale-95">
-                <ExternalLink size={15} />
-              </a>
-            )}
-            {hasRecording && (
-              <button onClick={onPreviewRecording} title="Просмотр записи"
-                className="p-2 rounded-xl bg-violet-50 border border-violet-100 text-violet-700 hover:bg-violet-100 transition active:scale-95">
-                <Eye size={15} />
-              </button>
-            )}
             {isArchived && !hasRecording && (
               <button onClick={onManualArchive} title="Создать архив из записи CF"
                 className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition active:scale-95">
@@ -751,21 +741,63 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
         )}
       </div>
 
-      {/* Student link row — only for active streams */}
-      {!isArchived && !selectMode && (
-        <div className="px-4 sm:px-5 pb-4 flex items-center gap-2">
-          <Link2 size={12} className="text-gray-400 shrink-0" />
-          <code className="text-xs text-gray-600 truncate flex-1">{studentLink}</code>
-          <button onClick={() => onCopy(studentLink, `link-${s.id}`)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs text-gray-700 shrink-0 border border-gray-200">
-            {copied === `link-${s.id}` ? <><Check size={11} /> Скопировано</> : <><Copy size={11} /> Копировать</>}
-          </button>
-          <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs hover:bg-emerald-100 shrink-0">
-            <MessageCircle size={11} /> WA
-          </a>
+      {/* Primary action bar — status-specific, with text labels */}
+      {!selectMode && (
+        <div className="px-4 sm:px-5 pb-4 -mt-1 flex flex-wrap items-center gap-2">
+          {isLive && (
+            <>
+              <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition active:scale-95 shadow-sm">
+                <ExternalLink size={13} /> Открыть студию
+              </a>
+              <button onClick={onEnd}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-600 text-xs font-semibold hover:bg-rose-50 transition active:scale-95">
+                <Square size={12} fill="currentColor" /> Завершить
+              </button>
+              <div className="flex-1" />
+              <button onClick={() => onCopy(studentLink, `link-${s.id}`)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition shrink-0">
+                {copied === `link-${s.id}` ? <><Check size={11} className="text-emerald-600" /> Скопировано</> : <><Copy size={11} /> Ссылка</>}
+              </button>
+              <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 shrink-0">
+                <MessageCircle size={11} /> WA
+              </a>
+            </>
+          )}
+
+          {isScheduled && (
+            <>
+              <a href={`/admin/education/broadcast/${s.id}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition active:scale-95 shadow-sm">
+                <ExternalLink size={13} /> Начать эфир
+              </a>
+              <div className="flex-1" />
+              <button onClick={() => onCopy(studentLink, `link-${s.id}`)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition shrink-0">
+                {copied === `link-${s.id}` ? <><Check size={11} className="text-emerald-600" /> Скопировано</> : <><Copy size={11} /> Ссылка</>}
+              </button>
+              <a href={`https://wa.me/?text=${wa}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 shrink-0">
+                <MessageCircle size={11} /> WA
+              </a>
+            </>
+          )}
+
+          {hasRecording && (
+            <button onClick={onPreviewRecording}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition active:scale-95">
+              <Eye size={13} /> Просмотреть запись
+            </button>
+          )}
+
+          {isArchived && !hasRecording && !showRecProgress && (
+            <span className="text-[11px] text-gray-400 italic">Запись отсутствует</span>
+          )}
         </div>
       )}
 
-      {/* Recording preparation progress (after broadcast ends) */}
+      {/* Recording preparation progress */}
       {showRecProgress && !selectMode && (
         <div className="px-4 sm:px-5 pb-4">
           <div className="flex items-center gap-2 text-[11px] text-gray-500 mb-1.5">
@@ -782,7 +814,7 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
         </div>
       )}
 
-      {/* Live viewers */}
+      {/* Live viewers list */}
       {isLive && viewers.length > 0 && !selectMode && (
         <div className="px-4 pb-4">
           <div className="flex flex-wrap gap-1.5">
