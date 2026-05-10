@@ -1480,6 +1480,7 @@ class EducationStatsView(APIView):
             deleted_at__isnull=True,
             group__isnull=False,
             group_id__in=groups_with_lessons,
+            group__training_format='online',  # inactive = only online students
         )
         if group_id:
             clients_qs = clients_qs.filter(group_id=group_id)
