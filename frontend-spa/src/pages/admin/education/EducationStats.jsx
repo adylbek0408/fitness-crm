@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import {
   BarChart3, Users, Activity, AlertCircle,
   CheckCircle2, Eye, X, Headphones, Play, Phone, RefreshCw,
+  MessageCircle, Send, Copy, Check,
 } from 'lucide-react'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
@@ -26,6 +27,7 @@ export default function EducationStats() {
   const [filterGroup, setFilterGroup] = useState('')
   const [inactiveDays, setInactiveDays] = useState(7)
   const [openLesson, setOpenLesson] = useState(null) // lesson detail modal
+  const [copied, setCopied] = useState(false)
 
   const reload = (lessonId = null) => {
     setLoading(true); setError('')
@@ -43,7 +45,9 @@ export default function EducationStats() {
   }
 
   useEffect(() => {
-    api.get('/groups/').then(r => setGroups(r.data?.results || r.data || [])).catch(() => {})
+    api.get('/groups/?page_size=200&training_format=online')
+      .then(r => setGroups(r.data?.results || r.data || []))
+      .catch(() => {})
   }, [])
 
   useEffect(() => { reload() }, [filterGroup, inactiveDays])
@@ -61,6 +65,14 @@ export default function EducationStats() {
     }),
     [lessons],
   )
+
+  const copyPhones = () => {
+    const phones = inactive.map(c => c.phone).filter(Boolean).join('\n')
+    navigator.clipboard.writeText(phones).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    }).catch(() => {})
+  }
 
   return (
     <AdminLayout user={user}>
@@ -214,40 +226,83 @@ export default function EducationStats() {
 
         {/* Inactive students */}
         <div className="bg-white rounded-3xl border border-rose-100 shadow-sm">
-          <div className="p-4 sm:p-5 border-b border-rose-50 font-semibold flex items-center gap-2">
-            <AlertCircle size={18} className="text-amber-500" />
-            Неактивные студенты ({inactive.length})
+          <div className="p-4 sm:p-5 border-b border-rose-50 flex items-center gap-2 flex-wrap">
+            <AlertCircle size={18} className="text-amber-500 shrink-0" />
+            <span className="font-semibold flex-1">Неактивные студенты ({inactive.length})</span>
+            {inactive.length > 0 && (
+              <button
+                onClick={copyPhones}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition text-gray-600 shrink-0"
+              >
+                {copied
+                  ? <><Check size={13} className="text-emerald-500" /> Скопировано!</>
+                  : <><Copy size={13} /> Номера</>
+                }
+              </button>
+            )}
           </div>
           {!loading && inactive.length === 0 && (
             <div className="p-8 text-center text-gray-400">
-              Все студенты активны.
+              Все онлайн-студенты активны.
             </div>
           )}
           <div className="divide-y">
-            {inactive.slice(0, 200).map(c => (
-              <div key={c.id} className="flex items-center gap-3 p-3 hover:bg-gray-50">
-                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-semibold text-sm shrink-0">
-                  {(c.first_name?.[0] || '?').toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">
-                    {c.last_name} {c.first_name}
+            {inactive.slice(0, 200).map(c => {
+              const waPhone = (c.phone || '').replace(/\D/g, '')
+              const waUrl = waPhone ? `https://wa.me/${waPhone}` : null
+              const tgUrl = c.telegram_link || null
+              return (
+                <div key={c.id} className="flex items-center gap-3 p-3 hover:bg-gray-50">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-semibold text-sm shrink-0">
+                    {(c.first_name?.[0] || '?').toUpperCase()}
                   </div>
-                  <div className="text-xs text-gray-500 truncate flex items-center gap-2">
-                    <Phone size={11} /> {c.phone}
-                    {c.group_name && ` · ${c.group_name}`}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">
+                      {c.last_name} {c.first_name}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate flex items-center gap-2">
+                      <Phone size={11} /> {c.phone}
+                      {c.group_name && ` · ${c.group_name}`}
+                    </div>
+                  </div>
+
+                  {/* Contact action buttons */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {waUrl && (
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Написать в WhatsApp"
+                        className="w-8 h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center transition"
+                      >
+                        <MessageCircle size={15} className="text-emerald-600" />
+                      </a>
+                    )}
+                    {tgUrl && (
+                      <a
+                        href={tgUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Написать в Telegram"
+                        className="w-8 h-8 rounded-lg bg-sky-50 hover:bg-sky-100 flex items-center justify-center transition"
+                      >
+                        <Send size={14} className="text-sky-500" />
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-right shrink-0 w-20">
+                    {c.last_watched_at
+                      ? <span className="text-gray-500">
+                          {new Date(c.last_watched_at).toLocaleDateString('ru')}
+                        </span>
+                      : <span className="text-rose-500 font-medium">не смотрел</span>
+                    }
                   </div>
                 </div>
-                <div className="text-xs text-right shrink-0">
-                  {c.last_watched_at
-                    ? <span className="text-gray-500">
-                        {new Date(c.last_watched_at).toLocaleDateString('ru')}
-                      </span>
-                    : <span className="text-rose-500 font-medium">не смотрел</span>
-                  }
-                </div>
-              </div>
-            ))}
+              )
+            })}
             {inactive.length > 200 && (
               <div className="p-3 text-center text-xs text-gray-500">
                 Показаны первые 200 из {inactive.length}.

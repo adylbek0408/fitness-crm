@@ -91,7 +91,7 @@ export default function LessonsAdmin() {
 
   useEffect(() => {
     reload()
-    api.get('/groups/?page_size=200')
+    api.get('/groups/?page_size=200&training_format=online')
       .then(r => setGroups(r.data?.results || r.data || []))
       .catch(() => {})
   }, [])

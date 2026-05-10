@@ -175,7 +175,7 @@ export default function StreamsAdmin() {
   }, [streams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.get('/groups/?page_size=200').then(r => setGroups(r.data?.results || r.data || [])).catch(() => {})
+    api.get('/groups/?page_size=200&training_format=online').then(r => setGroups(r.data?.results || r.data || [])).catch(() => {})
   }, [])
 
   // Client-side filter

@@ -1480,6 +1480,7 @@ class EducationStatsView(APIView):
             deleted_at__isnull=True,
             group__isnull=False,
             group_id__in=groups_with_lessons,
+            group__training_format='online',  # only online students track lessons
         )
         if group_id:
             clients_qs = clients_qs.filter(group_id=group_id)
@@ -1506,6 +1507,7 @@ class EducationStatsView(APIView):
                     'first_name': client.first_name,
                     'last_name': client.last_name,
                     'phone': getattr(client, 'phone', '') or '',
+                    'telegram_link': getattr(client, 'telegram_link', '') or '',
                     'group_name': (f'Группа {client.group.number}'
                                    if client.group_id and client.group else ''),
                     'last_watched_at': last.isoformat() if last else None,
