@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import {
   RefreshCw, CheckCircle2, X, Phone,
-  ChevronLeft, ChevronRight, Play, Headphones,
+  ChevronLeft, ChevronRight, Play, Headphones, BarChart2,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
@@ -12,6 +12,7 @@ import AdminLayout from '../../../components/AdminLayout'
 import AppSelect from '../../../components/ui/AppSelect'
 
 const PAGE = 20
+const CHART_PAGE = 10
 
 export default function EducationStats() {
   const { user } = useOutletContext()
@@ -22,6 +23,7 @@ export default function EducationStats() {
   const [filterGroup, setFilterGroup] = useState('')
   const [openLesson, setOpenLesson]   = useState(null)
   const [inactivePage, setInactivePage] = useState(1)
+  const [chartPage, setChartPage]     = useState(1)
 
   const reload = (lessonId = null) => {
     setLoading(true); setError('')
@@ -32,6 +34,7 @@ export default function EducationStats() {
       .then(r => {
         setData(r.data)
         setInactivePage(1)
+        setChartPage(1)
         if (lessonId && r.data.lesson_detail) setOpenLesson(r.data.lesson_detail)
       })
       .catch(e => setError(e.response?.data?.detail || 'Ошибка загрузки'))
@@ -59,16 +62,22 @@ export default function EducationStats() {
     [lessons],
   )
 
+  const chartTotalPages = Math.max(1, Math.ceil(sortedLessons.length / CHART_PAGE))
+  const safeChartPage   = Math.min(chartPage, chartTotalPages)
+
   const chartData = useMemo(() =>
-    sortedLessons.slice(0, 12).map(l => ({
-      id:       l.id,
-      name:     l.title.length > 30 ? l.title.slice(0, 30) + '…' : l.title,
-      fullName: l.title,
-      avg:      l.avg_percent,
-      viewers:  l.viewers_count,
-      completed: l.completed_count,
-    })),
-    [sortedLessons],
+    sortedLessons
+      .slice((safeChartPage - 1) * CHART_PAGE, safeChartPage * CHART_PAGE)
+      .map(l => ({
+        id:       l.id,
+        name:     l.title.length > 28 ? l.title.slice(0, 28) + '…' : l.title,
+        fullName: l.title,
+        avg:      l.avg_percent,
+        viewers:  l.viewers_count,
+        completed: l.completed_count,
+        type:     l.lesson_type,
+      })),
+    [sortedLessons, safeChartPage],
   )
 
   const totalPages  = Math.max(1, Math.ceil(inactive.length / PAGE))
@@ -160,95 +169,98 @@ export default function EducationStats() {
           )}
 
           {!loading && chartData.length > 0 && (
-            <div className="px-2 pb-5">
-              <ResponsiveContainer width="100%" height={chartData.length * 46 + 24}>
-                <BarChart
-                  data={chartData}
-                  layout="vertical"
-                  margin={{ top: 4, right: 48, left: 4, bottom: 0 }}
-                  barCategoryGap="32%"
-                >
-                  <XAxis
-                    type="number"
-                    domain={[0, 100]}
-                    tickCount={6}
-                    tickFormatter={v => `${v}%`}
-                    tick={{ fontSize: 11, fill: '#d1d5db' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={150}
-                    tick={{ fontSize: 12, fill: '#6b7280' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: '#fdf2f8', rx: 8 }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null
-                      const d = payload[0].payload
-                      return (
-                        <div className="bg-white border border-gray-100 shadow-xl rounded-2xl px-4 py-3 text-xs min-w-[180px]">
-                          <p className="font-semibold text-gray-800 mb-2 leading-snug text-[13px]">{d.fullName}</p>
-                          <div className="space-y-1">
-                            <div className="flex justify-between gap-4">
-                              <span className="text-gray-400">Среднее</span>
-                              <span className="font-bold" style={{ color: barColor(d.avg) }}>{d.avg}%</span>
-                            </div>
-                            <div className="flex justify-between gap-4">
-                              <span className="text-gray-400">Зрителей</span>
-                              <span className="font-semibold text-gray-700">{d.viewers}</span>
-                            </div>
-                            <div className="flex justify-between gap-4">
-                              <span className="text-gray-400">Завершили</span>
-                              <span className="font-semibold text-gray-700">{d.completed}</span>
-                            </div>
-                          </div>
-                          <p className="text-gray-300 mt-2 text-[11px]">← клик чтобы открыть</p>
-                        </div>
-                      )
-                    }}
-                  />
-                  <Bar
-                    dataKey="avg"
-                    radius={[0, 8, 8, 0]}
-                    maxBarSize={22}
-                    style={{ cursor: 'pointer' }}
-                    onClick={(data) => { if (data?.id) reload(data.id) }}
+            <>
+              <div className="px-2 pb-2">
+                <ResponsiveContainer width="100%" height={chartData.length * 46 + 24}>
+                  <BarChart
+                    data={chartData}
+                    layout="vertical"
+                    margin={{ top: 4, right: 48, left: 4, bottom: 0 }}
+                    barCategoryGap="32%"
                   >
-                    {chartData.map((d, i) => (
-                      <Cell key={i} fill={barColor(d.avg)} fillOpacity={0.85} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+                    <XAxis
+                      type="number"
+                      domain={[0, 100]}
+                      tickCount={6}
+                      tickFormatter={v => `${v}%`}
+                      tick={{ fontSize: 11, fill: '#d1d5db' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={148}
+                      tick={{ fontSize: 12, fill: '#6b7280' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: '#fdf2f8', rx: 8 }}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null
+                        const d = payload[0].payload
+                        return (
+                          <div className="bg-white border border-gray-100 shadow-xl rounded-2xl px-4 py-3 text-xs min-w-[180px]">
+                            <p className="font-semibold text-gray-800 mb-2 leading-snug text-[13px]">{d.fullName}</p>
+                            <div className="space-y-1">
+                              <div className="flex justify-between gap-4">
+                                <span className="text-gray-400">Среднее</span>
+                                <span className="font-bold" style={{ color: barColor(d.avg) }}>{d.avg}%</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-gray-400">Зрителей</span>
+                                <span className="font-semibold text-gray-700">{d.viewers}</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-gray-400">Завершили</span>
+                                <span className="font-semibold text-gray-700">{d.completed}</span>
+                              </div>
+                            </div>
+                            <p className="text-gray-300 mt-2 text-[11px]">← клик чтобы открыть</p>
+                          </div>
+                        )
+                      }}
+                    />
+                    <Bar
+                      dataKey="avg"
+                      radius={[0, 8, 8, 0]}
+                      maxBarSize={22}
+                      style={{ cursor: 'pointer' }}
+                      onClick={(data) => { if (data?.id) reload(data.id) }}
+                    >
+                      {chartData.map((d, i) => (
+                        <Cell key={i} fill={barColor(d.avg)} fillOpacity={0.85} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
 
-          {/* Lessons not in chart (beyond top 12) */}
-          {!loading && sortedLessons.length > 12 && (
-            <div className="border-t border-gray-50 divide-y divide-gray-50">
-              {sortedLessons.slice(12).map(l => (
-                <button
-                  key={l.id}
-                  onClick={() => reload(l.id)}
-                  className="w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition text-left"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                    {l.lesson_type === 'audio' ? <Headphones size={13} className="text-gray-400" /> : <Play size={13} className="text-gray-400" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-700 truncate">{l.title}</p>
-                  </div>
-                  <span className="text-xs font-semibold shrink-0" style={{ color: barColor(l.avg_percent) }}>
-                    {l.avg_percent}%
+              {/* Chart pagination */}
+              {chartTotalPages > 1 && (
+                <div className="border-t border-gray-50 px-5 py-2.5 flex items-center justify-between">
+                  <button
+                    onClick={() => setChartPage(p => Math.max(1, p - 1))}
+                    disabled={safeChartPage === 1}
+                    className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition"
+                  >
+                    <ChevronLeft size={16} className="text-gray-500" />
+                  </button>
+                  <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                    <BarChart2 size={12} className="text-gray-300" />
+                    {(safeChartPage - 1) * CHART_PAGE + 1}–{Math.min(safeChartPage * CHART_PAGE, sortedLessons.length)} из {sortedLessons.length} уроков
                   </span>
-                </button>
-              ))}
-            </div>
+                  <button
+                    onClick={() => setChartPage(p => Math.min(chartTotalPages, p + 1))}
+                    disabled={safeChartPage === chartTotalPages}
+                    className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition"
+                  >
+                    <ChevronRight size={16} className="text-gray-500" />
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 

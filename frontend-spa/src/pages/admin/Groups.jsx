@@ -1,96 +1,144 @@
 import { useState, useEffect } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { Plus, Users, ChevronRight, X, Search, Clock, CheckCircle, Loader } from 'lucide-react'
+import { Plus, Users, ChevronRight, X, Search, CalendarDays, Clock3, Wifi, MapPin } from 'lucide-react'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
-import { STATUS_BADGE, STATUS_LABEL, GROUP_TYPE_LABEL } from '../../utils/format'
+import { GROUP_TYPE_LABEL } from '../../utils/format'
 import AppSelect from '../../components/ui/AppSelect'
 
 const DAY_LABELS = { Mon:'Пн', Tue:'Вт', Wed:'Ср', Thu:'Чт', Fri:'Пт', Sat:'Сб', Sun:'Вс' }
-function fmtSchedule(s) {
+function fmtDays(s) {
   if (!s) return '—'
   const parts = s.split(' ')
-  const days = parts[0].split(',').map(d => DAY_LABELS[d] || d).join(', ')
-  return days + (parts[1] ? ` · ${parts[1]}` : '')
+  return parts[0].split(',').map(d => DAY_LABELS[d] || d).join(' · ')
+}
+function fmtTime(s) {
+  if (!s) return ''
+  const parts = s.split(' ')
+  return parts[1] || ''
 }
 
 const STATUS_CONFIG = {
-  active:      { gradient: 'linear-gradient(135deg,#be185d,#db2777)', label: 'Активный',  dot: '#be185d' },
-  recruitment: { gradient: 'linear-gradient(135deg,#d97706,#f59e0b)', label: 'Набор',     dot: '#d97706' },
-  completed:   { gradient: 'linear-gradient(135deg,#6b7280,#9ca3af)', label: 'Завершён',  dot: '#6b7280' },
+  active:      { gradient: 'linear-gradient(90deg,#be185d,#db2777)', label: 'Активный',  dot: '#be185d', bg: '#fdf2f8', text: '#be185d' },
+  recruitment: { gradient: 'linear-gradient(90deg,#d97706,#f59e0b)', label: 'Набор',     dot: '#d97706', bg: '#fffbeb', text: '#b45309' },
+  completed:   { gradient: 'linear-gradient(90deg,#9ca3af,#d1d5db)', label: 'Завершён',  dot: '#9ca3af', bg: '#f9fafb', text: '#6b7280' },
 }
 
-function GroupCard({ g, onClose }) {
+function trainerInitials(name) {
+  if (!name) return '?'
+  const parts = name.trim().split(' ')
+  return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name[0].toUpperCase()
+}
+
+function GroupCard({ g }) {
   const cfg = STATUS_CONFIG[g.status] || STATUS_CONFIG.completed
+  const days = fmtDays(g.schedule)
+  const time = fmtTime(g.schedule)
+  const isOnline = g.training_format === 'online'
+
   return (
-    <div className="rounded-2xl overflow-hidden transition-all active:scale-[0.99]"
-         style={{ background: '#fff', border: '1px solid var(--border)', boxShadow: '0 1px 4px rgba(120,40,80,0.05)' }}>
+    <div className="rounded-2xl overflow-hidden transition-all hover:shadow-md active:scale-[0.99]"
+         style={{ background: '#fff', border: '1px solid var(--border)', boxShadow: '0 1px 6px rgba(120,40,80,0.06)' }}>
 
-      {/* Цветная полоска */}
-      <div className="h-1" style={{ background: cfg.gradient }} />
+      {/* Status gradient top bar */}
+      <div className="h-[3px]" style={{ background: cfg.gradient }} />
 
-      <div className="p-4">
-        {/* Заголовок */}
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold tracking-tight" style={{ color: 'var(--text)' }}>
-                Группа {g.number}
-              </h3>
-              <span className="text-xs px-2 py-0.5 rounded-md font-medium"
-                    style={{ background: '#f5f5f5', color: 'var(--text-soft)' }}>
-                {GROUP_TYPE_LABEL[g.group_type] || g.group_type}
-              </span>
-            </div>
-            {/* Статус-точка */}
-            <div className="flex items-center gap-1.5 mt-1">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.dot }} />
-              <span className="text-xs font-medium" style={{ color: cfg.dot }}>
+      <div className="p-4 pb-3">
+        {/* Row 1: title + client badge */}
+        <div className="flex items-start justify-between gap-2 mb-2.5">
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-bold leading-tight truncate" style={{ color: 'var(--text)' }}>
+              Группа {g.number}
+            </h3>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {/* Status pill */}
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{ background: cfg.bg, color: cfg.text }}>
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: cfg.dot }} />
                 {cfg.label}
               </span>
+              {/* Format pill */}
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-medium px-2 py-0.5 rounded-full"
+                    style={{ background: isOnline ? '#eff6ff' : '#f0fdf4', color: isOnline ? '#1d4ed8' : '#15803d' }}>
+                {isOnline ? <Wifi size={9} /> : <MapPin size={9} />}
+                {isOnline ? 'Онлайн' : 'Оффлайн'}
+              </span>
+              {/* Group type */}
+              {g.group_type && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                      style={{ background: '#f5f5f5', color: 'var(--text-soft)' }}>
+                  {GROUP_TYPE_LABEL[g.group_type] || g.group_type}
+                </span>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl shrink-0"
+
+          {/* Client count */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl shrink-0"
                style={{ background: '#fce7f3' }}>
-            <Users size={12} style={{ color: '#be185d' }} />
-            <span className="text-xs font-bold" style={{ color: '#be185d' }}>{g.client_count}</span>
+            <Users size={11} style={{ color: '#be185d' }} />
+            <span className="text-xs font-bold tabular-nums" style={{ color: '#be185d' }}>{g.client_count}</span>
           </div>
         </div>
 
-        {/* Детали — горизонтально на мобиле */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-4">
-          {g.trainer?.full_name && (
-            <div className="col-span-2">
-              <p className="text-xs" style={{ color: 'var(--text-xs)' }}>Тренер</p>
-              <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
+        {/* Divider */}
+        <div className="h-px mb-3" style={{ background: 'var(--border)' }} />
+
+        {/* Row 2: Trainer + schedule */}
+        <div className="flex items-center gap-3 mb-3">
+          {/* Trainer avatar */}
+          {g.trainer?.full_name ? (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 text-white"
+                   style={{ background: 'linear-gradient(135deg,#be185d,#9d174d)' }}>
+                {trainerInitials(g.trainer.full_name)}
+              </div>
+              <span className="text-[12.5px] font-medium truncate" style={{ color: 'var(--text)' }}>
                 {g.trainer.full_name}
-              </p>
+              </span>
             </div>
+          ) : (
+            <span className="text-xs text-gray-300 flex-1">Нет тренера</span>
           )}
-          <div>
-            <p className="text-xs" style={{ color: 'var(--text-xs)' }}>График</p>
-            <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{fmtSchedule(g.schedule)}</p>
-          </div>
-          <div>
-            <p className="text-xs" style={{ color: 'var(--text-xs)' }}>Старт</p>
-            <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{g.start_date || '—'}</p>
-          </div>
         </div>
 
-        {/* Кнопки */}
-        <div className="flex gap-2">
-          <Link to={`/admin/groups/${g.id}/detail`}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold text-white transition"
-            style={{ background: 'linear-gradient(135deg,#be185d,#9d174d)' }}>
-            НБ и клиенты <ChevronRight size={12} />
-          </Link>
-          <Link to={`/admin/groups/${g.id}`}
-            className="px-3.5 py-2.5 rounded-xl text-xs font-medium transition"
-            style={{ background: '#f5f5f5', color: 'var(--text-soft)' }}>
-            Изменить
-          </Link>
-
+        {/* Row 3: schedule + start */}
+        <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <CalendarDays size={11} className="text-gray-300 shrink-0" />
+            <span className="text-[11.5px] text-gray-500 truncate">{days}</span>
+            {time && (
+              <>
+                <span className="text-gray-200">·</span>
+                <Clock3 size={11} className="text-gray-300 shrink-0" />
+                <span className="text-[11.5px] font-semibold" style={{ color: 'var(--text-soft)' }}>{time}</span>
+              </>
+            )}
+          </div>
+          {g.start_date && (
+            <span className="text-[11px] text-gray-400 shrink-0 ml-auto">
+              с {g.start_date}
+            </span>
+          )}
         </div>
+      </div>
+
+      {/* Bottom action row */}
+      <div className="flex gap-2 px-4 pb-4">
+        <Link
+          to={`/admin/groups/${g.id}/detail`}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12.5px] font-semibold text-white transition hover:opacity-90"
+          style={{ background: 'linear-gradient(135deg,#be185d,#9d174d)' }}
+        >
+          НБ и клиенты <ChevronRight size={12} />
+        </Link>
+        <Link
+          to={`/admin/groups/${g.id}`}
+          className="px-4 py-2.5 rounded-xl text-[12.5px] font-medium transition hover:bg-gray-100"
+          style={{ background: '#f5f5f5', color: 'var(--text-soft)' }}
+        >
+          Изменить
+        </Link>
       </div>
     </div>
   )
@@ -155,7 +203,7 @@ export default function Groups() {
     <AdminLayout user={user}>
 
       {/* ── Заголовок ── */}
-      <div className="flex items-center justify-between gap-3 mb-5">
+      <div className="flex items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="crm-page-title">Группы</h2>
           <p className="crm-page-subtitle">{groups.length} групп всего</p>
@@ -164,6 +212,22 @@ export default function Groups() {
           <Plus size={15} /> Новый
         </Link>
       </div>
+
+      {/* ── Stats strip ── */}
+      {!loading && groups.length > 0 && (
+        <div className="grid grid-cols-3 gap-px bg-gray-100 rounded-2xl overflow-hidden mb-4 shadow-sm">
+          {[
+            { label: 'Активных', value: active.length, color: '#be185d', bg: '#fdf2f8' },
+            { label: 'В наборе', value: recruitment.length, color: '#b45309', bg: '#fffbeb' },
+            { label: 'Студентов', value: groups.reduce((s, g) => s + (g.client_count || 0), 0), color: '#1d4ed8', bg: '#eff6ff' },
+          ].map(m => (
+            <div key={m.label} className="flex flex-col gap-0.5 px-4 py-3" style={{ background: m.bg }}>
+              <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: m.color, opacity: 0.7 }}>{m.label}</span>
+              <span className="text-2xl font-black leading-none" style={{ color: m.color }}>{m.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Фильтры ── */}
       <div className="crm-card p-3 mb-4">
@@ -273,7 +337,7 @@ export default function Groups() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {shown.map(g => (
-            <GroupCard key={g.id} g={g} onClose={closeGroup} />
+            <GroupCard key={g.id} g={g} />
           ))}
         </div>
       )}
