@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Video, Copy, MessageCircle, Plus, Check,
   Clock, Users, AlertCircle, Search,
@@ -71,9 +71,6 @@ export default function ConsultationsAdmin() {
   })
   const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()) }
 
-  // Jitsi
-  const [jitsiInfo, setJitsiInfo] = useState(null)
-  const [jitsiConsultationId, setJitsiConsultationId] = useState(null)
   const [joiningId, setJoiningId] = useState(null)
 
   const reload = () => {
@@ -129,7 +126,7 @@ export default function ConsultationsAdmin() {
     } finally { setCreating(false) }
   }
 
-  // Join
+  // Join — open Jitsi directly in browser, no embed modal
   const joinAsTrainer = async id => {
     setJoiningId(id)
     try {
@@ -137,7 +134,15 @@ export default function ConsultationsAdmin() {
       if (!r.data?.valid) {
         setAlertModal({ title: 'Не удалось войти', message: r.data?.reason || 'Консультация недоступна.', variant: 'error' }); return
       }
-      setJitsiConsultationId(id); setJitsiInfo(r.data)
+      const info = r.data
+      const url = info.jitsi_domain && info.room_name
+        ? `https://${info.jitsi_domain}/${info.room_name}${info.jitsi_token ? `?jwt=${info.jitsi_token}` : ''}`
+        : null
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } else {
+        setAlertModal({ title: 'Ошибка', message: 'Не удалось получить ссылку на комнату.', variant: 'error' })
+      }
     } catch (e) {
       setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
     } finally { setJoiningId(null) }
@@ -301,15 +306,6 @@ export default function ConsultationsAdmin() {
           creating={creating}
           onClose={() => { setShowForm(false); setForm({ title: '', trainer: '', client: '' }) }}
           onSubmit={create}
-        />
-      )}
-
-      {/* Inline Jitsi */}
-      {jitsiInfo && (
-        <JitsiRoomModal
-          info={jitsiInfo}
-          consultationId={jitsiConsultationId}
-          onClose={() => { setJitsiInfo(null); setJitsiConsultationId(null); reload() }}
         />
       )}
 
@@ -493,124 +489,3 @@ function ConsultationCreateModal({ form, setForm, trainers, clients, creating, o
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-function JitsiRoomModal({ info, consultationId, onClose }) {
-  const containerRef = useRef(null)
-  const apiRef = useRef(null)
-  const stoppedRef = useRef(false)
-
-  useEffect(() => {
-    const id = consultationId
-    const handleBeforeUnload = e => {
-      if (id && !stoppedRef.current) {
-        stoppedRef.current = true
-        const token = localStorage.getItem('access_token')
-        try {
-          fetch(`/api/education/consultations/${id}/stop/`, {
-            method: 'POST', keepalive: true,
-            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-            body: '{}',
-          }).catch(() => {})
-        } catch {}
-      }
-      e.preventDefault()
-      e.returnValue = 'Консультация завершится. Вы уверены что хотите выйти?'
-      return e.returnValue
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [consultationId])
-
-  const handleClose = useCallback(async () => {
-    const confirmed = window.confirm('Вы уверены, что хотите закрыть?\nКонсультация завершится и ученик увидит сообщение об окончании.')
-    if (!confirmed) return
-    if (consultationId && !stoppedRef.current) {
-      stoppedRef.current = true
-      try { await api.post(`/education/consultations/${consultationId}/stop/`) } catch {}
-    }
-    if (apiRef.current) {
-      try { apiRef.current.dispose() } catch {}
-      apiRef.current = null
-    }
-    onClose()
-  }, [consultationId, onClose])
-
-  const roomUrl = info?.jitsi_domain && info?.room_name
-    ? `https://${info.jitsi_domain}/${info.room_name}${info.jitsi_token ? `?jwt=${info.jitsi_token}` : ''}`
-    : null
-
-  useEffect(() => {
-    if (!info?.jitsi_domain || !info?.room_name) return
-    const domain = info.jitsi_domain
-    const scriptId = 'jitsi-external-api'
-    const init = () => {
-      if (!window.JitsiMeetExternalAPI || !containerRef.current || apiRef.current) return
-      apiRef.current = new window.JitsiMeetExternalAPI(domain, {
-        roomName: info.room_name,
-        parentNode: containerRef.current,
-        width: '100%', height: '100%',
-        userInfo: { displayName: info.display_name || 'Тренер' },
-        ...(info.jitsi_token ? { jwt: info.jitsi_token } : {}),
-        configOverwrite: {
-          startWithAudioMuted: false, startWithVideoMuted: false,
-          prejoinPageEnabled: false, prejoinConfig: { enabled: false },
-          lobby: { autoKnock: false, enableChat: false },
-          disableDeepLinking: true, enableWelcomePage: false,
-          enableClosePage: false, requireDisplayName: false,
-          disableInviteFunctions: true,
-          toolbarButtons: ['microphone', 'camera', 'desktop', 'fullscreen', 'hangup', 'chat', 'tileview', 'videoquality', 'settings'],
-        },
-        interfaceConfigOverwrite: {
-          MOBILE_APP_PROMO: false, SHOW_JITSI_WATERMARK: false,
-          SHOW_BRAND_WATERMARK: false, SHOW_POWERED_BY: false,
-        },
-      })
-      apiRef.current.addEventListener('readyToClose', handleClose)
-    }
-    if (!document.getElementById(scriptId)) {
-      const s = document.createElement('script')
-      s.id = scriptId; s.src = `https://${domain}/external_api.js`; s.async = true; s.onload = init
-      document.body.appendChild(s)
-    } else {
-      init()
-    }
-    return () => {
-      if (apiRef.current) { try { apiRef.current.dispose() } catch {}; apiRef.current = null }
-    }
-  }, [info, handleClose])
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-2 bg-black/60 backdrop-blur">
-        <span className="text-white/70 text-xs hidden sm:block">
-          Комната: <span className="font-mono text-white/90">{info?.room_name}</span>
-        </span>
-        <div className="flex items-center gap-2 ml-auto">
-          {roomUrl && (
-            // Open in a new tab AND tear down the embedded modal — otherwise
-            // the trainer ends up joined twice to the same room (once in the
-            // iframe, once in the popup), which the student sees as two
-            // "administrator" tiles and breaks the conversation flow.
-            <button
-              type="button"
-              onClick={() => {
-                const win = window.open(roomUrl, '_blank', 'noopener,noreferrer')
-                // Only close embedded if the popup actually opened — popup
-                // blockers would otherwise leave the trainer with no session.
-                if (win) handleClose()
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/90 text-white hover:bg-violet-600 text-xs font-medium"
-            >
-              <LogIn size={13} /> Открыть в браузере
-            </button>
-          )}
-          <button onClick={handleClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/80 text-white hover:bg-rose-600 text-xs font-medium">
-            <X size={14} /> Завершить и закрыть
-          </button>
-        </div>
-      </div>
-      <div ref={containerRef} style={{ width: '100%', flex: 1, paddingTop: '44px' }} />
-    </div>
-  )
-}
