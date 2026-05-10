@@ -39,7 +39,6 @@ const relDate = iso => {
 const STATUS_TABS = [
   { key: 'all', label: 'Все' },
   { key: 'live', label: 'Live' },
-  { key: 'scheduled', label: 'Готовы' },
   { key: 'archived', label: 'Архив' },
 ]
 

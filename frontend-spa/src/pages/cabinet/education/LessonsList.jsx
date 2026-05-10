@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import api from '../../../api/axios'
 import LessonThumb from '../../../components/education/LessonThumb'
+import CabinetNav from '../../../components/CabinetNav'
 
 const PAGE_SIZE = 12
 
@@ -55,7 +56,7 @@ export default function LessonsList() {
   useEffect(() => { setPage(1) }, [tab, search])
 
   return (
-    <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
+    <div className="min-h-screen pb-20" style={{ background: '#fdf8fa' }}>
       <header className="bg-white border-b border-rose-100 sticky top-0 z-10">
         <div className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2">
           <Link to="/cabinet/profile" className="p-2 rounded-xl hover:bg-rose-50 active:bg-rose-100" aria-label="Назад">
@@ -197,6 +198,7 @@ export default function LessonsList() {
           </>
         )}
       </main>
+      <CabinetNav />
     </div>
   )
 }

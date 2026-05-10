@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { ChevronLeft, Radio, Clock, CheckCircle2, Play } from 'lucide-react'
 import api from '../../../api/axios'
 import LessonThumb from '../../../components/education/LessonThumb'
+import CabinetNav from '../../../components/CabinetNav'
 
 function formatDuration(sec) {
   if (!sec) return ''
@@ -32,7 +33,7 @@ export default function StreamArchive() {
   const totalMins = Math.round(lessons.reduce((s, l) => s + (l.duration_sec || 0), 0) / 60)
 
   return (
-    <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
+    <div className="min-h-screen pb-20" style={{ background: '#fdf8fa' }}>
       <header className="bg-white border-b border-rose-100 sticky top-0 z-10 shadow-sm">
         <div className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2">
           <Link to="/cabinet/profile" className="p-2 rounded-xl hover:bg-rose-50 active:bg-rose-100" aria-label="Назад">
@@ -143,9 +144,14 @@ export default function StreamArchive() {
 
                   {/* Card body */}
                   <div className="p-3 sm:p-3.5">
-                    <h3 className="font-semibold text-[14px] text-gray-900 line-clamp-2 leading-snug mb-2">
+                    <h3 className="font-semibold text-[14px] text-gray-900 line-clamp-2 leading-snug mb-1">
                       {l.title}
                     </h3>
+                    {l.description && (
+                      <p className="text-[11.5px] text-gray-400 line-clamp-2 leading-relaxed mb-2">
+                        {l.description}
+                      </p>
+                    )}
 
                     {/* CTA pill */}
                     <div className="flex items-center justify-between">
@@ -177,6 +183,7 @@ export default function StreamArchive() {
           </div>
         )}
       </main>
+      <CabinetNav />
     </div>
   )
 }

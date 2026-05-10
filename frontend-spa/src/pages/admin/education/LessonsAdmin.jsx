@@ -278,7 +278,7 @@ export default function LessonsAdmin() {
     try {
       const init = await api.post('/education/lessons/upload-init/', {
         title: form.title.trim(),
-        description: '',
+        description: form.description?.trim() || '',
         lesson_type: form.lesson_type,
         groups: form.group_ids,
         file_ext: form.file.name.split('.').pop().toLowerCase(),
@@ -1149,6 +1149,18 @@ function UploadModal({
               onChange={e => setForm({ ...form, title: e.target.value })}
               placeholder="Например, Тренировка №1"
               className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Описание (необязательно)</label>
+            <textarea
+              value={form.description}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+              placeholder="Тема урока, что разбираем, ссылки…"
+              rows={3}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 resize-none text-sm"
             />
           </div>
 
