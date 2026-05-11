@@ -9,6 +9,7 @@ import { useEffect } from 'react'
  *   - Block common save / print / view-source shortcuts (Ctrl+S/P/U,
  *     Ctrl+Shift+I/J/C/K, F12) on Windows AND Mac (Cmd equivalents)
  *   - Block Print Screen on Windows + try to wipe the clipboard
+ *   - Override window.print() so it's a no-op while player is active
  *   - Detect DevTools open (window-size delta heuristic)
  *   - Pause the video when the tab goes to background or window loses focus
  *     (catches OBS / QuickTime starting to record)
@@ -19,9 +20,9 @@ import { useEffect } from 'react'
  * What we CANNOT do (browser sandbox limits):
  *   - Block OS-level screen recording (QuickTime, OBS, phone camera)
  *   - Block external screenshot tools running before page load
- *   - Block macOS Cmd+Shift+5 — the OS swallows this shortcut
+ *   - Block macOS Cmd+Shift+3/4/5 — the OS swallows these shortcuts
  *
- * The real deterrent is the visible WATERMARK with the user's name/email
+ * The real deterrent is the visible WATERMARK with the user's name/phone
  * embedded into the player — see <Watermark/>. If a recording leaks,
  * the watermark identifies the source.
  */
@@ -42,9 +43,10 @@ export default function useContentProtection({ videoRef, rootRef, onSuspect } = 
       return !!active && root.contains(active)
     }
 
+    // ── Keyboard handler ───────────────────────────────────────────────────
     const onKey = e => {
       const k = (e.key || '').toLowerCase()
-      if (!isProtectedFocused()) return
+
       // Print Screen — clear clipboard so any captured screenshot is wiped.
       // Note: only works if the page is focused; OS-level screenshot tools
       // bypass this entirely.
@@ -54,11 +56,16 @@ export default function useContentProtection({ videoRef, rootRef, onSuspect } = 
         try { videoRef?.current?.pause?.() } catch {}
         return
       }
-      // F12, Ctrl/Cmd + S/P/U, Ctrl/Cmd + Shift + I/J/C/K
+
+      // Only block shortcuts when the protected area has focus — prevents
+      // accidentally breaking keyboard input in other parts of the page.
+      if (!isProtectedFocused()) return
+
+      // F12, Ctrl/Cmd + S/P/U/G, Ctrl/Cmd + Shift + I/J/C/K
       if (
         k === 'f12' ||
-        ((e.ctrlKey || e.metaKey) && (k === 's' || k === 'p' || k === 'u')) ||
-        ((e.ctrlKey || e.metaKey) && e.shiftKey && (k === 'i' || k === 'j' || k === 'c' || k === 'k'))
+        ((e.ctrlKey || e.metaKey) && !e.shiftKey && (k === 's' || k === 'p' || k === 'u' || k === 'g')) ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (k === 'i' || k === 'j' || k === 'c' || k === 'k' || k === 'g'))
       ) {
         e.preventDefault()
         onSuspect?.('shortcut')
@@ -66,17 +73,44 @@ export default function useContentProtection({ videoRef, rootRef, onSuspect } = 
       }
     }
 
+    // ── Visibility / focus ─────────────────────────────────────────────────
+    // Tab switched away — pause to thwart side-by-side recordings
     const onVis = () => {
-      // Tab switched away — pause to thwart side-by-side recordings
       if (document.hidden) {
         try { videoRef?.current?.pause?.() } catch {}
       }
     }
 
-    // DevTools detection — debounced so transient resizes don't false-positive
+    // Window lost focus — user Alt+Tabbed to a screen recorder, etc.
+    const onBlur = () => {
+      // Small delay: legitimate click on player controls fires blur momentarily.
+      // 300ms is enough to distinguish intentional window-switch from a click.
+      setTimeout(() => {
+        if (!document.hasFocus()) {
+          try { videoRef?.current?.pause?.() } catch {}
+        }
+      }, 300)
+    }
+
+    // ── Intercept window.print() ────────────────────────────────────────────
+    // Some browser extensions / scripts call window.print() to capture pages.
+    const origPrint = window.print
+    window.print = () => {
+      onSuspect?.('print')
+      // silently do nothing
+    }
+
+    // ── beforeprint event (triggered by Ctrl+P even if window.print is overridden) ──
+    const onBeforePrint = e => {
+      e && e.preventDefault && e.preventDefault()
+      onSuspect?.('print')
+      try { videoRef?.current?.pause?.() } catch {}
+    }
+
+    // ── DevTools detection — debounced so transient resizes don't false-positive ──
     let devtoolsOpen = false
     const checkDevtools = () => {
-      const widthDelta = window.outerWidth - window.innerWidth
+      const widthDelta  = window.outerWidth  - window.innerWidth
       const heightDelta = window.outerHeight - window.innerHeight
       // Threshold: docked DevTools shifts viewport by 200+ px
       const open = widthDelta > 200 || heightDelta > 200
@@ -87,8 +121,9 @@ export default function useContentProtection({ videoRef, rootRef, onSuspect } = 
         devtoolsOpen = false
       }
     }
-    const id = setInterval(checkDevtools, 1500)
+    const devtoolsTimer = setInterval(checkDevtools, 1500)
 
+    // ── Text selection / copy / drag ───────────────────────────────────────
     const onSelect = e => {
       const root = getProtectedRoot()
       if (!root || !root.contains(e.target)) return
@@ -115,21 +150,28 @@ export default function useContentProtection({ videoRef, rootRef, onSuspect } = 
       block(e)
     }
 
-    document.addEventListener('contextmenu', onContextMenu)
-    document.addEventListener('keydown', onKey)
+    // ── Register all listeners ─────────────────────────────────────────────
+    document.addEventListener('contextmenu',     onContextMenu)
+    document.addEventListener('keydown',         onKey)
     document.addEventListener('visibilitychange', onVis)
-    document.addEventListener('selectstart', onSelect)
-    document.addEventListener('dragstart', onDragStart)
-    document.addEventListener('copy', onCopy)
+    document.addEventListener('selectstart',     onSelect)
+    document.addEventListener('dragstart',       onDragStart)
+    document.addEventListener('copy',            onCopy)
+    window.addEventListener('blur',              onBlur)
+    window.addEventListener('beforeprint',       onBeforePrint)
 
     return () => {
-      document.removeEventListener('contextmenu', onContextMenu)
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('contextmenu',      onContextMenu)
+      document.removeEventListener('keydown',          onKey)
       document.removeEventListener('visibilitychange', onVis)
-      document.removeEventListener('selectstart', onSelect)
-      document.removeEventListener('dragstart', onDragStart)
-      document.removeEventListener('copy', onCopy)
-      clearInterval(id)
+      document.removeEventListener('selectstart',      onSelect)
+      document.removeEventListener('dragstart',        onDragStart)
+      document.removeEventListener('copy',             onCopy)
+      window.removeEventListener('blur',               onBlur)
+      window.removeEventListener('beforeprint',        onBeforePrint)
+      clearInterval(devtoolsTimer)
+      // Restore original print function
+      window.print = origPrint
     }
   }, [videoRef, rootRef, onSuspect])
 }

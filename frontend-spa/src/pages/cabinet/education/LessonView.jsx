@@ -143,18 +143,20 @@ export default function LessonView() {
                 ref={playerShellRef}
                 data-protected-root
                 className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg border border-gray-900"
+                style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
               >
                 {lesson.playback_url ? (
-                  <VodPlayer
-                    src={lesson.playback_url}
-                    kind={lesson.video_kind || 'hls'}
-                    onTimeUpdate={handleProgress}
-                    onReady={v => { videoRef.current = v }}
-                    startAt={startAt}
-                    poster={lesson.thumbnail_url || ''}
-                  >
+                  <>
+                    <VodPlayer
+                      src={lesson.playback_url}
+                      kind={lesson.video_kind || 'hls'}
+                      onTimeUpdate={handleProgress}
+                      onReady={v => { videoRef.current = v }}
+                      startAt={startAt}
+                      poster={lesson.thumbnail_url || ''}
+                    />
                     <Watermark text={watermarkText} />
-                  </VodPlayer>
+                  </>
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">
                     Видео ещё обрабатывается. Попробуйте позже.

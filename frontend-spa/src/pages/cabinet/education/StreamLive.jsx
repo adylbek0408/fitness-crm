@@ -347,7 +347,8 @@ export default function StreamLive() {
               connected, we keep CF up so the student keeps watching the
               broadcast instead of staring at a black screen. */}
           <div ref={playerShellRef} data-protected-root
-               className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto">
+               className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto"
+               style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
             {!showStageVideo && (
               <>
                 <CloudflareStreamPlayer
