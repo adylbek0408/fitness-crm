@@ -366,23 +366,28 @@ export default function StreamLive() {
               </>
             )}
             {showStageVideo && (
-              <video
-                ref={el => {
-                  stageRemoteRef.current = el
-                  const rs = stageRemoteStreamRef.current
-                  if (el && rs && el.srcObject !== rs) {
-                    el.srcObject = rs
-                    el.play().catch(() => {})
+              <>
+                <video
+                  ref={el => {
+                    stageRemoteRef.current = el
+                    const rs = stageRemoteStreamRef.current
+                    if (el && rs && el.srcObject !== rs) {
+                      el.srcObject = rs
+                      el.play().catch(() => {})
+                    }
+                  }}
+                  onClick={() => { if (pipSwapped) setPipSwapped(false) }}
+                  autoPlay playsInline
+                  className={
+                    pipSwapped
+                      ? 'absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-white/80 shadow-2xl bg-black z-30 cursor-pointer object-cover transition-all duration-300'
+                      : 'absolute inset-0 w-full h-full object-cover bg-black'
                   }
-                }}
-                onClick={() => { if (pipSwapped) setPipSwapped(false) }}
-                autoPlay playsInline
-                className={
-                  pipSwapped
-                    ? 'absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-white/80 shadow-2xl bg-black z-30 cursor-pointer object-cover transition-all duration-300'
-                    : 'absolute inset-0 w-full h-full object-cover bg-black'
-                }
-              />
+                />
+                {/* Same watermark over the P2P feed — otherwise a guest going
+                    on-stage could record cleanly. */}
+                <Watermark text={watermarkText} />
+              </>
             )}
 
             {/* Top bar */}
