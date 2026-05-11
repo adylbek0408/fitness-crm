@@ -35,6 +35,10 @@ export default function StreamLive() {
   const [stageState,     setStageState]     = useState('')   // 'requesting-media' | 'connecting' | 'live' | 'failed'
   const [stageMicOn,     setStageMicOn]     = useState(true)
   const [stageCamOn,     setStageCamOn]     = useState(true)
+  // PIP swap (WhatsApp-style): tap PIP to make own preview the main view
+  // and shrink the trainer's P2P stream into the corner. Only meaningful
+  // while on stage with a healthy P2P link.
+  const [pipSwapped,     setPipSwapped]     = useState(false)
   const stageLocalRef       = useRef(null)
   const stagePcRef          = useRef(null)
   const stageRemoteRef      = useRef(null)        // <video> element for trainer's incoming stream
@@ -261,6 +265,7 @@ export default function StreamLive() {
     setStageState('')
     setStageMicOn(true)
     setStageCamOn(true)
+    setPipSwapped(false)   // reset swap on leave
   }
 
   const toggleStageMic = () => {
@@ -370,8 +375,13 @@ export default function StreamLive() {
                     el.play().catch(() => {})
                   }
                 }}
+                onClick={() => { if (pipSwapped) setPipSwapped(false) }}
                 autoPlay playsInline
-                className="absolute inset-0 w-full h-full object-cover bg-black"
+                className={
+                  pipSwapped
+                    ? 'absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-white/80 shadow-2xl bg-black z-30 cursor-pointer object-cover transition-all duration-300'
+                    : 'absolute inset-0 w-full h-full object-cover bg-black'
+                }
               />
             )}
 
@@ -403,13 +413,24 @@ export default function StreamLive() {
               </button>
             </div>
 
-            {/* PIP self-preview while on stage */}
+            {/* Self-preview while on stage.
+                Default: small PIP in the corner.
+                Swapped (tap PIP): takes over the main view. Tap the now-PIP
+                trainer video to swap back. Only enabled while the P2P link is
+                healthy — if trainer's stream falls back to CF, swap is meaningless. */}
             {onStage && (
-              <div className="absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-2xl bg-black z-30">
+              <div
+                onClick={() => { if (!pipSwapped && showStageVideo) setPipSwapped(true) }}
+                className={
+                  pipSwapped
+                    ? 'absolute inset-0 z-25 overflow-hidden bg-black cursor-pointer'
+                    : 'absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-2xl bg-black z-30 cursor-pointer'
+                }
+              >
                 <video ref={stagePreviewRef} autoPlay muted playsInline
                   className="w-full h-full object-cover"
                   style={{ transform: 'scaleX(-1)' }} />
-                <div className="absolute top-1 left-1 right-1 flex justify-between items-center">
+                <div className="absolute top-1 left-1 right-1 flex justify-between items-center pointer-events-none">
                   <span className="px-1.5 py-0.5 rounded-md bg-emerald-600 text-[9px] text-white font-bold">ВЫ</span>
                   {stageState === 'connecting' && (
                     <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />

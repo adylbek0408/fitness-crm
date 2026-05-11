@@ -66,6 +66,12 @@ export default function BroadcastPage() {
     }
   }, [])
 
+  // PIP swap (WhatsApp-style): tap the small PIP to enlarge the guest and
+  // shrink the trainer's own camera into the corner. Tap again to swap back.
+  // Pure CSS swap — both video elements stay mounted so srcObject doesn't have
+  // to be re-bound (which would briefly black-out the stream).
+  const [pipSwapped, setPipSwapped] = useState(false)
+
   // Guest invite
   const [showInviteModal, setShowInviteModal]  = useState(false)
   const [activeViewers,   setActiveViewers]    = useState([])
@@ -147,7 +153,9 @@ export default function BroadcastPage() {
     if (status !== 'live' || !id) return
     let ok = true
     const pull = () => api.get(`/education/streams/${id}/viewers/`).then(r => { if (ok) setViewers(r.data || []) }).catch(() => {})
-    pull(); const t = setInterval(pull, 5000)
+    // Viewers list — purely UI. 10 s is plenty; was 5 s which doubled the
+    // server load with no perceptible user benefit.
+    pull(); const t = setInterval(pull, 10000)
     return () => { ok = false; clearInterval(t) }
   }, [status, id])
 
@@ -155,13 +163,17 @@ export default function BroadcastPage() {
     if (status !== 'live' || !id) return
     let ok = true
     const pull = () => api.get(`/education/streams/${id}/cf-status/`).then(r => { if (ok) setCfStatus(r.data) }).catch(() => {})
-    pull(); const t = setInterval(pull, 8000)
+    // CF live-input indicator — health check, not interactive. 15 s is enough.
+    pull(); const t = setInterval(pull, 15000)
     return () => { ok = false; clearInterval(t) }
   }, [status, id])
 
   useEffect(() => {
     if (status !== 'live' || !id) return
     let ok = true
+    // External-stop poll: catches the case where a 2nd device hijacks the
+    // live input and our session needs to tear down. 12 s is fine — students
+    // already see "stream ended" via their own poll if we're slow to notice.
     const t = setInterval(() => {
       api.get('/education/streams/').then(r => {
         if (!ok) return
@@ -177,7 +189,7 @@ export default function BroadcastPage() {
           setBroadcasting(false); setStatus('ended')
         }
       }).catch(() => {})
-    }, 5000)
+    }, 12000)
     return () => { ok = false; clearInterval(t) }
   }, [status, id])
 
@@ -342,7 +354,9 @@ export default function BroadcastPage() {
       } catch {}
     }
     poll()
-    guestPollRef.current = setInterval(poll, 4000)
+    // Guest invite/status poll — 6 s feels instant enough for "guest accepted
+    // invite" while halving the request rate vs the previous 4 s.
+    guestPollRef.current = setInterval(poll, 6000)
     return () => clearInterval(guestPollRef.current)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, id, activeGuest])
@@ -410,8 +424,12 @@ export default function BroadcastPage() {
       const mixH = Math.min(q.height, 720)
       let mixedStream = null
       try {
+        // 20 fps mixer (was 24): visually indistinguishable for human bodies,
+        // ~17% fewer canvas draws → noticeably less CPU heat on phones and laptops.
+        // Recorded video stays smooth (MediaRecorder ingests whatever the canvas
+        // produces; viewers' eyes can't tell 20 vs 24 fps for fitness content).
         const mixer = createMixerCanvas({
-          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: 24,
+          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: 20,
         })
         mixerRef.current = mixer
         const audioMix = createAudioMixer(ls)
@@ -670,6 +688,7 @@ export default function BroadcastPage() {
   const cleanupGuest = () => {
     setGuestStatus('')
     setGuestRemoteStream(null)
+    setPipSwapped(false)   // next guest starts in default layout
     // Detach guest from mixers — trainer-only stream resumes automatically.
     try { mixerRef.current?.setGuestVideo(null) } catch {}
     try { audioMixerRef.current?.removeGuest() } catch {}
@@ -702,9 +721,29 @@ export default function BroadcastPage() {
     >
       <div className="relative flex-1 overflow-hidden">
 
+        {/* Trainer's own camera.
+            - Default: fullscreen (inset-0).
+            - When pipSwapped + guest live: shrunk into the corner. */}
         <video ref={videoRef} autoPlay muted playsInline
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ transform: previewMirrored ? 'scaleX(-1)' : 'none', transition: 'transform .15s' }}
+          onClick={() => { if (pipSwapped && guestRemoteStream) setPipSwapped(false) }}
+          className={
+            pipSwapped && guestRemoteStream
+              ? 'absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80 object-cover bg-black cursor-pointer transition-all duration-300'
+              : 'absolute inset-0 w-full h-full object-cover'
+          }
+          style={pipSwapped && guestRemoteStream
+            ? {
+                bottom: isPortrait ? '24%' : '6.25%',
+                right:  isPortrait ? '4%'  : '2.5%',
+                width:  isPortrait ? '40%' : '24%',
+                aspectRatio: isPortrait ? '9/16' : '16/9',
+                transform: previewMirrored ? 'scaleX(-1)' : 'none',
+              }
+            : {
+                transform: previewMirrored ? 'scaleX(-1)' : 'none',
+                transition: 'transform .15s',
+              }
+          }
         />
 
         {/* IDLE / READY LOBBY */}
@@ -759,26 +798,36 @@ export default function BroadcastPage() {
             <div className="absolute top-0 left-0 right-0 h-44 bg-gradient-to-b from-black/80 via-black/30 to-transparent pointer-events-none" />
             <div className="absolute bottom-0 left-0 right-0 h-52 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none" />
 
-            {!camOn && (
+            {!camOn && !pipSwapped && (
               <div className="absolute inset-0 z-10 bg-gray-950 flex items-center justify-center">
                 <VideoOff size={72} className="text-gray-700" />
               </div>
             )}
 
-            {/* PIP guest preview overlay — visible during connecting too,
-                so trainer always sees that something is happening.
-                Portrait phones get a larger PIP and a 9/16 aspect to match
-                the typical guest camera orientation. */}
+            {/* Guest video.
+                - Default: small PIP in bottom-right corner.
+                - When pipSwapped: takes over the main area (fullscreen).
+                Tap the PIP to swap; tap again (on the now-PIP trainer) to swap back. */}
             {(guestStatus === 'live' || guestStatus === 'connecting') && (
-              <div className="absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80"
-                style={{
+              <div
+                onClick={() => { if (!pipSwapped && guestRemoteStream) setPipSwapped(true) }}
+                className={
+                  pipSwapped
+                    ? 'absolute inset-0 z-10 bg-black overflow-hidden cursor-pointer'
+                    : 'absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80 cursor-pointer'
+                }
+                style={pipSwapped ? undefined : {
                   // In portrait, the bottom controls + safe-area eat ~22% —
                   // anchor PIP above that so the guest stays fully visible.
                   bottom: isPortrait ? '24%' : '6.25%',
-                  right: isPortrait ? '4%' : '2.5%',
-                  width: isPortrait ? '40%' : '24%',
+                  right:  isPortrait ? '4%'  : '2.5%',
+                  width:  isPortrait ? '40%' : '24%',
                   aspectRatio: isPortrait ? '9/16' : '16/9',
                 }}>
+                {/* NOT muted: trainer needs to actually HEAR the guest during the
+                    call. Echo cancellation on the trainer mic prevents feedback.
+                    The hidden mixer-source video (created in startGuestStage) stays
+                    muted so the audio doesn't double-play. */}
                 <video
                   ref={el => {
                     guestPipVideoRef.current = el
@@ -787,7 +836,7 @@ export default function BroadcastPage() {
                       el.play().catch(() => {})
                     }
                   }}
-                  autoPlay muted playsInline
+                  autoPlay playsInline
                   className="w-full h-full object-cover bg-black"
                 />
                 {guestStatus === 'connecting' && !guestRemoteStream && (
@@ -954,13 +1003,24 @@ export default function BroadcastPage() {
               )}
             </div>
             <div className="flex flex-col gap-2 items-center">
+              {/* Navigation is intentionally NOT blocked during upload:
+                  - axios XHR survives SPA route change (the component unmounts
+                    but the XHR keeps flying; onUploadProgress writes to
+                    sessionStorage which the streams list reads).
+                  - beforeunload (registered separately) still warns if the user
+                    tries to CLOSE the tab — that would actually abort the XHR.
+                  - Streams list shows a per-card progress bar from the same
+                    sessionStorage key while upload finishes in the background. */}
               <button
                 onClick={() => nav('/admin/education/streams')}
-                disabled={uploading}
-                title={uploading ? 'Дождитесь окончания загрузки записи' : ''}
-                className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10">
-                {uploading ? 'Загружаем запись…' : 'К списку эфиров'}
+                className="px-8 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-sm transition active:scale-95">
+                {uploading ? 'К списку — загрузка продолжится в фоне →' : 'К списку эфиров'}
               </button>
+              {uploading && (
+                <p className="text-[11px] text-white/40 text-center max-w-xs">
+                  Не закрывайте вкладку браузера — иначе загрузка прервётся. Перейти по ссылкам внутри CRM можно.
+                </p>
+              )}
             </div>
           </div>
         )}

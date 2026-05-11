@@ -93,6 +93,44 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     v.addEventListener('playing',    onPlaying)
     v.addEventListener('pause',      onPause)
 
+    // ── Stall recovery — auto-nudge if playback freezes mid-stream ──────────
+    // Symptom: video element fires 'waiting' and stays there because the live
+    // edge moved past the buffer. hls.js's internal nudging covers most cases,
+    // but a hard freeze without 'error' events is invisible to it. We watch
+    // for >5 s of 'waiting' state and (a) try to play(), (b) for live → reset
+    // the source to jump back to the live edge.
+    let stallTimer = null
+    let stallAttempts = 0
+    const clearStall = () => { if (stallTimer) { clearTimeout(stallTimer); stallTimer = null } }
+    const onWaiting = () => {
+      if (cleanedUp || !hasPlayed) return
+      clearStall()
+      stallTimer = setTimeout(() => {
+        if (cleanedUp || !v.paused === false) {}    // no-op guard
+        if (cleanedUp) return
+        stallAttempts++
+        console.warn('[player] stalled >5s — recovery attempt', stallAttempts,
+          'currentTime:', v.currentTime, 'buffered:', v.buffered.length)
+        // First try: just nudge play
+        v.play().catch(() => {})
+        // After 2 failed nudges: jump to live edge by reloading
+        if (stallAttempts >= 2 && live) {
+          stallAttempts = 0
+          try {
+            if (hlsRef.current) {
+              hlsRef.current.startLoad(-1)         // -1 = resume from live edge
+            } else if (!v.srcObject) {
+              v.load()
+              v.play().catch(() => {})
+            }
+          } catch {}
+        }
+      }, 5000)
+    }
+    const onTimeUpdate = () => { stallAttempts = 0; clearStall() }
+    v.addEventListener('waiting',    onWaiting)
+    v.addEventListener('timeupdate', onTimeUpdate)
+
     // ── WHEP (WebRTC egress) — runs in parallel for live streams ──────────────
     // CF Stream with WHIP ingest may not serve HLS in time (or at all).
     // WHEP is the native WebRTC receive protocol: immediately connects when the
@@ -275,6 +313,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         v.removeEventListener('loadeddata', onCanPlay)
         v.removeEventListener('playing',    onPlaying)
         v.removeEventListener('pause',      onPause)
+        v.removeEventListener('waiting',    onWaiting)
+        v.removeEventListener('timeupdate', onTimeUpdate)
+        clearStall()
         v.removeEventListener('error',      handleError)
         try { whepRef.current?.close() } catch {}
         whepRef.current = null
@@ -286,17 +327,38 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       // ── hls.js (Chrome, Firefox, etc.) ────────────────────────────────
       // After a FATAL error hls.startLoad() does nothing — the instance is
       // dead. The only way to retry is to destroy it and create a fresh one.
+      //
+      // BUFFER STRATEGY — favour stability over latency.
+      //
+      // WHEP wins the race for true low-latency playback; HLS is only used
+      // when WebRTC fails or as the long-term fallback. So the HLS path
+      // doesn't need to chase the live edge — a healthier 20-30 s buffer
+      // absorbs network hiccups (cellular drops, brief congestion) which
+      // were causing mid-stream freezes for students.
+      //
+      //   lowLatencyMode:false  — disable LL-HLS edge-chasing on this fallback path.
+      //   maxBufferLength: 20   — 20 s headroom for live (was 6 → froze on any hiccup).
+      //   liveSyncDurationCount: 4 — start 4 segments behind edge (was 3).
+      //   liveMaxLatencyDurationCount: 10 — allow up to 10 segments of drift.
+      //   maxBufferHole: 0.5    — auto-skip tiny gaps instead of stalling.
+      //   nudgeMaxRetry: 10     — try nudging the media element past stalls.
       let netFatalCount = 0
       const HLS_CFG = {
-        lowLatencyMode:          live,
-        backBufferLength:        live ? 30 : 90,
-        maxBufferLength:         live ? 6  : 30,
-        liveSyncDurationCount:   3,
+        lowLatencyMode:               false,
+        backBufferLength:             live ? 30 : 90,
+        maxBufferLength:              live ? 20 : 30,
+        maxMaxBufferLength:           live ? 40 : 60,
+        liveSyncDurationCount:        live ? 4  : undefined,
+        liveMaxLatencyDurationCount:  live ? 10 : undefined,
+        maxBufferHole:                0.5,
+        highBufferWatchdogPeriod:     1,
+        nudgeMaxRetry:                10,
         // Per-request retries before escalating to FATAL:
-        manifestLoadingMaxRetry: 4,
-        manifestLoadingRetryDelay: 1500,
-        levelLoadingMaxRetry:    4,
-        fragLoadingMaxRetry:     4,
+        manifestLoadingMaxRetry:      4,
+        manifestLoadingRetryDelay:    1500,
+        levelLoadingMaxRetry:         4,
+        fragLoadingMaxRetry:          6,
+        fragLoadingRetryDelay:        1000,
       }
 
       const createHlsInstance = () => {
@@ -353,6 +415,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         v.removeEventListener('loadeddata', onCanPlay)
         v.removeEventListener('playing',    onPlaying)
         v.removeEventListener('pause',      onPause)
+        v.removeEventListener('waiting',    onWaiting)
+        v.removeEventListener('timeupdate', onTimeUpdate)
+        clearStall()
         try { hlsRef.current?.destroy() } catch {}
         hlsRef.current = null
         try { whepRef.current?.close() } catch {}
@@ -373,6 +438,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         v.removeEventListener('loadeddata', onCanPlay)
         v.removeEventListener('playing',    onPlaying)
         v.removeEventListener('pause',      onPause)
+        v.removeEventListener('waiting',    onWaiting)
+        v.removeEventListener('timeupdate', onTimeUpdate)
+        clearStall()
         v.removeEventListener('error',      onErr)
         try { whepRef.current?.close() } catch {}
         whepRef.current = null
