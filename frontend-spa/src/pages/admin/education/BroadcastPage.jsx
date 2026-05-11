@@ -68,9 +68,15 @@ export default function BroadcastPage() {
 
   // PIP swap (WhatsApp-style): tap the small PIP to enlarge the guest and
   // shrink the trainer's own camera into the corner. Tap again to swap back.
-  // Pure CSS swap — both video elements stay mounted so srcObject doesn't have
-  // to be re-bound (which would briefly black-out the stream).
+  // - Visually: pure CSS swap — both video elements stay mounted so srcObject
+  //   doesn't have to be re-bound (which would briefly black-out the stream).
+  // - In recording / WHIP output: the canvas mixer is told about the swap via
+  //   `setSwapped(true|false)` so what viewers and the archive see matches
+  //   what the trainer is looking at.
   const [pipSwapped, setPipSwapped] = useState(false)
+  useEffect(() => {
+    try { mixerRef.current?.setSwapped(pipSwapped) } catch {}
+  }, [pipSwapped])
 
   // Guest invite
   const [showInviteModal, setShowInviteModal]  = useState(false)
@@ -726,9 +732,13 @@ export default function BroadcastPage() {
             - When pipSwapped + guest live: shrunk into the corner. */}
         <video ref={videoRef} autoPlay muted playsInline
           onClick={() => { if (pipSwapped && guestRemoteStream) setPipSwapped(false) }}
+          // z-[15] (arbitrary Tailwind value) actually applies; the older `z-15`
+          // class wasn't in the config so without it the trainer PIP painted
+          // BEHIND the swapped-fullscreen guest div (which is later in DOM)
+          // and the trainer's face vanished on desktop.
           className={
             pipSwapped && guestRemoteStream
-              ? 'absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80 object-cover bg-black cursor-pointer transition-all duration-300'
+              ? 'absolute z-[18] rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80 object-cover bg-black cursor-pointer transition-all duration-300'
               : 'absolute inset-0 w-full h-full object-cover'
           }
           style={pipSwapped && guestRemoteStream
@@ -814,7 +824,7 @@ export default function BroadcastPage() {
                 className={
                   pipSwapped
                     ? 'absolute inset-0 z-10 bg-black overflow-hidden cursor-pointer'
-                    : 'absolute z-15 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80 cursor-pointer'
+                    : 'absolute z-[15] rounded-2xl overflow-hidden shadow-2xl border-2 border-white/80 cursor-pointer'
                 }
                 style={pipSwapped ? undefined : {
                   // In portrait, the bottom controls + safe-area eat ~22% —

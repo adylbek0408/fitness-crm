@@ -45,99 +45,98 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
   let running = true
   let currentTrainer = trainerVideo
   let currentGuest = guestVideo || null
+  let swapped = false   // when true: guest is fullscreen, trainer is PIP
   let rvfcSupported = currentTrainer && typeof currentTrainer.requestVideoFrameCallback === 'function'
-  let lastDraw = 0
-  const minFrameMs = 1000 / fps
 
-  const drawPip = () => {
-    const guestVideo = currentGuest
-    // PIP: 25% width, 16:9 ratio, bottom-right with margin
-    const gw = Math.round(width * 0.25)
-    const gh = Math.round(gw * 9 / 16)
-    const margin = Math.round(width * 0.025)
-    const gx = width - gw - margin
-    const gy = height - gh - margin
-    const r = 16
-
-    if (guestVideo && guestVideo.readyState >= 2 && !guestVideo.paused) {
-      // shadow
+  // Helper: cover-fit a video element into a target rect with rounded corners.
+  const drawVideoInRect = (vid, dx, dy, dw, dh, radius = 0, withBorder = false) => {
+    if (!vid || vid.readyState < 2) {
+      // Black placeholder
       ctx.save()
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'
-      ctx.beginPath()
-      ctx.roundRect(gx + 2, gy + 4, gw, gh, r)
-      ctx.fill()
-      ctx.restore()
-
-      // clipped guest video
-      ctx.save()
-      ctx.beginPath()
-      ctx.roundRect(gx, gy, gw, gh, r)
-      ctx.clip()
+      if (radius) { ctx.beginPath(); ctx.roundRect(dx, dy, dw, dh, radius); ctx.clip() }
       ctx.fillStyle = '#000'
-      ctx.fill()
-      // Cover-fit guest video into target rect
-      const vw = guestVideo.videoWidth || 1
-      const vh = guestVideo.videoHeight || 1
-      const targetRatio = gw / gh
-      const sourceRatio = vw / vh
-      let sx = 0, sy = 0, sw = vw, sh = vh
-      if (sourceRatio > targetRatio) {
-        // crop horizontally
-        sw = vh * targetRatio
-        sx = (vw - sw) / 2
-      } else {
-        // crop vertically
-        sh = vw / targetRatio
-        sy = (vh - sh) / 2
-      }
-      ctx.drawImage(guestVideo, sx, sy, sw, sh, gx, gy, gw, gh)
+      ctx.fillRect(dx, dy, dw, dh)
       ctx.restore()
-
-      // border
+      return
+    }
+    const vw = vid.videoWidth || 1
+    const vh = vid.videoHeight || 1
+    const targetRatio = dw / dh
+    const sourceRatio = vw / vh
+    let sx = 0, sy = 0, sw = vw, sh = vh
+    if (sourceRatio > targetRatio) {
+      sw = vh * targetRatio; sx = (vw - sw) / 2
+    } else {
+      sh = vw / targetRatio; sy = (vh - sh) / 2
+    }
+    ctx.save()
+    if (radius) { ctx.beginPath(); ctx.roundRect(dx, dy, dw, dh, radius); ctx.clip() }
+    ctx.drawImage(vid, sx, sy, sw, sh, dx, dy, dw, dh)
+    ctx.restore()
+    if (withBorder) {
       ctx.save()
       ctx.strokeStyle = 'rgba(255,255,255,0.85)'
       ctx.lineWidth = 3
       ctx.beginPath()
-      ctx.roundRect(gx, gy, gw, gh, r)
+      ctx.roundRect(dx, dy, dw, dh, radius)
       ctx.stroke()
       ctx.restore()
     }
   }
 
-  const drawAll = (now = performance.now()) => {
+  // PIP geometry: 25% width, 16:9 ratio, bottom-right with margin
+  const pipRect = () => {
+    const gw = Math.round(width * 0.25)
+    const gh = Math.round(gw * 9 / 16)
+    const margin = Math.round(width * 0.025)
+    return { gw, gh, gx: width - gw - margin, gy: height - gh - margin }
+  }
+
+  // ── Frame draw — no manual throttle; captureStream(fps) does the sampling. ──
+  // The previous throttle (`if now - lastDraw < minFrameMs: skip`) produced
+  // uneven cadence when source was 30fps and target was 20fps (drew at 0, 67,
+  // 133, … → visible micro-jitter for the trainer alone, hidden once the
+  // guest PIP added a second moving element to mask it). Drawing on every
+  // rVFC tick is cheap (single drawImage + optional PIP) and lets captureStream
+  // decimate to fps internally — output cadence is smooth.
+  const drawAll = () => {
     if (!running) return
     const trainerVideo = currentTrainer
-    if (now - lastDraw < minFrameMs) {
-      // throttle
-      if (rvfcSupported && trainerVideo) {
-        try { trainerVideo.requestVideoFrameCallback(drawAll); return } catch {}
-      }
-      requestAnimationFrame(drawAll); return
-    }
-    lastDraw = now
+    const guestVideo   = currentGuest
+    const hasGuest = !!(guestVideo && guestVideo.readyState >= 2 && !guestVideo.paused)
 
-    if (trainerVideo && trainerVideo.readyState >= 2) {
-      // Cover-fit trainer (object-cover behaviour)
-      const vw = trainerVideo.videoWidth || width
-      const vh = trainerVideo.videoHeight || height
-      const targetRatio = width / height
-      const sourceRatio = vw / vh
-      let sx = 0, sy = 0, sw = vw, sh = vh
-      if (sourceRatio > targetRatio) {
-        sw = vh * targetRatio; sx = (vw - sw) / 2
-      } else {
-        sh = vw / targetRatio; sy = (vh - sh) / 2
-      }
-      ctx.drawImage(trainerVideo, sx, sy, sw, sh, 0, 0, width, height)
+    // Decide composition: if swapped + we have a guest → guest big, trainer PIP.
+    // Otherwise → trainer big (with optional guest PIP).
+    const guestBig = swapped && hasGuest
+    const bigSource   = guestBig ? guestVideo   : trainerVideo
+    const smallSource = guestBig ? trainerVideo : (hasGuest ? guestVideo : null)
+
+    // Fullscreen layer
+    if (bigSource && bigSource.readyState >= 2) {
+      drawVideoInRect(bigSource, 0, 0, width, height, 0, false)
     } else {
       ctx.fillStyle = '#000'
       ctx.fillRect(0, 0, width, height)
     }
 
-    drawPip()
+    // PIP layer
+    if (smallSource) {
+      const { gw, gh, gx, gy } = pipRect()
+      // shadow
+      ctx.save()
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'
+      ctx.beginPath()
+      ctx.roundRect(gx + 2, gy + 4, gw, gh, 16)
+      ctx.fill()
+      ctx.restore()
+      drawVideoInRect(smallSource, gx, gy, gw, gh, 16, true)
+    }
 
-    if (rvfcSupported && trainerVideo) {
-      try { trainerVideo.requestVideoFrameCallback(drawAll); return } catch {}
+    // Schedule next frame — prefer rVFC on the *currently big* source so we
+    // redraw whenever its frames arrive. If big has rVFC, hook it; otherwise
+    // fall back to rAF (~60fps, captureStream still decimates).
+    if (bigSource && typeof bigSource.requestVideoFrameCallback === 'function') {
+      try { bigSource.requestVideoFrameCallback(drawAll); return } catch {}
     }
     requestAnimationFrame(drawAll)
   }
@@ -167,8 +166,13 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
     currentTrainer = el
     rvfcSupported = el && typeof el.requestVideoFrameCallback === 'function'
   }
+  // Swap composition: when true, guest takes the fullscreen slot and trainer
+  // goes into the PIP. The change is reflected in everything fed by this
+  // canvas — WHIP stream to viewers AND the local MediaRecorder archive — so
+  // the recording matches what the trainer chose to show during the broadcast.
+  const setSwapped = (v) => { swapped = !!v }
 
-  return { canvas, stream, stop, setGuestVideo, setTrainerVideo }
+  return { canvas, stream, stop, setGuestVideo, setTrainerVideo, setSwapped }
 }
 
 // ── Audio mixer (Web Audio API) ─────────────────────────────────────────────

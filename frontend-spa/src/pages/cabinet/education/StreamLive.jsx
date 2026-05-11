@@ -423,7 +423,7 @@ export default function StreamLive() {
                 onClick={() => { if (!pipSwapped && showStageVideo) setPipSwapped(true) }}
                 className={
                   pipSwapped
-                    ? 'absolute inset-0 z-25 overflow-hidden bg-black cursor-pointer'
+                    ? 'absolute inset-0 z-[25] overflow-hidden bg-black cursor-pointer'
                     : 'absolute bottom-3 right-3 w-24 h-32 sm:w-28 sm:h-40 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-2xl bg-black z-30 cursor-pointer'
                 }
               >
