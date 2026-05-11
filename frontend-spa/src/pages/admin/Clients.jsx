@@ -9,7 +9,7 @@ import jsPDF from 'jspdf'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import DateField from '../../components/DateField'
-import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate } from '../../utils/format'
+import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate, pickList } from '../../utils/format'
 import { attachRobotoFontsToPdf, PDF_BODY_FONT } from '../../utils/pdfRobotoFonts'
 import AppSelect from '../../components/ui/AppSelect'
 
@@ -508,7 +508,7 @@ export default function Clients() {
       // чтобы все 4 подписки всегда были в фильтре
       setOnlineTags(FIXED_SUBSCRIPTION_TAGS)
     })
-    api.get('/accounts/managers/?page_size=200').then(r => setManagersList(r.data.results || r.data || []))
+    api.get('/accounts/managers/?page_size=200').then(r => setManagersList(pickList(r.data)))
     api.get('/trainers/?page_size=200').then(r => setTrainersList(r.data.results || []))
   }, [])
 

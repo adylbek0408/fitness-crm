@@ -6,6 +6,7 @@ import {
 import api from '../../../api/axios'
 import LessonThumb from '../../../components/education/LessonThumb'
 import CabinetNav from '../../../components/CabinetNav'
+import { pickList } from '../../../utils/format'
 
 const PAGE_SIZE = 12
 
@@ -38,7 +39,7 @@ export default function LessonsList() {
     setLoading(true); setError('')
     const params = tab === 'all' ? '' : `?type=${tab}`
     api.get(`/cabinet/education/lessons/${params}`)
-      .then(r => setLessons(r.data?.results || r.data || []))
+      .then(r => setLessons(pickList(r.data)))
       .catch(e => setError(e.response?.data?.detail || 'Ошибка загрузки'))
       .finally(() => setLoading(false))
   }, [tab, nav])

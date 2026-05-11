@@ -56,7 +56,12 @@ class CabinetAttendanceView(APIView):
     def get(self, request):
         from apps.attendance.models import Attendance
         account = request.user
-        limit = int(request.query_params.get('limit', 50))
+        try:
+            limit = int(request.query_params.get('limit', 50))
+        except (TypeError, ValueError):
+            limit = 50
+        # Cap to prevent DoS via huge limit (~caller controls memory + DB load).
+        limit = max(1, min(limit, 500))
         records = (
             Attendance.objects
             .filter(client_id=account.client_id)

@@ -45,12 +45,16 @@ export default function DateField({
     : ''
 
   useEffect(() => {
+    // Only attach the listener while the popup is open — otherwise every
+    // mounted DateField on the page (statistics page has many) fires a
+    // handler on every click anywhere.
+    if (!open) return
     const h = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false)
     }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
-  }, [])
+  }, [open])
 
   return (
     <div ref={ref} className="relative">

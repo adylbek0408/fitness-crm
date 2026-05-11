@@ -7,7 +7,7 @@ import {
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import DateField from '../../components/DateField'
-import { STATUS_BADGE, STATUS_LABEL } from '../../utils/format'
+import { STATUS_BADGE, STATUS_LABEL, pickList } from '../../utils/format'
 
 function ManagerAvatar({ name }) {
   const isNazima = /Назима/i.test(name) && /Нурмаматова/i.test(name)
@@ -59,7 +59,7 @@ export default function Managers() {
       if (createdFrom)    params.append('created_from', createdFrom)
       if (createdTo)      params.append('created_to', createdTo)
       const r = await api.get(`/accounts/managers/?${params}`)
-      setManagers(r.data.results || r.data || [])
+      setManagers(pickList(r.data))
     } finally {
       setLoading(false)
     }
@@ -116,7 +116,7 @@ export default function Managers() {
     setClientsLoading(true)
     try {
       const r = await api.get(`/accounts/managers/${mgr.id}/clients/`)
-      setManagerClients(r.data.results || r.data || [])
+      setManagerClients(pickList(r.data))
     } finally { setClientsLoading(false) }
   }
 

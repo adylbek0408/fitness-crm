@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
+import { pickList } from '../../../utils/format'
 import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
@@ -81,7 +82,7 @@ export default function LessonsAdmin() {
     // client-side filter/search/pagination below all work without server
     // round-trips on every keystroke.
     api.get('/education/lessons/?page_size=200')
-      .then(r => setLessons(r.data?.results || r.data || []))
+      .then(r => setLessons(pickList(r.data)))
       .catch(e => setAlertModal({
         title: 'Не удалось загрузить уроки',
         message: e.response?.data?.detail || e.message || 'Проверьте соединение с сервером.',
@@ -93,7 +94,7 @@ export default function LessonsAdmin() {
   useEffect(() => {
     reload()
     api.get('/groups/?page_size=200&training_format=online')
-      .then(r => setGroups(r.data?.results || r.data || []))
+      .then(r => setGroups(pickList(r.data)))
       .catch(() => {})
   }, [])
 

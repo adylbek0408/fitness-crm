@@ -12,24 +12,31 @@ export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    let revoked = ''
-    let aborted = false
     if (!src) return
     setError('')
-    fetch(src)
+    // AbortController so re-mounting / src change really cancels the in-flight
+    // fetch instead of letting it race and call setBlobUrl on an unmounted
+    // component. The old `aborted` flag still let the promise chain run to
+    // completion, which kept the browser holding the response.
+    const ac = new AbortController()
+    let revoked = ''
+    fetch(src, { signal: ac.signal })
       .then(r => {
         if (!r.ok) throw new Error('audio_fetch_failed')
         return r.blob()
       })
       .then(blob => {
-        if (aborted) return
+        if (ac.signal.aborted) return
         const url = URL.createObjectURL(blob)
         revoked = url
         setBlobUrl(url)
       })
-      .catch(e => setError(String(e.message || e)))
+      .catch(e => {
+        if (e.name === 'AbortError') return
+        setError(String(e.message || e))
+      })
     return () => {
-      aborted = true
+      ac.abort()
       if (revoked) URL.revokeObjectURL(revoked)
     }
   }, [src])

@@ -1,6 +1,20 @@
 export const fmtMoney = v =>
   Number(v).toLocaleString('ru-RU') + ' сом'
 
+/**
+ * Safely extract a list from an axios response payload.
+ * Backend may return DRF paginated `{results: [...], count, ...}` or a plain
+ * array. Anything else (object without `results`, null, undefined) returns [].
+ *
+ * Replaces unsafe pattern `r.data.results || r.data || []` which returns the
+ * object itself if backend changes shape, then crashes downstream .map().
+ */
+export const pickList = (data) => {
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.results)) return data.results
+  return []
+}
+
 export const fmtDate = d => {
   if (!d) return '—'
   const date = new Date(d + 'T00:00:00')

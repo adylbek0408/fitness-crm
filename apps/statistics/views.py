@@ -71,7 +71,13 @@ class StatisticsViewSet(viewsets.GenericViewSet):
         from datetime import datetime
         from collections import defaultdict
 
-        limit = min(int(request.query_params.get('limit', 40)), 200)
+        try:
+            limit = int(request.query_params.get('limit', 40))
+        except (TypeError, ValueError):
+            limit = 40
+        # Bound: prevents both negative limits (would return all rows reversed)
+        # and oversized requests (memory pressure on the DB).
+        limit = max(1, min(limit, 200))
 
         date_from_str = request.query_params.get('date_from', '').strip()
         date_to_str   = request.query_params.get('date_to',   '').strip()
@@ -127,7 +133,9 @@ class StatisticsViewSet(viewsets.GenericViewSet):
 
         for key, first_ip in group_key_order:
             items = group_key_to_items[key]
-            total = sum(float(p.amount) for p in items)
+            # Use Decimal to keep currency precision; float() loses cents on
+            # large sums (10M+) and is wrong for money.
+            total = sum((p.amount for p in items), Decimal('0'))
             # Сортируем sub_items по created_at убыв.
             items_sorted = sorted(items, key=lambda p: p.created_at, reverse=True)
             sub_items = [
@@ -140,7 +148,7 @@ class StatisticsViewSet(viewsets.GenericViewSet):
 
             events.append({
                 'type':        'income_install',
-                'amount':      str(round(total, 2)),
+                'amount':      str(total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
                 'client_name': first_ip.plan.client.full_name,
                 'client_id':   str(first_ip.plan.client.id),
                 'description': 'Платёж по рассрочке',

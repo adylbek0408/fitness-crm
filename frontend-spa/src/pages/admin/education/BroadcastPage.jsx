@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import api from '../../../api/axios'
 import StreamChat from '../../../components/education/StreamChat'
+import { pickList } from '../../../utils/format'
 import {
   createMixerCanvas, createAudioMixer,
   startTrainerP2P,
@@ -129,7 +130,7 @@ export default function BroadcastPage() {
 
   useEffect(() => {
     api.get('/education/streams/')
-      .then(r => { const s = (r.data?.results || r.data || []).find(s => s.id === id); if (s) setStream(s); else setError('Эфир не найден') })
+      .then(r => { const s = (pickList(r.data)).find(s => s.id === id); if (s) setStream(s); else setError('Эфир не найден') })
       .catch(() => setError('Ошибка загрузки'))
   }, [id])
 
@@ -164,7 +165,7 @@ export default function BroadcastPage() {
     const t = setInterval(() => {
       api.get('/education/streams/').then(r => {
         if (!ok) return
-        const fresh = (r.data?.results || r.data || []).find(s => s.id === id)
+        const fresh = (pickList(r.data)).find(s => s.id === id)
         if (fresh && fresh.status !== 'live') {
           whipRef.current = null
           // Stop recorder before tracks so the final chunk is flushed

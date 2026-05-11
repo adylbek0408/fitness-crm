@@ -9,6 +9,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
+import { pickList } from '../../../utils/format'
 import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
@@ -94,8 +95,8 @@ export default function ConsultationsAdmin() {
 
   useEffect(() => { reload() }, [page]) // eslint-disable-line
   useEffect(() => {
-    api.get('/trainers/?page_size=200').then(r => setTrainers(r.data?.results || r.data || [])).catch(() => {})
-    api.get('/clients/?page_size=200').then(r => setClients(r.data?.results || r.data || [])).catch(() => {})
+    api.get('/trainers/?page_size=200').then(r => setTrainers(pickList(r.data))).catch(() => {})
+    api.get('/clients/?page_size=200').then(r => setClients(pickList(r.data))).catch(() => {})
   }, [])
 
   // Client-side filter

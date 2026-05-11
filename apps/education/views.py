@@ -103,18 +103,22 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'title is required.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        lesson = Lesson.objects.create(
-            title=title,
-            description=request.data.get('description', ''),
-            lesson_type=lesson_type,
-            trainer_id=request.data.get('trainer') or None,
-            subscription_tags=request.data.get('subscription_tags') or [],
-            created_by=request.user if request.user.is_authenticated else None,
-            is_published=False,
-        )
-        groups = request.data.get('groups') or []
-        if groups:
-            lesson.groups.set(groups)
+        # Atomic: lesson row + groups.set() must succeed together, otherwise
+        # we'd have an orphan published lesson with no access groups.
+        from django.db import transaction as _txn
+        with _txn.atomic():
+            lesson = Lesson.objects.create(
+                title=title,
+                description=request.data.get('description', ''),
+                lesson_type=lesson_type,
+                trainer_id=request.data.get('trainer') or None,
+                subscription_tags=request.data.get('subscription_tags') or [],
+                created_by=request.user if request.user.is_authenticated else None,
+                is_published=False,
+            )
+            groups = request.data.get('groups') or []
+            if groups:
+                lesson.groups.set(groups)
 
         # Whitelist file extensions before they make it into R2 keys —
         # otherwise a malicious value like '../../../config' would let the

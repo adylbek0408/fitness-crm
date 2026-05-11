@@ -10,6 +10,7 @@ import {
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
 import AppSelect from '../../../components/ui/AppSelect'
+import { pickList } from '../../../utils/format'
 
 const PAGE = 20
 const CHART_PAGE = 10
@@ -43,7 +44,7 @@ export default function EducationStats() {
 
   useEffect(() => {
     api.get('/groups/?page_size=200&training_format=online')
-      .then(r => setGroups(r.data?.results || r.data || []))
+      .then(r => setGroups(pickList(r.data)))
       .catch(() => {})
   }, [])
 

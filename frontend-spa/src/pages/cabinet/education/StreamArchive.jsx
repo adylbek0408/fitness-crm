@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { ChevronLeft, Radio, Clock, CheckCircle2, Play } from 'lucide-react'
 import api from '../../../api/axios'
 import LessonThumb from '../../../components/education/LessonThumb'
+import { pickList } from '../../../utils/format'
 import CabinetNav from '../../../components/CabinetNav'
 
 function formatDuration(sec) {
@@ -24,7 +25,7 @@ export default function StreamArchive() {
     }
     setLoading(true); setError('')
     api.get('/cabinet/education/lessons/?source=stream')
-      .then(r => setLessons(r.data?.results || r.data || []))
+      .then(r => setLessons(pickList(r.data)))
       .catch(e => setError(e.response?.data?.detail || 'Ошибка загрузки'))
       .finally(() => setLoading(false))
   }, [nav])

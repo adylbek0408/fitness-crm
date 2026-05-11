@@ -9,6 +9,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
+import { pickList } from '../../../utils/format'
 import AdminLayout from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
@@ -174,7 +175,7 @@ export default function StreamsAdmin() {
   }, [streams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.get('/groups/?page_size=200&training_format=online').then(r => setGroups(r.data?.results || r.data || [])).catch(() => {})
+    api.get('/groups/?page_size=200&training_format=online').then(r => setGroups(pickList(r.data))).catch(() => {})
   }, [])
 
   // Client-side filter

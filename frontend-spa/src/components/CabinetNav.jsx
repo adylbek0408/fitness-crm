@@ -19,7 +19,10 @@ export default function CabinetNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-gray-100 safe-area-inset-bottom">
       <div className="flex items-stretch max-w-md mx-auto">
         {TABS.map(({ to, icon: Icon, label }) => {
-          const active = pathname === to || (to !== '/cabinet/profile' && pathname.startsWith(to))
+          // Match exact path OR child route ("/cabinet/lessons/abc") — but
+          // require a slash boundary so "/cabinet/stream" doesn't accidentally
+          // match a hypothetical "/cabinet/streamarchive".
+          const active = pathname === to || pathname.startsWith(to + '/')
           return (
             <Link
               key={to}

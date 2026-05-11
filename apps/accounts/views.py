@@ -72,12 +72,20 @@ class ManagerViewSet(viewsets.ModelViewSet):
         return Response(ManagerSerializer(profile).data, status=status.HTTP_201_CREATED)
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError as _DRFValidationError
         phone = serializer.validated_data['phone']
         base = _digits_login(phone)
         username = base
         n = 0
+        # Cap retries: prevents runaway loops if the DB has stale or corrupted
+        # variants for the same base. 200 is generous — if it's ever exhausted
+        # something is very wrong.
         while UserModel.objects.filter(username=username).exists():
             n += 1
+            if n > 200:
+                raise _DRFValidationError({
+                    'phone': 'Не удалось сгенерировать уникальный логин — обратитесь к админу.'
+                })
             username = f'{base}_{n}'
         password = secrets.token_urlsafe(10)
         user = UserModel.objects.create_user(
@@ -93,12 +101,17 @@ class ManagerViewSet(viewsets.ModelViewSet):
         profile = serializer.save()
         u = profile.user
         if 'phone' in serializer.validated_data:
+            from rest_framework.exceptions import ValidationError as _DRFValidationError
             new_phone = profile.phone
             base = _digits_login(new_phone)
             un = base
             n = 0
             while UserModel.objects.filter(username=un).exclude(pk=u.pk).exists():
                 n += 1
+                if n > 200:
+                    raise _DRFValidationError({
+                        'phone': 'Не удалось сгенерировать уникальный логин — обратитесь к админу.'
+                    })
                 un = f'{base}_{n}'
             u.username = un
             u.phone = new_phone
