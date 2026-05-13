@@ -54,20 +54,28 @@ export default function LessonView() {
 
   useEffect(() => {
     const onFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === playerShellRef.current)
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement
+      setIsFullscreen(fsEl === playerShellRef.current)
     }
-    document.addEventListener('fullscreenchange', onFullscreenChange)
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+    document.addEventListener('fullscreenchange',       onFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange',       onFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
+    }
   }, [])
 
   const toggleFullscreen = async () => {
     const node = playerShellRef.current
     if (!node) return
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen()
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) await document.exitFullscreen()
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
       } else if (node.requestFullscreen) {
         await node.requestFullscreen()
+      } else if (node.webkitRequestFullscreen) {
+        node.webkitRequestFullscreen()
       }
     } catch {}
   }

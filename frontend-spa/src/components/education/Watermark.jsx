@@ -25,7 +25,9 @@ export default function Watermark({ text }) {
       })
     }
     move()
-    const id = setInterval(move, 5000)
+    // 12s между прыжками: достаточно, чтобы зрителю было неудобно затирать
+    // знак в записи, и достаточно редко, чтобы не дёргать GPU посреди эфира.
+    const id = setInterval(move, 12000)
     return () => clearInterval(id)
   }, [text])
 
@@ -33,7 +35,7 @@ export default function Watermark({ text }) {
 
   return (
     <div
-      className="absolute select-none pointer-events-none transition-all duration-700 ease-in-out"
+      className="absolute select-none pointer-events-none"
       style={{
         ...pos,
         color: 'rgba(255,255,255,0.75)',

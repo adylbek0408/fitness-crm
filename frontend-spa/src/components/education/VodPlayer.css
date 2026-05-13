@@ -53,3 +53,14 @@
     display: none !important;
   }
 }
+
+/* ── Hide Plyr's built-in fullscreen button ─────────────────────────────────
+   Plyr вызывает requestFullscreen() на своём внутреннем <media-player>,
+   обходя нашу shell-обёртку, в которой лежит водяной знак — и знак исчезает
+   в полном экране. Единственный путь к фуллскрину — наша угловая кнопка,
+   которая фуллскринит shell вместе с водяным знаком. */
+.vod-player [data-plyr="fullscreen"],
+.vod-player button[aria-label*="ullscreen"],
+.vod-player button[aria-label*="олный"] {
+  display: none !important;
+}

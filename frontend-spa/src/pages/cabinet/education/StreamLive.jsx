@@ -320,13 +320,17 @@ export default function StreamLive() {
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
         return
       }
-      // На iOS Safari fullscreen работает только на <video> через
-      // webkitEnterFullscreen — playerRef проксирует этот вызов.
-      const p = playerRef.current
-      if (p?.requestFullscreen) { await p.requestFullscreen(); return }
-      // Десктоп fallback: fullscreen на shell-обёртке (плеер + watermark + чат)
+      // Fullscreen всегда на shell-обёртке (плеер + watermark). Если
+      // фуллскринить только <video>, водяной знак (sibling) пропадает —
+      // это рушит защиту от записи экрана.
       const node = playerShellRef.current
-      if (node?.requestFullscreen) await node.requestFullscreen()
+      if (node?.requestFullscreen)        { await node.requestFullscreen();       return }
+      if (node?.webkitRequestFullscreen)  { node.webkitRequestFullscreen();       return }
+      // Последний фоллбек для старого iOS Safari (≤15), где
+      // requestFullscreen на <div> не поддерживается. Тогда уходим в
+      // нативный iOS-плеер — watermark там не показать.
+      const p = playerRef.current
+      if (p?.requestFullscreen) await p.requestFullscreen()
     } catch {}
   }
 
