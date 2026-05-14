@@ -225,6 +225,19 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         verify the upload completed.
         """
         lesson = self.get_object()
+
+        # A published lesson must be playable — block if no media source is set.
+        if lesson.lesson_type == 'video' and not lesson.stream_uid and not lesson.r2_key:
+            return Response(
+                {'detail': 'Нельзя опубликовать видео-урок без загруженного файла.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if lesson.lesson_type == 'audio' and not lesson.r2_key:
+            return Response(
+                {'detail': 'Нельзя опубликовать аудио-урок без загруженного файла.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         duration = request.data.get('duration_sec')
         thumb = request.data.get('thumbnail_url')
         update = []
@@ -555,7 +568,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def end(self, request, pk=None):
         stream = self.get_object()
-        if stream.status not in ('live', 'scheduled'):
+        if stream.status != 'live':
             return Response(
                 {'detail': f'Cannot end from status={stream.status}'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -573,7 +586,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             stream=stream,
             status__in=['invited', 'active'],
             deleted_at__isnull=True,
-        ).update(status='ended')
+        ).update(status='ended', deleted_at=timezone.now())
 
         # Proxy WHIP DELETE to Cloudflare so recording is triggered reliably.
         # Prefer the session URL (from whip-proxy response); fall back to the
@@ -726,6 +739,8 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         # POST
         data = request.data or {}
         if data.get('reset'):
+            if guest.status not in ('invited', 'active'):
+                return Response({'error': 'cannot reset signaling on a non-active guest'}, status=400)
             guest.offer_sdp = ''
             guest.answer_sdp = ''
             guest.trainer_ice = []
