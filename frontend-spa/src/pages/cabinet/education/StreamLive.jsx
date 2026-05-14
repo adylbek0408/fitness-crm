@@ -28,6 +28,7 @@ export default function StreamLive() {
   const [accessDenied, setAccessDenied] = useState('')
   const [showViewers,  setShowViewers]  = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isCssFull,    setIsCssFull]    = useState(false)
 
   // Guest stage state
   const [guestInvite,    setGuestInvite]    = useState(null)
@@ -313,6 +314,13 @@ export default function StreamLive() {
     }
   }, [])
 
+  // Escape key exits CSS fake fullscreen (keyboard users / desktop)
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && isCssFull) setIsCssFull(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isCssFull])
+
   const toggleFullscreen = async () => {
     try {
       if (document.fullscreenElement || document.webkitFullscreenElement) {
@@ -320,17 +328,12 @@ export default function StreamLive() {
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
         return
       }
-      // Fullscreen всегда на shell-обёртке (плеер + watermark). Если
-      // фуллскринить только <video>, водяной знак (sibling) пропадает —
-      // это рушит защиту от записи экрана.
+      if (isCssFull) { setIsCssFull(false); return }
       const node = playerShellRef.current
-      if (node?.requestFullscreen)        { await node.requestFullscreen();       return }
-      if (node?.webkitRequestFullscreen)  { node.webkitRequestFullscreen();       return }
-      // Последний фоллбек для старого iOS Safari (≤15), где
-      // requestFullscreen на <div> не поддерживается. Тогда уходим в
-      // нативный iOS-плеер — watermark там не показать.
-      const p = playerRef.current
-      if (p?.requestFullscreen) await p.requestFullscreen()
+      if (node?.requestFullscreen) { try { await node.requestFullscreen(); return } catch {} }
+      if (node?.webkitRequestFullscreen) { try { node.webkitRequestFullscreen(); return } catch {} }
+      // iOS Safari: use CSS fake fullscreen so watermark stays visible
+      setIsCssFull(true)
     } catch {}
   }
 
@@ -357,7 +360,10 @@ export default function StreamLive() {
               broadcast instead of staring at a black screen. */}
           <div ref={playerShellRef} data-protected-root
                className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto"
-               style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
+               style={{
+                 ...(isCssFull ? { position: 'fixed', inset: 0, width: '100vw', height: '100dvh', zIndex: 100, aspectRatio: 'auto' } : {}),
+                 userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+               }}>
             {!showStageVideo && (
               <>
                 <CloudflareStreamPlayer
@@ -416,9 +422,9 @@ export default function StreamLive() {
                   by the watermark / live label, so giving an explicit button
                   in our top bar is the more reliable affordance. */}
               <button type="button" onClick={toggleFullscreen}
-                aria-label={isFullscreen ? 'Свернуть' : 'Во весь экран'}
+                aria-label={(isFullscreen || isCssFull) ? 'Свернуть' : 'Во весь экран'}
                 className="inline-flex pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
-                {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                {(isFullscreen || isCssFull) ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
               </button>
             </div>
 

@@ -206,19 +206,19 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             const trackTimeout = setTimeout(
               () => trackReject(new Error('WHEP: no track in 8s')), 8000
             )
+            // Collect all tracks into one MediaStream. WHEP fires ontrack
+            // separately for video and audio (unified-plan) — resolving on the
+            // first event would miss the other track. A 100ms debounce lets
+            // all synchronously-arriving tracks accumulate before we commit.
+            const sharedStream = new MediaStream()
+            let resolveTimer = null
             pc.ontrack = e => {
               clearTimeout(trackTimeout)
               const kind = e.track?.kind
-              const sId  = e.streams?.[0]?.id
-              const aT   = e.streams?.[0]?.getAudioTracks?.()?.length ?? 0
-              const vT   = e.streams?.[0]?.getVideoTracks?.()?.length ?? 0
-              console.log(`[player] WHEP ontrack kind=${kind} streamId=${sId} streamAudio=${aT} streamVideo=${vT}`)
-              // We accept the first stream that arrives. If audio arrives in a
-              // later ontrack call (because video came first), it will be added
-              // to the SAME MediaStream object (per WHIP spec / unified-plan) —
-              // and the <video> element's srcObject picks it up automatically.
-              if (e.streams?.[0]) trackResolve(e.streams[0])
-              else { const s = new MediaStream(); s.addTrack(e.track); trackResolve(s) }
+              console.log(`[player] WHEP ontrack kind=${kind}`)
+              sharedStream.addTrack(e.track)
+              clearTimeout(resolveTimer)
+              resolveTimer = setTimeout(() => trackResolve(sharedStream), 100)
             }
             pc.oniceconnectionstatechange = () => {
               console.log('[player] WHEP ICE:', pc.iceConnectionState)
