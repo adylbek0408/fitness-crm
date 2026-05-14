@@ -21,6 +21,13 @@ export default function LessonView() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isCssFull,    setIsCssFull]    = useState(false)
   const lastSavedPercent = useRef(0)
+  const warningTimerRef  = useRef(null)
+
+  const showWarning = (msg, ms = 4000) => {
+    clearTimeout(warningTimerRef.current)
+    setWarning(msg)
+    warningTimerRef.current = setTimeout(() => setWarning(''), ms)
+  }
 
   useContentProtection({
     videoRef,
@@ -30,8 +37,7 @@ export default function LessonView() {
         shortcut: 'Запись/печать заблокирована.',
         devtools: 'Закройте инструменты разработчика для продолжения.',
       }
-      setWarning(map[kind] || 'Подозрительная активность.')
-      setTimeout(() => setWarning(''), 4000)
+      showWarning(map[kind] || 'Подозрительная активность.')
     },
   })
 
@@ -40,16 +46,19 @@ export default function LessonView() {
       nav('/cabinet'); return
     }
     setLoading(true)
+    const ctrl = new AbortController()
     Promise.all([
-      api.get(`/cabinet/education/lessons/${id}/`),
-      api.get('/cabinet/education/lessons/').catch(() => null),
+      api.get(`/cabinet/education/lessons/${id}/`, { signal: ctrl.signal }),
+      api.get('/cabinet/education/lessons/', { signal: ctrl.signal }).catch(() => null),
     ]).then(([lr, allR]) => {
       setLesson(lr.data)
       if (allR) setLessons(allR.data?.results || allR.data || [])
     }).catch(e => {
+      if (e.name === 'CanceledError' || e.name === 'AbortError') return
       if (e.response?.status === 403) setError('Этот урок недоступен для вашей группы.')
       else setError(e.response?.data?.detail || 'Ошибка загрузки')
     }).finally(() => setLoading(false))
+    return () => { ctrl.abort(); clearTimeout(warningTimerRef.current) }
   }, [id, nav])
 
   useEffect(() => {

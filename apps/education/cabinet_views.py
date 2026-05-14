@@ -321,9 +321,11 @@ class CabinetStreamView(APIView):
             except LiveStream.DoesNotExist:
                 return Response({'stream': None, 'reason': 'not_found'})
             # Access check: stream must belong to client's group OR have no groups assigned
-            if stream.groups.exists() and client.group_id:
-                if not stream.groups.filter(id=client.group_id).exists():
-                    return Response({'stream': None, 'reason': 'forbidden'})
+            if stream.groups.exists() and (
+                not client.group_id
+                or not stream.groups.filter(id=client.group_id).exists()
+            ):
+                return Response({'stream': None, 'reason': 'forbidden'})
         else:
             # Auto-detect: find a live stream for this student.
             stream = None
@@ -375,11 +377,14 @@ class CabinetStreamJoinView(APIView):
         ):
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
-        qs = StreamViewer.objects.filter(stream=stream, client=client)
-        qs.update(is_active=True, left_at=None)
-        viewer = qs.first()
-        if not viewer:
-            viewer = StreamViewer.objects.create(stream=stream, client=client, is_active=True)
+        viewer, created = StreamViewer.objects.get_or_create(
+            stream=stream, client=client,
+            defaults={'is_active': True},
+        )
+        if not created:
+            StreamViewer.objects.filter(pk=viewer.pk).update(is_active=True, left_at=None)
+            viewer.is_active = True
+            viewer.left_at = None
         webrtc_url = stream.cf_webrtc_playback_url or ''
         if '/webRTC/play' in webrtc_url:
             playback_url = webrtc_url
@@ -484,10 +489,12 @@ class ConsultationStatusView(APIView):
         except Consultation.DoesNotExist:
             return Response({'active': False, 'status': 'not_found'})
 
-        # Auto-expire stale rows.
-        if c.status == 'active' and c.expires_at and c.expires_at < timezone.now():
-            c.status = 'expired'
-            c.save(update_fields=['status', 'updated_at'])
+        # Auto-expire stale rows atomically — avoids overwriting a concurrent cancel.
+        if c.expires_at and c.expires_at < timezone.now():
+            Consultation.objects.filter(pk=c.pk, status='active').update(
+                status='expired', updated_at=timezone.now(),
+            )
+            c.refresh_from_db(fields=['status'])
 
         # 'used' means used_count reached max_uses but the call is still ongoing.
         # Only 'cancelled' and 'expired' mean the session is truly over.
@@ -513,11 +520,12 @@ class PublicConsultationView(APIView):
             return Response({'valid': False, 'reason': 'not_found'},
                             status=status.HTTP_404_NOT_FOUND)
 
-        # Auto-expire stale rows.
-        if consultation.status == 'active' and consultation.expires_at \
-                and consultation.expires_at < timezone.now():
-            consultation.status = 'expired'
-            consultation.save(update_fields=['status', 'updated_at'])
+        # Auto-expire stale rows atomically — avoids overwriting a concurrent cancel.
+        if consultation.expires_at and consultation.expires_at < timezone.now():
+            Consultation.objects.filter(pk=consultation.pk, status='active').update(
+                status='expired', updated_at=timezone.now(),
+            )
+            consultation.refresh_from_db(fields=['status'])
 
         # Allow 'used' consultations when the call hasn't been explicitly ended
         # (ended_at is None = trainer hasn't pressed Stop yet).
@@ -541,9 +549,12 @@ class PublicConsultationView(APIView):
         # legitimate refreshes / reconnects (network blips, mobile sleep,
         # student leaving and coming back). The trainer ends the call with
         # the explicit "Завершить" button.
+        # Atomic first-join timestamp — two concurrent requests can't both win.
         if not consultation.started_at:
-            consultation.started_at = timezone.now()
-            consultation.save(update_fields=['started_at', 'updated_at'])
+            Consultation.objects.filter(pk=consultation.pk, started_at__isnull=True).update(
+                started_at=timezone.now(), updated_at=timezone.now(),
+            )
+            consultation.refresh_from_db(fields=['started_at'])
 
         from django.conf import settings as dj_settings
         domain = (getattr(dj_settings, 'JITSI_DOMAIN', '') or '').strip() or 'meet.jit.si'

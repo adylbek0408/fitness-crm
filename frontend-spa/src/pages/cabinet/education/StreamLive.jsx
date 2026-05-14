@@ -46,6 +46,13 @@ export default function StreamLive() {
   const stageRemoteStreamRef = useRef(null)       // latest MediaStream from P2P (so we can re-bind on remount)
   const stagePreviewRef     = useRef(null)        // <video> for our own camera preview
   const guestPollRef        = useRef(null)
+  const warningTimerRef     = useRef(null)
+
+  const showWarning = (msg, ms = 4000) => {
+    clearTimeout(warningTimerRef.current)
+    setWarning(msg)
+    warningTimerRef.current = setTimeout(() => setWarning(''), ms)
+  }
 
   const videoRef       = useRef(null)
   const playerRef      = useRef(null)   // CloudflareStreamPlayer imperative handle
@@ -55,8 +62,7 @@ export default function StreamLive() {
     videoRef,
     rootRef: playerShellRef,
     onSuspect: kind => {
-      setWarning(kind === 'devtools' ? 'Закройте инструменты разработчика.' : 'Запись заблокирована.')
-      setTimeout(() => setWarning(''), 4000)
+      showWarning(kind === 'devtools' ? 'Закройте инструменты разработчика.' : 'Запись заблокирована.')
     },
   })
 
@@ -159,8 +165,7 @@ export default function StreamLive() {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
     } catch(e) {
-      setWarning('Нужен доступ к камере и микрофону. Разрешите в настройках браузера.')
-      setTimeout(() => setWarning(''), 5000)
+      showWarning('Нужен доступ к камере и микрофону. Разрешите в настройках браузера.', 5000)
       setStageState('')
       return
     }
@@ -171,8 +176,7 @@ export default function StreamLive() {
       // Tell backend we accept
       await api.post(`/cabinet/education/streams/${stream.id}/guest/`)
     } catch(e) {
-      setWarning('Не удалось принять приглашение.')
-      setTimeout(() => setWarning(''), 4000)
+      showWarning('Не удалось принять приглашение.')
       setStageState('')
       try { localStream.getTracks().forEach(t => t.stop()) } catch {}
       return
@@ -200,8 +204,7 @@ export default function StreamLive() {
       if (!connected) {
         timedOut = true
         setStageState('failed')
-        setWarning('Не удалось установить связь с тренером. Попробуйте ещё раз.')
-        setTimeout(() => setWarning(''), 5000)
+        showWarning('Не удалось установить связь с тренером. Попробуйте ещё раз.', 5000)
         leaveStage(true)
       }
     }, 45000)
@@ -261,6 +264,7 @@ export default function StreamLive() {
     stageLocalRef.current = null
     if (stagePreviewRef.current) stagePreviewRef.current.srcObject = null
     if (stageRemoteRef.current) stageRemoteRef.current.srcObject = null
+    try { stageRemoteStreamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
     stageRemoteStreamRef.current = null
     setOnStage(false)
     setStageState('')
@@ -281,6 +285,7 @@ export default function StreamLive() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      clearTimeout(warningTimerRef.current)
       try { stagePcRef.current?.close() } catch {}
       try { stageLocalRef.current?.getTracks().forEach(t => t.stop()) } catch {}
     }
