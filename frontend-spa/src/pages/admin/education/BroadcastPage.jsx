@@ -117,6 +117,7 @@ export default function BroadcastPage() {
   const videoRef              = useRef(null)
   const pcRef                 = useRef(null)
   const localStreamRef        = useRef(null)
+  const whipVideoSenderRef    = useRef(null)  // RTCRtpSender for video on the WHIP PC
   const elapsedRef            = useRef(null)
   const statusRef             = useRef(status)
   const whipRef               = useRef(null)
@@ -214,6 +215,7 @@ export default function BroadcastPage() {
           mixerRef.current = null
           try { audioMixerRef.current?.close() } catch {}
           audioMixerRef.current = null
+          whipVideoSenderRef.current = null
           localStreamRef.current?.getTracks().forEach(t => t.stop())
           pcRef.current?.close()
           if (videoRef.current) videoRef.current.srcObject = null
@@ -512,8 +514,20 @@ export default function BroadcastPage() {
       } catch(e) {
         console.warn('[mixer] init failed, falling back to raw stream:', e)
       }
-      // Fallback: raw camera+mic if mixers failed (very rare on modern browsers)
+      // MediaRecorder always uses canvas stream — it records exactly what viewers
+      // see (flip-camera, guest PIP, swap) even after we optimize WHIP below.
       const outputStream = mixedStream || ls
+
+      // WHIP stream: raw camera video for full quality when broadcasting alone.
+      // Canvas is only needed when a guest PIP is visible; replaceTrack switches
+      // between the two without renegotiating with Cloudflare.
+      let whipStream = outputStream  // fallback when mixer unavailable
+      if (mixedStream) {
+        const rawVt = ls.getVideoTracks()[0]
+        if (rawVt) {
+          whipStream = new MediaStream([rawVt, ...mixedStream.getAudioTracks()])
+        }
+      }
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] })
       pcRef.current = pc
@@ -529,13 +543,10 @@ export default function BroadcastPage() {
         }
       })
 
-      // Canvas is always capped at 720p (mixW/mixH above), so cap video bitrate
-      // at 2500 Kbps regardless of selected quality — sending 4500 Kbps for a
-      // 720p canvas makes the WebRTC encoder run at max effort for no viewer benefit
-      // and heats up the device noticeably.
       const whipVideoKbps = Math.min(q.videoKbps, 2500)
-      outputStream.getTracks().forEach(t => {
-        const s = pc.addTrack(t, outputStream)
+      whipStream.getTracks().forEach(t => {
+        const s = pc.addTrack(t, whipStream)
+        if (t.kind === 'video') whipVideoSenderRef.current = s
         try {
           const p = s.getParameters(); if (!p.encodings) p.encodings = [{}]
           if (t.kind === 'video') { p.encodings[0].maxBitrate = whipVideoKbps * 1000; p.encodings[0].maxFramerate = q.frameRate }
@@ -636,6 +647,7 @@ export default function BroadcastPage() {
     try { audioMixerRef.current?.close() } catch {}
     audioMixerRef.current = null
     mixedOutputRef.current = null
+    whipVideoSenderRef.current = null
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     if (videoRef.current) videoRef.current.srcObject = null
@@ -666,6 +678,16 @@ export default function BroadcastPage() {
       // Swap audio source in the always-on Web Audio mixer so the new mic
       // (different gain on front vs back) is what gets sent + recorded.
       try { audioMixerRef.current?.replaceTrainer(ns) } catch {}
+      // If no guest is on stage, the WHIP sender holds the raw camera track.
+      // Update it to the new camera so viewers see the flipped feed.
+      if (!guestP2PRef.current) {
+        try {
+          const newVt = ns.getVideoTracks()[0]
+          if (newVt && whipVideoSenderRef.current) {
+            whipVideoSenderRef.current.replaceTrack(newVt).catch(e => console.warn('[flip] replaceTrack:', e))
+          }
+        } catch(e) { console.warn('[flip] replaceTrack WHIP:', e) }
+      }
       // Free old camera + mic only AFTER the new stream is wired up — stopping
       // earlier creates a black flash and a silent audio gap on iOS.
       oldLs?.getTracks().forEach(t => { try { t.stop() } catch {} })
@@ -764,6 +786,13 @@ export default function BroadcastPage() {
   const startMixer = (passedGuestStream) => {
     if (!mixerRef.current || !guestVideoElRef.current) return
     try { mixerRef.current.setGuestVideo(guestVideoElRef.current) } catch {}
+    // Switch WHIP to canvas composite so viewers see the guest PIP
+    try {
+      const canvasVt = mixerRef.current.stream.getVideoTracks()[0]
+      if (canvasVt && whipVideoSenderRef.current) {
+        whipVideoSenderRef.current.replaceTrack(canvasVt).catch(e => console.warn('[startMixer] replaceTrack:', e))
+      }
+    } catch(e) { console.warn('[startMixer] replaceTrack canvas:', e) }
     try {
       const guestStream = passedGuestStream
         || (guestVideoElRef.current?.srcObject instanceof MediaStream
@@ -779,9 +808,16 @@ export default function BroadcastPage() {
     setGuestStatus('')
     setGuestRemoteStream(null)
     setPipSwapped(false)   // next guest starts in default layout
-    // Detach guest from mixers — trainer-only stream resumes automatically.
+    // Detach guest from mixers — canvas keeps drawing trainer-only.
     try { mixerRef.current?.setGuestVideo(null) } catch {}
     try { audioMixerRef.current?.removeGuest() } catch {}
+    // Switch WHIP back to raw camera — no canvas overhead when broadcasting alone.
+    try {
+      const rawVt = localStreamRef.current?.getVideoTracks()[0]
+      if (rawVt && whipVideoSenderRef.current) {
+        whipVideoSenderRef.current.replaceTrack(rawVt).catch(e => console.warn('[cleanupGuest] replaceTrack:', e))
+      }
+    } catch(e) { console.warn('[cleanupGuest] replaceTrack raw:', e) }
     try { guestP2PRef.current?.close() } catch {}
     guestP2PRef.current = null
     if (guestVideoElRef.current) {

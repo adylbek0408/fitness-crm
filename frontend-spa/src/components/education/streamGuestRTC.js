@@ -387,7 +387,8 @@ export async function startTrainerP2P({
 
   const close = () => {
     clearInterval(pollTimer)
-    try { pc.getSenders().forEach(s => s.track?.stop?.()) } catch {}
+    // Do NOT stop sender tracks — they belong to localStream (trainer's camera)
+    // and are still needed for the WHIP broadcast after the guest leaves.
     try { pc.close() } catch {}
   }
 
