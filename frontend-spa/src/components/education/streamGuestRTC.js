@@ -94,13 +94,21 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
     return { gw, gh, gx: width - gw - margin, gy: height - gh - margin }
   }
 
-  // ── Frame draw — no manual throttle; captureStream(fps) does the sampling. ──
-  // The previous throttle (`if now - lastDraw < minFrameMs: skip`) produced
-  // uneven cadence when source was 30fps and target was 20fps (drew at 0, 67,
-  // 133, … → visible micro-jitter for the trainer alone, hidden once the
-  // guest PIP added a second moving element to mask it). Drawing on every
-  // rVFC tick is cheap (single drawImage + optional PIP) and lets captureStream
-  // decimate to fps internally — output cadence is smooth.
+  // ── rAF fallback scheduler (throttled to fps) ──────────────────────────────
+  let lastRafTime = 0
+  const rafSchedule = () => {
+    if (!running) return
+    requestAnimationFrame((ts) => {
+      if (!running) return
+      if (ts - lastRafTime >= minFrameMs) {
+        lastRafTime = ts
+        drawAll()
+      } else {
+        rafSchedule()
+      }
+    })
+  }
+
   const drawAll = () => {
     if (!running) return
     // Throttle actual draws to fps target — rVFC fires at the source frame rate
@@ -150,11 +158,12 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
 
     // Schedule next frame — prefer rVFC on the *currently big* source so we
     // redraw whenever its frames arrive. If big has rVFC, hook it; otherwise
-    // fall back to rAF (~60fps, captureStream still decimates).
+    // fall back to rAF throttled to fps (captureStream also decimates, but
+    // drawing at 60fps on rAF wastes CPU/battery and overheats the device).
     if (bigSource && typeof bigSource.requestVideoFrameCallback === 'function') {
       try { bigSource.requestVideoFrameCallback(drawAll); return } catch {}
     }
-    requestAnimationFrame(drawAll)
+    rafSchedule()
   }
 
   // Polyfill roundRect for older browsers (Safari < 16)
@@ -220,9 +229,29 @@ export function createAudioMixer(trainerStream, guestStream) {
     } catch {}
   }
 
-  // iOS Safari suspends AudioContext when the tab is backgrounded — the
-  // mixed track then carries silence and the recording goes mute.
-  // Resume the context whenever we come back to the foreground.
+  // iOS Safari (and increasingly Chrome) create AudioContext in `suspended`
+  // state. The destination track exists but emits silence until resume() is
+  // called. Try once immediately — caller is expected to be in a user-gesture
+  // path (button click), so this almost always succeeds. If it doesn't, the
+  // visibilitychange handler below picks it up the next time the tab is
+  // foregrounded.
+  try {
+    if (audioCtx.state === 'suspended') {
+      // Don't await — caller's lifecycle continues regardless. The promise
+      // resolves asynchronously and audio starts flowing as soon as it does.
+      audioCtx.resume().catch((e) => console.warn('[audio] initial resume failed:', e))
+    }
+  } catch (e) { console.warn('[audio] resume attempt threw:', e) }
+
+  // Periodically poke the context if it slid back to suspended (some Chrome
+  // versions do this when the source camera stream is renegotiated). Cheap
+  // probe — runs every 5s while the mixer exists.
+  const watchdog = setInterval(() => {
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {})
+    }
+  }, 5000)
+
   const onVisibility = () => {
     if (!document.hidden && audioCtx.state === 'suspended') {
       audioCtx.resume().catch(() => {})
@@ -252,6 +281,7 @@ export function createAudioMixer(trainerStream, guestStream) {
   }
 
   const close = () => {
+    try { clearInterval(watchdog) } catch {}
     try { document.removeEventListener('visibilitychange', onVisibility) } catch {}
     try { trainerSrc.disconnect() } catch {}
     try { guestSrc?.disconnect() } catch {}

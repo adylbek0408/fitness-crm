@@ -12,6 +12,13 @@ import {
   createMixerCanvas, createAudioMixer,
   startTrainerP2P,
 } from '../../../components/education/streamGuestRTC'
+import {
+  appendChunk as recordAppendChunk,
+  assembleBlob as recordAssembleBlob,
+  clearChunks as recordClearChunks,
+  countBytes as recordCountBytes,
+  clearStale as recordClearStale,
+} from '../../../utils/recordingStore'
 
 export default function BroadcastPage() {
   const { id } = useParams()
@@ -24,18 +31,25 @@ export default function BroadcastPage() {
   const [micOn,        setMicOn]        = useState(true)
   const [camOn,        setCamOn]        = useState(true)
   const [facingMode,   setFacingMode]   = useState('user')
-  // Quality is fixed at the highest tier (1080p) — the picker was confusing
-  // and the trainer almost always wants max. If we ever need to scale down
-  // for slow connections, we can fall back automatically.
-  const quality = '1080p'
+  // Default to 720p — the browser is the encoder, and 1080p WHIP from a phone
+  // sustained for ≥10 min throttles the SoC, drops frames, and freezes for
+  // viewers. 720p @ 2.5 Mbps is the sweet spot for browser WebRTC: visually
+  // indistinguishable from 1080p for fitness video, and stays stable on every
+  // mid-range device we've tested. The trainer can bump it to 1080p from the
+  // pre-broadcast lobby if they're on a dedicated camera + wired network.
+  const [quality, setQuality] = useState('720p')
   const [elapsed,      setElapsed]      = useState(0)
   const [viewers,      setViewers]      = useState([])
   const [showViewers,  setShowViewers]  = useState(false)
   const [connState,    setConnState]    = useState('')
   const [cfStatus,     setCfStatus]     = useState(null)
-  const [recordingPct,  setRecordingPct]  = useState(0)
-  const [recordingDone, setRecordingDone] = useState(false)
-  const [uploadError,   setUploadError]   = useState('')
+  const [recordingPct,   setRecordingPct]   = useState(0)
+  const [recordingDone,  setRecordingDone]  = useState(false)
+  const [uploadError,    setUploadError]    = useState('')
+  // Live "MB recorded so far" indicator — read every 15 s from IDB; gives the
+  // trainer a sanity check ("yes, my browser is capturing this") and lets us
+  // warn before quota fills.
+  const [recBytes,       setRecBytes]       = useState(0)
   const [flipping,     setFlipping]     = useState(false)
   // When CF reports the live input is already connected (i.e. the trainer is
   // streaming from somewhere else), we ask before clobbering the other
@@ -144,6 +158,11 @@ export default function BroadcastPage() {
     api.get('/education/streams/')
       .then(r => { const s = (pickList(r.data)).find(s => s.id === id); if (s) setStream(s); else setError('Эфир не найден') })
       .catch(() => setError('Ошибка загрузки'))
+    // Garbage-collect chunks from broadcasts that ended >24 h ago and never
+    // got uploaded (closed tab, crashed browser, hard refresh). Without this,
+    // a few interrupted broadcasts could quietly fill the user's IDB quota
+    // and bog down subsequent recordings.
+    recordClearStale().catch(() => {})
   }, [id])
 
   useEffect(() => { statusRef.current = status }, [status])
@@ -229,16 +248,30 @@ export default function BroadcastPage() {
       try { await recorderStopPromise.current } catch {}
       recorderStopPromise.current = null
 
-      const chunks = recordedChunksRef.current || []
-      recordedChunksRef.current = []
-
-      if (chunks.length === 0) { clearUploadProgress(); nav('/admin/education/streams'); return }
-
-      // Use the actual mime type recorded, so iOS mp4 blobs are sent correctly.
       const mime = recorderMimeRef.current || 'video/webm'
       const ext  = mime.includes('mp4') ? 'mp4' : 'webm'
-      const blob = new Blob(chunks, { type: mime })
-      if (blob.size < 10_000) { clearUploadProgress(); nav('/admin/education/streams'); return }
+
+      // Primary source: IndexedDB. Fallback: in-memory chunks ref (used when
+      // IDB was unavailable on this device — see ondataavailable handler).
+      let blob = null
+      try {
+        blob = await recordAssembleBlob(id, mime)
+      } catch (e) {
+        console.warn('[recorder] IDB assemble failed:', e)
+      }
+      if ((!blob || blob.size === 0) && recordedChunksRef.current?.length) {
+        blob = new Blob(recordedChunksRef.current, { type: mime })
+      }
+      recordedChunksRef.current = []
+
+      // Nothing to upload — could be a cancelled session or a stream that
+      // ended before the first 10s chunk flushed.
+      if (!blob || blob.size < 10_000) {
+        try { await recordClearChunks(id) } catch {}
+        clearUploadProgress()
+        nav('/admin/education/streams')
+        return
+      }
 
       const fd = new FormData()
       fd.append('file', blob, `recording.${ext}`)
@@ -259,16 +292,18 @@ export default function BroadcastPage() {
           },
         })
         setRecordingPct(100); setRecordingDone(true)
-        // Backend returned 202 → it has the file and is uploading to CF in
-        // a background thread. Switch the sessionStorage flag to 'processing'
-        // so the streams list keeps the bar visible, then bail. Trainer can
-        // close the tab now without losing anything.
+        // Backend returned 202 → it has the file. Drop the on-disk chunks
+        // immediately so the next broadcast starts on a clean slate.
+        try { await recordClearChunks(id) } catch {}
         writeUploadProgress('processing', 100)
         setTimeout(() => { clearUploadProgress(); nav('/admin/education/streams') }, 1200)
       } catch(e) {
         const msg = e?.response?.data?.detail || e?.message || 'Ошибка загрузки'
         setUploadError(msg)
         clearUploadProgress()
+        // Do NOT clear IDB on failure — the trainer can stay on the page,
+        // hit "Retry" once we add it, or reload to retry. Stale chunks get
+        // GC'd by clearStale() after 24 h.
       } finally {
         setUploading(false)
       }
@@ -424,28 +459,48 @@ export default function BroadcastPage() {
 
       // ── Always-on mixers ──────────────────────────────────────────────────
       // Cap mixed canvas at 720p — 1080p canvas captureStream eats too much
-      // CPU on phones, especially with audio mixing on top. CF-side viewers
-      // rarely benefit from >720p in a fitness stream.
+      // CPU on phones, especially with audio mixing on top. The mixer also
+      // lets us record/upload exactly what the viewer sees (flip-camera, guest
+      // PIP, swap) without rewiring MediaRecorder mid-broadcast.
       const mixW = Math.min(q.width, 1280)
       const mixH = Math.min(q.height, 720)
       let mixedStream = null
       try {
-        // 20 fps mixer (was 24): visually indistinguishable for human bodies,
-        // ~17% fewer canvas draws → noticeably less CPU heat on phones and laptops.
-        // Recorded video stays smooth (MediaRecorder ingests whatever the canvas
-        // produces; viewers' eyes can't tell 20 vs 24 fps for fitness content).
+        // 15 fps mixer — visually indistinguishable from 20 fps for fitness
+        // video; reduces canvas CPU load by ~25% and lowers device temperature.
         const mixer = createMixerCanvas({
-          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: 20,
+          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: 15,
         })
         mixerRef.current = mixer
+
         const audioMix = createAudioMixer(ls)
         audioMixerRef.current = audioMix
+        // iOS Safari creates AudioContext in `suspended` state and silently
+        // produces a silent destination track until `resume()` is awaited.
+        // We're inside the user-gesture (button click) — so this almost
+        // always succeeds; if it doesn't, the visibilitychange handler
+        // inside the mixer recovers on next foreground.
+        try {
+          if (audioMix?.audioCtx?.state === 'suspended') {
+            await audioMix.audioCtx.resume()
+          }
+        } catch (e) { console.warn('[audio] AudioContext.resume failed:', e) }
+
         const tracks = []
         const mv = mixer.stream.getVideoTracks()[0]
         if (mv) tracks.push(mv)
-        if (audioMix?.mixedTrack) tracks.push(audioMix.mixedTrack)
-        // Fallback to raw audio track if Web Audio mixer failed
-        else ls.getAudioTracks().forEach(t => tracks.push(t))
+        // Guard: if Web Audio mixer somehow produced a track with no audio
+        // (rare iOS corner case), fall back to the raw mic track so viewers
+        // can still hear the trainer.
+        const mixedAudio = audioMix?.mixedTrack
+        const mixedAudioUsable = mixedAudio && mixedAudio.readyState === 'live'
+        if (mixedAudioUsable) {
+          tracks.push(mixedAudio)
+          console.log('[audio] using mixed track from Web Audio destination')
+        } else {
+          ls.getAudioTracks().forEach(t => tracks.push(t))
+          console.warn('[audio] Web Audio mixer track not live — using raw mic')
+        }
         mixedStream = new MediaStream(tracks)
         mixedOutputRef.current = mixedStream
       } catch(e) {
@@ -527,10 +582,24 @@ export default function BroadcastPage() {
         recorderMimeRef.current = mimeType
         if (mimeType) {
           const mr = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 128_000 })
-          recordedChunksRef.current = []
           // stopPromise resolves only after onstop — by then ondataavailable has already fired
           recorderStopPromise.current = new Promise(res => { mr.onstop = res })
-          mr.ondataavailable = e => { if (e.data?.size > 0) recordedChunksRef.current.push(e.data) }
+          // Reset legacy in-memory ref (still kept as the fallback path when
+          // IndexedDB is unavailable, e.g. Safari private mode).
+          recordedChunksRef.current = []
+          mr.ondataavailable = e => {
+            const blob = e?.data
+            if (!blob || blob.size === 0) return
+            // Persist each 10s chunk to IndexedDB instead of stuffing the React
+            // ref. For a 1-hour broadcast this is the difference between ~700 MB
+            // of in-memory Blobs (instant OOM on iOS) and zero RAM pressure.
+            recordAppendChunk(id, blob).catch(err => {
+              // IDB unavailable / quota exhausted → fall back to RAM. We log
+              // loudly so we notice if this happens in practice.
+              console.warn('[recorder] IDB append failed, falling back to RAM:', err)
+              recordedChunksRef.current.push(blob)
+            })
+          }
           mr.start(10_000)  // flush chunk every 10 s
           mediaRecorderRef.current = mr
         }
@@ -778,6 +847,39 @@ export default function BroadcastPage() {
                 <p className="text-white/60 text-[11px] font-semibold tracking-[0.18em] uppercase mb-1">Студия эфира</p>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">{stream?.title || 'Без названия'}</h1>
                 <p className="text-sm text-white/55 mb-5">Проверьте кадр и звук перед запуском прямого эфира</p>
+
+                {/* Quality picker — defaults to 720p which is the stable sweet
+                    spot for browser WebRTC from a phone. Trainers on Wi-Fi
+                    with a good camera can opt into 1080p (4.5 Mbps). 480p is
+                    a "save the broadcast" mode for weak networks. */}
+                <div className="mb-5">
+                  <p className="text-white/55 text-[11px] uppercase tracking-wider mb-2">Качество</p>
+                  <div className="inline-flex bg-black/40 border border-white/10 rounded-2xl p-1 gap-1">
+                    {[
+                      { k: '480p',  label: '480p', hint: 'Слабая сеть' },
+                      { k: '720p',  label: '720p', hint: 'Рекомендуется' },
+                      { k: '1080p', label: '1080p', hint: 'Только Wi-Fi' },
+                    ].map(o => (
+                      <button
+                        key={o.k}
+                        type="button"
+                        onClick={() => setQuality(o.k)}
+                        aria-pressed={quality === o.k}
+                        title={o.hint}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                          quality === o.k
+                            ? 'bg-rose-500 text-white shadow shadow-rose-900/40'
+                            : 'text-white/70 hover:text-white hover:bg-white/5'
+                        }`}
+                      >{o.label}</button>
+                    ))}
+                  </div>
+                  <p className="text-white/40 text-[11px] mt-2">
+                    {quality === '1080p' && 'Может тормозить на телефоне через 10–15 минут (нагрев процессора).'}
+                    {quality === '720p'  && 'Стабильно работает на любом смартфоне.'}
+                    {quality === '480p'  && 'Минимальная нагрузка — для мобильного интернета.'}
+                  </p>
+                </div>
 
                 {error && (
                   <div className="w-full bg-rose-900/50 border border-rose-700/40 rounded-2xl px-4 py-3 text-rose-200 text-sm mb-3">{error}</div>

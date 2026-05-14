@@ -129,25 +129,23 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       stallTimer = setTimeout(() => {
         if (cleanedUp) return
         stallAttempts++
-        console.warn('[player] stalled >8s — recovery attempt', stallAttempts,
+        console.warn('[player] stalled >4s — recovery attempt', stallAttempts,
           'currentTime:', v.currentTime, 'buffered:', v.buffered.length)
-        // First try: just nudge play
         v.play().catch(() => {})
-        // After 3 failed nudges: jump to live edge by reloading.
-        // Threshold raised from 2→3 to avoid jarring live-edge resets on brief
-        // congestion (each reset appears as a ~10 s time jump to the viewer).
-        if (stallAttempts >= 3 && live) {
+        // After 2 stalls jump to live edge — avoids brief-congestion jitter
+        // but still catches real freezes faster than the old 3-attempt threshold.
+        if (stallAttempts >= 2 && live) {
           stallAttempts = 0
           try {
             if (hlsRef.current) {
-              hlsRef.current.startLoad(-1)         // -1 = resume from live edge
+              hlsRef.current.startLoad(-1)
             } else if (!v.srcObject) {
               v.load()
               v.play().catch(() => {})
             }
           } catch {}
         }
-      }, 8000)
+      }, 4000)
     }
     const onTimeUpdate = () => { stallAttempts = 0; clearStall() }
     v.addEventListener('waiting',    onWaiting)
@@ -193,9 +191,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             })
 
             if (!resp.ok) {
-              console.warn('[player] WHEP HTTP', resp.status, '— retrying in 15s')
+              console.warn('[player] WHEP HTTP', resp.status, '— retrying in 5s')
               pc.close(); whepRef.current = null
-              await new Promise(r => setTimeout(r, 15000))
+              await new Promise(r => setTimeout(r, 5000))
               continue
             }
 
@@ -275,11 +273,11 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             return   // done — HLS loop will also exit because hasPlayed flips via onPlaying
 
           } catch (err) {
-            console.warn('[player] WHEP error:', err?.message, '— retrying in 15s')
+            console.warn('[player] WHEP error:', err?.message, '— retrying in 5s')
             try { pc?.close() } catch {}
             if (whepRef.current === pc) whepRef.current = null
             if (cleanedUp || hasPlayed) return
-            await new Promise(r => setTimeout(r, 15000))
+            await new Promise(r => setTimeout(r, 5000))
           }
         }
       }
@@ -516,7 +514,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         // otherwise iOS shows a grey play button that visually competes.
         controls={!needsTap}
         controlsList="nodownload noremoteplayback nofullscreen"
-        disablePictureInPicture={false}
+        disablePictureInPicture={true}
       />
 
       {loading && !hardError && !needsTap && (

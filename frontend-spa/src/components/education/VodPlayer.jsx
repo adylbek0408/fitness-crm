@@ -47,19 +47,14 @@ export default function VodPlayer({
     if (!isHLSProvider(p)) return
     p.library = Hls
     p.config = {
-      capLevelToPlayerSize:    false,             // never downgrade for small box
-      abrEwmaDefaultEstimate:  5_000_000,         // start ABR at HD, not 360p
+      capLevelToPlayerSize:    true,
+      abrEwmaDefaultEstimate:  2_000_000,         // start at ~2 Mbps, ABR ramps up quickly
+      startFragPrefetch:       true,              // prefetch first segment in parallel with manifest
       testBandwidth:           false,
       maxBufferLength:         30,
       maxMaxBufferLength:      60,
+      maxStarvationDelay:      2,                 // downgrade quality fast on slow networks
     }
-    p.onInstance((hls) => {
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (Array.isArray(hls.levels) && hls.levels.length > 1) {
-          hls.currentLevel = hls.levels.length - 1   // pin highest quality
-        }
-      })
-    })
   }
 
   // ── Ensure volume is audible on first play ────────────────────────────────

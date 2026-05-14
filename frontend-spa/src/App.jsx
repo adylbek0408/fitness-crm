@@ -6,6 +6,8 @@ import Login from './pages/Login'
 import CabinetLogin from './pages/cabinet/CabinetLogin'
 import { RefreshProvider } from './contexts/RefreshContext'
 import { AuthProvider } from './contexts/AuthContext'
+import { UploadProvider } from './contexts/UploadContext'
+import UploadDock from './components/UploadDock'
 
 // ── Lazy chunks ──────────────────────────────────────────────────────────
 // Admin
@@ -63,6 +65,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
+        <UploadProvider>
         <BrowserRouter>
           <Suspense fallback={<RouteFallback />}>
             <Routes>
@@ -104,7 +107,9 @@ export default function App() {
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
           </Suspense>
+          <UploadDock />
         </BrowserRouter>
+        </UploadProvider>
       </AuthProvider>
     </ErrorBoundary>
   )
