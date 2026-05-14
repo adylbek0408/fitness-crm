@@ -161,36 +161,23 @@ export default function LessonsAdmin() {
     })
   }
 
-  // Uploads a thumbnail blob to R2 via presigned PUT URL, then confirms
-  // success to the backend via PATCH /metadata/.  Two-step pattern so a
-  // failed PUT doesn't leave the lesson pointing at a 404 image.
+  // Upload thumbnail through Django (server-side R2 write).
+  // The old presigned-URL approach required CORS on the R2 bucket which
+  // caused silent failures when CORS rules were absent or misconfigured.
   const uploadThumbnailForLesson = async (lessonId, blob) => {
-    if (!blob) {
-      console.warn('uploadThumbnailForLesson: empty blob')
-      return false
-    }
+    if (!blob) return false
     try {
-      const { data } = await api.post(`/education/lessons/${lessonId}/thumbnail-upload-url/`)
-      const r = await fetch(data.upload_url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'image/jpeg' },
-        body: blob,
-      })
-      if (!r.ok) {
-        const text = await r.text().catch(() => '')
-        console.warn('Thumbnail PUT failed', r.status, text)
-        return false
-      }
-      // PUT succeeded → tell backend to persist the URL on the lesson.
-      try {
-        await api.patch(`/education/lessons/${lessonId}/metadata/`, {
-          thumbnail_url: data.thumbnail_url,
-        })
-      } catch (e) {
-        console.warn('Thumbnail metadata patch failed:', e)
-        return false
-      }
-      return true
+      const file = blob instanceof File
+        ? blob
+        : new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' })
+      const fd = new FormData()
+      fd.append('file', file, 'thumbnail.jpg')
+      const { data } = await api.post(
+        `/education/lessons/${lessonId}/thumbnail/`,
+        fd,
+        { headers: { 'Content-Type': undefined } },  // let browser set multipart boundary
+      )
+      return !!data.thumbnail_url
     } catch (e) {
       console.warn('Thumbnail upload failed:', e)
       return false
@@ -898,10 +885,12 @@ function ThumbnailModal({ lessonId, onClose, onDone, captureVideoFrame, uploadTh
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState('')
   const [blob, setBlob] = useState(null)
+  const [uploadError, setUploadError] = useState('')
   const fileRef = useRef()
 
   const handleFile = async (file) => {
     if (!file) return
+    setUploadError('')
     if (file.type.startsWith('video/')) {
       const b = await captureVideoFrame(file)
       setBlob(b)
@@ -915,9 +904,14 @@ function ThumbnailModal({ lessonId, onClose, onDone, captureVideoFrame, uploadTh
   const handleSubmit = async () => {
     if (!blob) return
     setUploading(true)
-    await uploadThumbnailForLesson(lessonId, blob)
+    setUploadError('')
+    const ok = await uploadThumbnailForLesson(lessonId, blob)
     setUploading(false)
-    onDone()
+    if (ok) {
+      onDone()
+    } else {
+      setUploadError('Не удалось загрузить превью. Проверьте настройки R2 или попробуйте ещё раз.')
+    }
   }
 
   return (
@@ -956,6 +950,10 @@ function ThumbnailModal({ lessonId, onClose, onDone, captureVideoFrame, uploadTh
           >
             <Image size={16} /> {preview ? 'Выбрать другой файл' : 'Выбрать файл'}
           </button>
+
+          {uploadError && (
+            <p className="text-sm text-rose-600 bg-rose-50 rounded-xl px-3 py-2">{uploadError}</p>
+          )}
 
           <button
             onClick={handleSubmit}

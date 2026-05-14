@@ -446,6 +446,21 @@ class R2StorageService:
             ExpiresIn=ttl_seconds,
         )
 
+    @classmethod
+    def upload_object(
+        cls,
+        key: str,
+        data: bytes,
+        content_type: str = 'image/jpeg',
+    ) -> None:
+        client = cls._client()
+        client.put_object(
+            Bucket=cls._config_value('R2_BUCKET'),
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Jitsi — 1-on-1 consultations

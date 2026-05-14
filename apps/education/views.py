@@ -330,6 +330,48 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
             lesson.groups.set(groups)
         return Response(LessonAdminSerializer(lesson).data)
 
+    @action(detail=True, methods=['post'], url_path='thumbnail')
+    def upload_thumbnail(self, request, pk=None):
+        """
+        Accept an image file (multipart), upload to R2 server-side, save URL.
+
+        Replaces the two-step presigned-URL flow which required CORS on the R2
+        bucket.  The browser now sends the file to Django; Django writes to R2
+        directly and returns the final thumbnail_url.
+        """
+        from django.conf import settings as dj_settings
+        lesson = self._get_any_lesson(pk)
+        if not lesson:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail': 'file is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        key = f"thumbnails/{lesson.id}.jpg"
+        try:
+            R2StorageService.upload_object(key, file.read(), content_type='image/jpeg')
+        except ImproperlyConfigured as e:
+            return Response({'detail': f'R2 not configured: {e}'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception as e:
+            logger.exception('thumbnail upload failed')
+            return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        pub = (getattr(dj_settings, 'R2_PUBLIC_URL', '') or '').rstrip('/')
+        if pub:
+            thumbnail_url = f"{pub}/{key}"
+        else:
+            try:
+                thumbnail_url = R2StorageService.create_download_presigned_url(
+                    key, ttl_seconds=7 * 24 * 3600,
+                )
+            except Exception:
+                thumbnail_url = ''
+
+        lesson.thumbnail_url = thumbnail_url
+        lesson.save(update_fields=['thumbnail_url', 'updated_at'])
+        return Response({'thumbnail_url': thumbnail_url})
+
     @action(detail=True, methods=['post'], url_path='thumbnail-upload-url')
     def thumbnail_upload_url(self, request, pk=None):
         """

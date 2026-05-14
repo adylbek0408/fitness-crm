@@ -62,10 +62,24 @@ export default function VodPlayer({
     })
   }
 
+  // ── Ensure volume is audible on first play ────────────────────────────────
+  // Plyr persists volume in localStorage. If the student had previously muted
+  // or set volume=0, every subsequent lesson opens silent. On mobile the
+  // volume slider is hidden (CSS), so there was no way to recover.
+  // We force volume=1 / unmuted on the first canPlay event only.
+  const audioFixedRef = useRef(false)
+
   // ── Resume position ────────────────────────────────────────────────────────
   const handleCanPlay = () => {
     const player = playerRef.current
     if (!player) return
+    if (!audioFixedRef.current) {
+      audioFixedRef.current = true
+      try {
+        if (player.muted) player.muted = false
+        if (player.volume === 0) player.volume = 1
+      } catch {}
+    }
     if (!seekedRef.current && startAt > 0) {
       try { player.currentTime = startAt } catch {}
       seekedRef.current = true
