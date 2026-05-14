@@ -152,7 +152,7 @@ export default function BroadcastPage() {
   }
 
   const constraints = (q, facing) => ({
-    video: { facingMode: { ideal: facing }, width: { ideal: q.width }, height: { ideal: q.height }, frameRate: { ideal: q.frameRate } },
+    video: { facingMode: { ideal: facing }, width: { ideal: q.width }, height: { ideal: q.height }, frameRate: { min: 15, ideal: q.frameRate } },
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   })
 
@@ -489,10 +489,11 @@ export default function BroadcastPage() {
         const mixer = createMixerCanvas({
           trainerVideo: videoRef.current, width: mixW, height: mixH, fps: canvasFps,
         })
-        // Solo mode: throttle canvas to 10fps until a guest arrives.
+        // Solo mode: throttle canvas to 15fps until a guest arrives.
         // WHIP uses raw camera, so viewers are unaffected; MediaRecorder
-        // gets a lower-overhead canvas that still produces a valid archive.
-        mixer.setFps(10)
+        // gets a lower-overhead canvas that still produces an acceptable archive.
+        // 15fps (vs 20) cuts canvas GPU work by 25% while keeping recording fluid.
+        mixer.setFps(15)
         mixerRef.current = mixer
 
         const audioMix = createAudioMixer(ls)
@@ -561,12 +562,6 @@ export default function BroadcastPage() {
       whipStream.getTracks().forEach(t => {
         const s = pc.addTrack(t, whipStream)
         if (t.kind === 'video') whipVideoSenderRef.current = s
-        try {
-          const p = s.getParameters(); if (!p.encodings) p.encodings = [{}]
-          if (t.kind === 'video') { p.encodings[0].maxBitrate = whipVideoKbps * 1000; p.encodings[0].maxFramerate = q.frameRate }
-          else p.encodings[0].maxBitrate = 128000
-          s.setParameters(p).catch(() => {})
-        } catch {}
       })
 
       try {
@@ -598,6 +593,28 @@ export default function BroadcastPage() {
       const sessionUrl = whipResp.data.session_url || ''
       if (sessionUrl) whipRef.current = sessionUrl
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
+      // Apply bitrate / degradation caps AFTER negotiation completes.
+      // setParameters() is only valid once offer/answer have been exchanged
+      // (WebRTC spec §5.2); calling it before setRemoteDescription causes
+      // silent no-ops in Chrome / Safari and may be rejected in Firefox.
+      pc.getSenders().forEach(s => {
+        if (!s.track) return
+        try {
+          const p = s.getParameters()
+          if (!p.encodings?.length) p.encodings = [{}]
+          if (s.track.kind === 'video') {
+            p.encodings[0].maxBitrate    = whipVideoKbps * 1000
+            p.encodings[0].maxFramerate  = q.frameRate
+            // Under network congestion: drop resolution, keep frame rate.
+            // Fitness video (movement, counting) needs smooth motion; blurrier
+            // 480p @ 30fps is more watchable than crisp 720p @ 10fps.
+            p.encodings[0].degradationPreference = 'maintain-framerate'
+          } else {
+            p.encodings[0].maxBitrate = 160_000
+          }
+          s.setParameters(p).catch(e => console.warn('[whip] setParameters:', e))
+        } catch {}
+      })
       try { await api.post(`/education/streams/${id}/start/`) } catch {}
       // Start browser-side recording — fallback for CF automatic recording.
       // We feed it `outputStream` (the SAME stream the WHIP sender uses), so
@@ -828,8 +845,8 @@ export default function BroadcastPage() {
     guestRetryRef.current = 0  // reset so next invited guest starts fresh
     // Detach guest from mixers — canvas keeps drawing trainer-only.
     try { mixerRef.current?.setGuestVideo(null) } catch {}
-    // Back to solo mode: throttle canvas to 10fps (WHIP uses raw camera anyway).
-    try { mixerRef.current?.setFps(10) } catch {}
+    // Back to solo mode: throttle canvas to 15fps (WHIP uses raw camera anyway).
+    try { mixerRef.current?.setFps(15) } catch {}
     try { audioMixerRef.current?.removeGuest() } catch {}
     // Switch WHIP back to raw camera — no canvas overhead when broadcasting alone.
     try {

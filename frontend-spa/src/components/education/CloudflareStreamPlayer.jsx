@@ -429,7 +429,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         nudgeMaxRetry:                10,
         capLevelToPlayerSize:         true,
         maxStarvationDelay:           4,
-        abrEwmaDefaultEstimate:       1_500_000,   // стартуем с 1.5 Mbps — реалистично для мобильного, не утопит сеть
+        abrEwmaDefaultEstimate:       3_000_000,   // стартуем с 3 Mbps — хорошая точка для WiFi/4G; ABR опустит сам если нужно
         // Per-request retries before escalating to FATAL:
         manifestLoadingMaxRetry:      4,
         manifestLoadingRetryDelay:    1500,
