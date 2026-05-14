@@ -46,6 +46,9 @@ export default function BroadcastPage() {
   const [recordingPct,   setRecordingPct]   = useState(0)
   const [recordingDone,  setRecordingDone]  = useState(false)
   const [uploadError,    setUploadError]    = useState('')
+  // Incrementing this re-triggers the upload effect so the trainer can retry
+  // without reloading the page (IDB chunks survive the failed attempt).
+  const [uploadRetry,    setUploadRetry]    = useState(0)
   // Live "MB recorded so far" indicator — read every 15 s from IDB; gives the
   // trainer a sanity check ("yes, my browser is capturing this") and lets us
   // warn before quota fills.
@@ -311,9 +314,9 @@ export default function BroadcastPage() {
         const msg = e?.response?.data?.detail || e?.message || 'Ошибка загрузки'
         setUploadError(msg)
         clearUploadProgress()
-        // Do NOT clear IDB on failure — the trainer can stay on the page,
-        // hit "Retry" once we add it, or reload to retry. Stale chunks get
-        // GC'd by clearStale() after 24 h.
+        // Do NOT clear IDB on failure — IDB chunks survive the attempt so
+        // the trainer can hit "Повторить загрузку". Stale chunks are GC'd
+        // by clearStale() after 24 h.
       } finally {
         setUploading(false)
       }
@@ -323,7 +326,7 @@ export default function BroadcastPage() {
     // No abort/cleanup here: we want the upload to complete even if the user
     // navigates away. The button is disabled while `uploading` is true; that
     // is the actual safeguard against losing the recording.
-  }, [status, id, nav])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, id, nav, uploadRetry])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Warn before unload if upload is still in flight — closing the tab WILL
   // abort the XHR and the recording will be lost.
@@ -1181,6 +1184,16 @@ export default function BroadcastPage() {
                 <>
                   <p className="text-rose-300 text-sm font-semibold mt-2">Ошибка сохранения записи</p>
                   <p className="text-white/50 text-xs mt-1 break-words">{uploadError}</p>
+                  <button
+                    onClick={() => {
+                      setUploadError('')
+                      setRecordingPct(0)
+                      setUploadRetry(n => n + 1)
+                    }}
+                    className="mt-3 px-5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-sm font-semibold transition active:scale-95"
+                  >
+                    Повторить загрузку
+                  </button>
                 </>
               ) : recordingDone ? (
                 <p className="text-emerald-400 text-sm font-semibold mt-2">
