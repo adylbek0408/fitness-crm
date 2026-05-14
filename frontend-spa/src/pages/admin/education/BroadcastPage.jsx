@@ -209,6 +209,11 @@ export default function BroadcastPage() {
           // Stop recorder before tracks so the final chunk is flushed
           const mr = mediaRecorderRef.current
           if (mr && mr.state !== 'inactive') { try { mr.stop() } catch {} }
+          // Free mixers — they run rAF + AudioContext indefinitely if not stopped
+          try { mixerRef.current?.stop() } catch {}
+          mixerRef.current = null
+          try { audioMixerRef.current?.close() } catch {}
+          audioMixerRef.current = null
           localStreamRef.current?.getTracks().forEach(t => t.stop())
           pcRef.current?.close()
           if (videoRef.current) videoRef.current.srcObject = null

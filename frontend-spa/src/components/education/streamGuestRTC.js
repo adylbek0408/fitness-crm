@@ -352,10 +352,15 @@ export async function startTrainerP2P({
     if (pc.iceConnectionState === 'failed') onFailed?.()
   })
 
-  // Create offer
-  const offer = await pc.createOffer()
-  await pc.setLocalDescription(offer)
-  await postOffer(offer.sdp)
+  // Create offer — wrap async steps so PC is closed on any failure
+  try {
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+    await postOffer(offer.sdp)
+  } catch (e) {
+    try { pc.close() } catch {}
+    throw e
+  }
 
   // Poll for answer + guest ICE
   const tick = async () => {

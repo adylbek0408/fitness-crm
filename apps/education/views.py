@@ -428,8 +428,8 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def trash(self, request):
-        """List soft-deleted lessons."""
-        qs = Lesson.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        """List soft-deleted lessons (most-recent 500)."""
+        qs = Lesson.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')[:500]
         return Response(LessonAdminSerializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'])
@@ -667,29 +667,23 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Cancel ALL existing pending or active invites for this client in
-        # this stream — not just 'invited'. If a previous P2P session is
-        # half-alive (status='active' but the guest already navigated away,
-        # or trainer kicked them via guest_end which only flips status),
-        # leaving it visible would create two parallel guest_polls on the
-        # student side — they'd see double invites or even start two P2P
-        # PCs to the same trainer.
-        # We hard-flag them as ended AND set deleted_at so the student-side
-        # /cabinet/.../guest/ endpoint stops returning them.
+        # Atomically cancel old invites and create new one — stream row lock
+        # serialises concurrent invites so we never produce duplicate active guests.
+        from django.db import transaction as _txn
         from django.utils import timezone as dj_tz
-        now = dj_tz.now()
-        StreamGuest.objects.filter(
-            stream=stream, client=client,
-            status__in=['invited', 'active'],
-            deleted_at__isnull=True,
-        ).update(status='ended', deleted_at=now)
-
-        # WebRTC P2P (no Jitsi): trainer initiates the offer once guest accepts.
-        guest = StreamGuest.objects.create(
-            stream=stream,
-            client=client,
-            jitsi_room='',
-        )
+        with _txn.atomic():
+            LiveStream.objects.select_for_update().get(pk=stream.pk)  # row-level lock
+            now = dj_tz.now()
+            StreamGuest.objects.filter(
+                stream=stream, client=client,
+                status__in=['invited', 'active'],
+                deleted_at__isnull=True,
+            ).update(status='ended', deleted_at=now)
+            guest = StreamGuest.objects.create(
+                stream=stream,
+                client=client,
+                jitsi_room='',
+            )
         return Response(StreamGuestSerializer(guest).data, status=201)
 
     @action(detail=True, methods=['post'], url_path=r'guests/(?P<guest_id>[^/.]+)/end')
@@ -1040,6 +1034,11 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         Requires nginx: client_max_body_size 2g (see deploy/nginx.conf).
         """
         stream = self.get_object()
+        if stream.status not in ('ended', 'archived'):
+            return Response(
+                {'detail': 'Можно загрузить запись только завершённого эфира.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if stream.archived_lesson_id:
             return Response({'detail': 'У эфира уже есть запись.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1158,7 +1157,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def trash(self, request):
-        qs = LiveStream.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        qs = LiveStream.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')[:500]
         return Response(LiveStreamAdminSerializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'])
@@ -1279,7 +1278,7 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def trash(self, request):
-        qs = Consultation.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        qs = Consultation.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')[:500]
         return Response(self.get_serializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'])
