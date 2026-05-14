@@ -82,6 +82,7 @@ export default function StreamLive() {
       ? `/cabinet/education/streams/active/?id=${streamId}`
       : '/cabinet/education/streams/active/'
 
+    let ok = true
     let inflight = false
     const tick = async () => {
       if (streamEndedRef.current) return
@@ -110,13 +111,13 @@ export default function StreamLive() {
         if (!joinedRef.current) {
           joinedRef.current = true
           api.post(`/cabinet/education/streams/${s.id}/join/`)
-            .then(r2 => setJoined(r2.data))
+            .then(r2 => { if (ok) setJoined(r2.data) })
             .catch(() => { joinedRef.current = false })
         }
 
         api.post(`/cabinet/education/streams/${s.id}/heartbeat/`).catch(() => {})
         api.get(`/cabinet/education/streams/${s.id}/viewers/`)
-          .then(r2 => setViewers(r2.data || []))
+          .then(r2 => { if (ok) setViewers(r2.data || []) })
           .catch(() => {})
       } catch {}
       finally { inflight = false }
@@ -124,7 +125,7 @@ export default function StreamLive() {
 
     tick()
     const id = setInterval(tick, 8000)
-    return () => { clearInterval(id); joinedRef.current = false }
+    return () => { ok = false; clearInterval(id); joinedRef.current = false }
   }, [streamId])
 
   // ── Guest invite polling ──────────────────────────────────────────────────

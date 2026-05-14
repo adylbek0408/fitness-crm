@@ -708,7 +708,8 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         except StreamGuest.DoesNotExist:
             return Response(status=404)
         guest.status = 'ended'
-        guest.save(update_fields=['status'])
+        guest.deleted_at = timezone.now()
+        guest.save(update_fields=['status', 'deleted_at'])
         return Response(status=204)
 
     @action(

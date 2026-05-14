@@ -451,17 +451,17 @@ export default function BroadcastPage() {
       ls.getTracks().forEach(t => {
         t.addEventListener('ended', () => {
           console.warn('[track-ended]', t.kind, 'track ended unexpectedly')
-          if (statusRef.current === 'live') {
-            setError(
-              t.kind === 'video'
-                ? 'Камера отключена. Эфир остановлен — переподключите устройство и начните заново.'
-                : 'Микрофон отключён. Звук пропал.'
-            )
-            // Only fully stop on video track loss — losing mic mid-stream
-            // is recoverable (silence) and the trainer may still want to
-            // finish gracefully.
-            if (t.kind === 'video') stopBroadcast().catch(() => {})
-          }
+          if (statusRef.current !== 'live') return
+          // Ignore tracks intentionally stopped during camera flip — localStreamRef
+          // is updated to the new stream before the old tracks are stopped, so any
+          // track that is no longer in the active stream was replaced, not lost.
+          if (!localStreamRef.current?.getTracks().some(a => a.id === t.id)) return
+          setError(
+            t.kind === 'video'
+              ? 'Камера отключена. Эфир остановлен — переподключите устройство и начните заново.'
+              : 'Микрофон отключён. Звук пропал.'
+          )
+          if (t.kind === 'video') stopBroadcast().catch(() => {})
         })
       })
 
