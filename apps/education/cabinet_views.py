@@ -265,16 +265,22 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         # last_watched_at is auto_now in the model — ensure update_or_create
         # actually bumps it even when nothing else changed.
         from django.utils import timezone as _tz
-        progress, _ = LessonProgress.objects.update_or_create(
+        # Use get_or_create + explicit save instead of update_or_create to
+        # avoid the race condition where two concurrent requests from the same
+        # client (two browser tabs) both see no row and both try to INSERT,
+        # hitting the unique_together constraint and raising IntegrityError.
+        progress, _ = LessonProgress.objects.get_or_create(
             client=client,
             lesson=lesson,
-            defaults={
-                'last_position_sec': position,
-                'percent_watched': percent,
-                'is_completed': is_completed,
-                'last_watched_at': _tz.now(),
-            },
+            defaults={'last_position_sec': 0, 'percent_watched': 0},
         )
+        progress.last_position_sec = position
+        progress.percent_watched   = percent
+        progress.is_completed      = is_completed
+        progress.last_watched_at   = _tz.now()
+        progress.save(update_fields=[
+            'last_position_sec', 'percent_watched', 'is_completed', 'last_watched_at',
+        ])
         return Response(LessonProgressSerializer(progress).data)
 
 
@@ -386,7 +392,10 @@ class CabinetStreamJoinView(APIView):
             'playback_url': playback_url,
             'playback_kind': playback_kind,
             'watermark': {
-                'text': f"{client.first_name or ''} {client.last_name or ''}".strip(),
+                'text': (
+                    f"{client.first_name or ''} {client.last_name or ''}".strip()
+                    or 'Ученик'
+                ),
             },
         })
 
@@ -397,33 +406,29 @@ class CabinetStreamHeartbeatView(APIView):
 
     def post(self, request, pk):
         client = request.user.client
+        # Always validate stream is still live — an existing viewer row must
+        # not keep incrementing heartbeats after the stream ends.
+        try:
+            stream = LiveStream.objects.get(pk=pk, status='live', deleted_at__isnull=True)
+        except LiveStream.DoesNotExist:
+            return Response({'detail': 'Stream not live.'}, status=status.HTTP_404_NOT_FOUND)
+
         viewer = StreamViewer.objects.filter(
             stream_id=pk, client=client, is_active=True,
         ).first()
         if not viewer:
             # No active viewer — try to revive an inactive one or create afresh.
-            # Stream must still be live and the client must have access.
-            try:
-                stream = LiveStream.objects.get(pk=pk, status='live', deleted_at__isnull=True)
-            except LiveStream.DoesNotExist:
-                return Response({'detail': 'Not joined.'},
-                                status=status.HTTP_404_NOT_FOUND)
             if stream.groups.exists() and (
                 not client.group_id
                 or not stream.groups.filter(id=client.group_id).exists()
             ):
-                return Response({'detail': 'Forbidden.'},
-                                status=status.HTTP_403_FORBIDDEN)
-            # update_or_create is safe now that (stream, client) is unique.
+                return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
             StreamViewer.objects.update_or_create(
                 stream=stream, client=client,
                 defaults={'is_active': True, 'left_at': None},
             )
             return Response({'ok': True, 'recreated': True})
-        # Cheap rate limit: legitimate clients heartbeat every 5–10 s. Drop
-        # spammy beats from a misbehaving (or malicious) client without
-        # writing to the DB, so /heartbeat/ can't be used to DoS the row by
-        # rewriting last_heartbeat_at thousands of times per second.
+        # Cheap rate limit: drop spammy beats without writing to DB.
         if viewer.last_heartbeat_at:
             since = (timezone.now() - viewer.last_heartbeat_at).total_seconds()
             if since < 2:

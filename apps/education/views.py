@@ -15,7 +15,7 @@ import logging
 import uuid as _uuid
 from datetime import timedelta
 
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured, ValidationError as DjangoValidationError
 from django.db.models import Avg, Count, Max, Q, Subquery
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -499,13 +499,13 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
         stream = self.get_object()
-        if stream.status not in ('scheduled', 'live'):
+        if stream.status != 'scheduled':
             return Response(
                 {'detail': f'Cannot start from status={stream.status}'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         stream.status = 'live'
-        stream.started_at = stream.started_at or timezone.now()
+        stream.started_at = timezone.now()
         stream.save(update_fields=['status', 'started_at', 'updated_at'])
         return Response(LiveStreamAdminSerializer(stream).data)
 
@@ -564,10 +564,16 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         stream.ended_at = timezone.now()
         stream.save(update_fields=['status', 'ended_at', 'updated_at'])
         # Mark all viewers as left
-        from .models import StreamViewer
+        from .models import StreamViewer, StreamGuest
         StreamViewer.objects.filter(stream=stream, is_active=True).update(
             is_active=False, left_at=timezone.now(),
         )
+        # Cancel any invited/active guests so they learn the stream ended
+        StreamGuest.objects.filter(
+            stream=stream,
+            status__in=['invited', 'active'],
+            deleted_at__isnull=True,
+        ).update(status='ended')
 
         # Proxy WHIP DELETE to Cloudflare so recording is triggered reliably.
         # Prefer the session URL (from whip-proxy response); fall back to the
@@ -640,13 +646,26 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             ).select_related('client')
             return Response(StreamGuestSerializer(qs, many=True).data)
 
+        if stream.status != 'live':
+            return Response({'error': 'stream must be live to invite guests'}, status=400)
+
         client_id = request.data.get('client_id')
         if not client_id:
             return Response({'error': 'client_id required'}, status=400)
         try:
             client = Client.objects.get(pk=client_id)
-        except (Client.DoesNotExist, ValueError, TypeError):
+        except (Client.DoesNotExist, ValueError, TypeError, DjangoValidationError):
             return Response({'error': 'client not found'}, status=404)
+
+        # Validate the client can actually access this stream
+        if stream.groups.exists() and (
+            not client.group_id
+            or not stream.groups.filter(id=client.group_id).exists()
+        ):
+            return Response(
+                {'error': 'client is not in a group that can access this stream'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Cancel ALL existing pending or active invites for this client in
         # this stream — not just 'invited'. If a previous P2P session is
@@ -1211,6 +1230,11 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
     def join_as_trainer(self, request, pk=None):
         """Return Jitsi room info for the trainer without incrementing used_count."""
         consultation = self.get_object()
+        # Auto-expire if deadline passed
+        if consultation.status == 'active' and consultation.expires_at \
+                and consultation.expires_at < timezone.now():
+            consultation.status = 'expired'
+            consultation.save(update_fields=['status', 'updated_at'])
         # Allow trainer to rejoin 'used' consultations while still ongoing
         if consultation.status not in ('active', 'used'):
             return Response(
@@ -1264,6 +1288,11 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
         if not consultation:
             return Response({'detail': 'Not found in trash.'},
                             status=status.HTTP_404_NOT_FOUND)
+        if consultation.status in ('used', 'expired', 'cancelled'):
+            return Response(
+                {'detail': f'Cannot restore {consultation.status} consultation. Create a new one.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         consultation.deleted_at = None
         consultation.status = 'active'
         consultation.save(update_fields=['deleted_at', 'status', 'updated_at'])
