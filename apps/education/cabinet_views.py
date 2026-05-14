@@ -687,7 +687,7 @@ class CabinetStreamGuestView(APIView):
             client=client,
             status__in=['invited', 'active'],
             deleted_at__isnull=True,
-        ).update(status='ended')
+        ).update(status='ended', deleted_at=timezone.now())
         return Response(status=204)
 
 

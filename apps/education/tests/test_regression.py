@@ -2,18 +2,19 @@
 Regression tests for bugs fixed in the education module.
 
 Each class documents the exact bug scenario it guards against:
-  - TestGuestEndSoftDelete       : guest_end was not setting deleted_at
-  - TestConsultationRestoreGuard : restore() must refuse used/expired/cancelled
-  - TestGuestCleanupOnStreamEnd  : stream.end() sets deleted_at on all active guests
-  - TestWhipReplacedOnGuestLeave : backend side-effects of guest leaving stage
-  - TestCFWebhookIdempotency     : duplicate webhook delivery must not create two Lessons
+  - TestGuestEndSoftDelete         : guest_end was not setting deleted_at
+  - TestCabinetGuestLeaveSoftDelete: cabinet DELETE /guest/ was not setting deleted_at
+  - TestConsultationRestoreGuard   : restore() must refuse used/expired/cancelled
+  - TestGuestCleanupOnStreamEnd    : stream.end() sets deleted_at on all active guests
+  - TestWhipReplacedOnGuestLeave   : backend side-effects of guest leaving stage
+  - TestCFWebhookIdempotency       : duplicate webhook delivery must not create two Lessons
 """
 import pytest
 from django.utils import timezone
 from datetime import timedelta
 
 from apps.education.models import Lesson, LiveStream, StreamGuest, Consultation
-from .conftest import make_client, admin_token
+from .conftest import make_client, admin_token, cabinet_auth
 
 
 # ── guest_end sets deleted_at ─────────────────────────────────────────────────
@@ -230,3 +231,58 @@ class TestSdpResetOnEndedGuest:
         guest.refresh_from_db()
         assert guest.offer_sdp == ''
         assert guest.answer_sdp == ''
+
+
+# ── Cabinet-side guest leave sets deleted_at ─────────────────────────────────
+
+@pytest.mark.django_db
+class TestCabinetGuestLeaveSoftDelete:
+    """
+    Regression: cabinet DELETE /cabinet/education/streams/{pk}/guest/ was
+    setting status='ended' but NOT deleted_at. The soft-delete contract requires
+    deleted_at to be set — otherwise is_deleted filters and trash queries see
+    the row as still 'alive' even though the student has left the stage.
+
+    This was the mirror of the admin-side bug fixed in TestGuestEndSoftDelete,
+    but on the student-facing endpoint which was missed in that fix.
+    """
+
+    def test_decline_invite_sets_deleted_at(self, api_client, live_stream, client_a):
+        guest = StreamGuest.objects.create(
+            stream=live_stream, client=client_a, status='invited',
+        )
+        cabinet_auth(api_client, client_a)
+        r = api_client.delete(f'/api/cabinet/education/streams/{live_stream.id}/guest/')
+        assert r.status_code == 204
+        guest.refresh_from_db()
+        assert guest.status == 'ended'
+        assert guest.deleted_at is not None, \
+            'cabinet guest leave (decline) must set deleted_at'
+
+    def test_leave_stage_sets_deleted_at(self, api_client, live_stream, client_a):
+        guest = StreamGuest.objects.create(
+            stream=live_stream, client=client_a, status='active',
+        )
+        cabinet_auth(api_client, client_a)
+        r = api_client.delete(f'/api/cabinet/education/streams/{live_stream.id}/guest/')
+        assert r.status_code == 204
+        guest.refresh_from_db()
+        assert guest.status == 'ended'
+        assert guest.deleted_at is not None, \
+            'cabinet guest leave (active) must set deleted_at'
+
+    def test_leave_does_not_affect_other_guests(self, api_client, live_stream, client_a, client_b):
+        guest_a = StreamGuest.objects.create(
+            stream=live_stream, client=client_a, status='active',
+        )
+        guest_b = StreamGuest.objects.create(
+            stream=live_stream, client=client_b, status='active',
+        )
+        cabinet_auth(api_client, client_a)
+        api_client.delete(f'/api/cabinet/education/streams/{live_stream.id}/guest/')
+        guest_a.refresh_from_db()
+        guest_b.refresh_from_db()
+        assert guest_a.status == 'ended'
+        assert guest_a.deleted_at is not None
+        assert guest_b.status == 'active'   # other guest unaffected
+        assert guest_b.deleted_at is None
