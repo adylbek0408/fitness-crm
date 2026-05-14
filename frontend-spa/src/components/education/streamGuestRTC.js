@@ -47,7 +47,7 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
   let currentGuest = guestVideo || null
   let swapped = false   // when true: guest is fullscreen, trainer is PIP
   let rvfcSupported = currentTrainer && typeof currentTrainer.requestVideoFrameCallback === 'function'
-  const minFrameMs = 1000 / fps   // e.g. 50 ms for 20 fps
+  let minFrameMs = 1000 / fps   // mutable — setFps() changes this at runtime
   let lastDrawMs = 0
 
   // Helper: cover-fit a video element into a target rect with rounded corners.
@@ -196,8 +196,14 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
   // canvas — WHIP stream to viewers AND the local MediaRecorder archive — so
   // the recording matches what the trainer chose to show during the broadcast.
   const setSwapped = (v) => { swapped = !!v }
+  // Dynamically throttle the canvas draw rate. Use a low fps (e.g. 10) when
+  // no guest is on stage (WHIP uses raw camera anyway — canvas only feeds
+  // MediaRecorder). Restore full fps when a guest joins so viewers see smooth
+  // PIP. canvas.captureStream(fps) arg is just a hint; the actual capture
+  // rate follows how fast we commit frames via drawAll.
+  const setFps = (newFps) => { minFrameMs = 1000 / newFps }
 
-  return { canvas, stream, stop, setGuestVideo, setTrainerVideo, setSwapped }
+  return { canvas, stream, stop, setGuestVideo, setTrainerVideo, setSwapped, setFps }
 }
 
 // ── Audio mixer (Web Audio API) ─────────────────────────────────────────────

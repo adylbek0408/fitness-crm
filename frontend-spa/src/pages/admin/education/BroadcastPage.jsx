@@ -109,9 +109,10 @@ export default function BroadcastPage() {
   // every change visible live (flip-camera, guest in/out) is captured in the
   // recording — MediaRecorder snapshots tracks at start() so feeding it the
   // raw camera track would freeze the recording on the original camera.
-  const mixerRef         = useRef(null)         // { canvas, stream, stop, setGuestVideo, setTrainerVideo }
+  const mixerRef         = useRef(null)         // { canvas, stream, stop, setGuestVideo, setTrainerVideo, setFps }
   const audioMixerRef    = useRef(null)         // { mixedTrack, addGuest, removeGuest, replaceTrainer, close }
   const mixedOutputRef   = useRef(null)         // MediaStream — what's actually sent / recorded
+  const mixerFpsRef      = useRef(20)           // full-quality fps — restored when guest leaves
   const guestVideoElRef  = useRef(null)         // hidden <video> for received guest stream
   const guestPipVideoRef = useRef(null)         // visible PIP <video> in trainer preview
 
@@ -478,16 +479,20 @@ export default function BroadcastPage() {
       // PIP, swap) without rewiring MediaRecorder mid-broadcast.
       const mixW = Math.min(q.width, 1280)
       const mixH = Math.min(q.height, 720)
-      // Canvas fps scales with the quality setting. The canvas only feeds WHIP
-      // when a guest PIP is visible; otherwise raw camera is used (no canvas
-      // overhead). The recording always comes from the canvas, so higher fps
-      // means better archive quality on faster devices.
+      // Canvas fps when a guest is on stage: scales with quality setting.
+      // When no guest is present, canvas is throttled to 10fps (recording only;
+      // WHIP uses raw camera). This halves canvas GPU work on solo broadcasts.
       const canvasFps = quality === '480p' ? 15 : quality === '1080p' ? 24 : 20
+      mixerFpsRef.current = canvasFps
       let mixedStream = null
       try {
         const mixer = createMixerCanvas({
           trainerVideo: videoRef.current, width: mixW, height: mixH, fps: canvasFps,
         })
+        // Solo mode: throttle canvas to 10fps until a guest arrives.
+        // WHIP uses raw camera, so viewers are unaffected; MediaRecorder
+        // gets a lower-overhead canvas that still produces a valid archive.
+        mixer.setFps(10)
         mixerRef.current = mixer
 
         const audioMix = createAudioMixer(ls)
@@ -796,6 +801,8 @@ export default function BroadcastPage() {
   const startMixer = (passedGuestStream) => {
     if (!mixerRef.current || !guestVideoElRef.current) return
     try { mixerRef.current.setGuestVideo(guestVideoElRef.current) } catch {}
+    // Guest is now visible — restore full fps so the PIP looks smooth for viewers.
+    try { mixerRef.current.setFps(mixerFpsRef.current) } catch {}
     // Switch WHIP to canvas composite so viewers see the guest PIP
     try {
       const canvasVt = mixerRef.current.stream.getVideoTracks()[0]
@@ -821,6 +828,8 @@ export default function BroadcastPage() {
     guestRetryRef.current = 0  // reset so next invited guest starts fresh
     // Detach guest from mixers — canvas keeps drawing trainer-only.
     try { mixerRef.current?.setGuestVideo(null) } catch {}
+    // Back to solo mode: throttle canvas to 10fps (WHIP uses raw camera anyway).
+    try { mixerRef.current?.setFps(10) } catch {}
     try { audioMixerRef.current?.removeGuest() } catch {}
     // Switch WHIP back to raw camera — no canvas overhead when broadcasting alone.
     try {
