@@ -632,7 +632,7 @@ export default function BroadcastPage() {
         ].find(t => MediaRecorder.isTypeSupported(t)) || ''
         recorderMimeRef.current = mimeType
         if (mimeType) {
-          const mr = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 128_000 })
+          const mr = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 160_000 })
           // stopPromise resolves only after onstop — by then ondataavailable has already fired
           recorderStopPromise.current = new Promise(res => { mr.onstop = res })
           // Reset legacy in-memory ref (still kept as the fallback path when
@@ -658,6 +658,11 @@ export default function BroadcastPage() {
       setBroadcasting(true); setStatus('live')
     } catch(e) {
       setError('Ошибка: ' + (e.message || e)); setStatus('idle')
+      // Tear down any partially-created resources so the next attempt starts clean.
+      try { mixerRef.current?.stop() } catch {}; mixerRef.current = null
+      try { audioMixerRef.current?.close() } catch {}; audioMixerRef.current = null
+      pcRef.current?.close(); pcRef.current = null
+      whipVideoSenderRef.current = null
       localStreamRef.current?.getTracks().forEach(t => t.stop())
     }
   }
