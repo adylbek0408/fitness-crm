@@ -255,7 +255,7 @@ export default function StreamsAdmin() {
     setEditStream(s)
     setEditForm({
       title: s.title || '',
-      description: '',
+      description: s.description || '',
       group_ids: (s.groups || []).map(g => (typeof g === 'object' ? g.id : g)),
     })
   }

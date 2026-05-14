@@ -201,6 +201,17 @@ export default function BroadcastPage() {
   }, [status, id])
 
   useEffect(() => {
+    if (status !== 'live' || !id) { setRecBytes(0); return }
+    let ok = true
+    const check = async () => {
+      try { const b = await recordCountBytes(id); if (ok) setRecBytes(b) } catch {}
+    }
+    check()
+    const t = setInterval(check, 15000)
+    return () => { ok = false; clearInterval(t) }
+  }, [status, id])
+
+  useEffect(() => {
     if (status !== 'live' || !id) return
     let ok = true
     // External-stop poll: catches the case where a 2nd device hijacks the
@@ -1073,6 +1084,11 @@ export default function BroadcastPage() {
                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
               </span>
               <span className="font-mono text-sm text-white/90 shrink-0 tabular-nums drop-shadow rounded-xl bg-black/35 backdrop-blur-sm border border-white/10 px-2.5 py-1.5">{fmt(elapsed)}</span>
+              {recBytes >= 1_048_576 && (
+                <span title="Записано в браузере" className="hidden sm:block font-mono text-[11px] text-white/50 shrink-0 tabular-nums bg-black/35 backdrop-blur-sm border border-white/10 px-2 py-1.5 rounded-xl">
+                  ⏺ {Math.round(recBytes / 1_048_576)} МБ
+                </span>
+              )}
             </div>
 
             {connState && !['connected', 'completed', ''].includes(connState) && (
@@ -1181,7 +1197,9 @@ export default function BroadcastPage() {
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-5 px-8"
             style={{ background: 'linear-gradient(to bottom,rgba(0,0,0,.9),rgba(0,0,0,.95))' }}>
             <div className={`w-20 h-20 rounded-full flex items-center justify-center border ${uploadError ? 'bg-rose-500/15 border-rose-500/30' : 'bg-emerald-500/15 border-emerald-500/30'}`}>
-              <CheckCircle2 size={40} className={uploadError ? 'text-rose-400' : 'text-emerald-400'} />
+              {uploadError
+                ? <AlertCircle size={40} className="text-rose-400" />
+                : <CheckCircle2 size={40} className="text-emerald-400" />}
             </div>
             <div className="text-center max-w-sm">
               <p className="text-2xl font-bold text-white">Эфир завершён</p>
