@@ -47,6 +47,8 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
   let currentGuest = guestVideo || null
   let swapped = false   // when true: guest is fullscreen, trainer is PIP
   let rvfcSupported = currentTrainer && typeof currentTrainer.requestVideoFrameCallback === 'function'
+  const minFrameMs = 1000 / fps   // e.g. 50 ms for 20 fps
+  let lastDrawMs = 0
 
   // Helper: cover-fit a video element into a target rect with rounded corners.
   const drawVideoInRect = (vid, dx, dy, dw, dh, radius = 0, withBorder = false) => {
@@ -101,6 +103,20 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
   // decimate to fps internally — output cadence is smooth.
   const drawAll = () => {
     if (!running) return
+    // Throttle actual draws to fps target — rVFC fires at the source frame rate
+    // (up to 30fps) but captureStream only samples at fps (20fps). Skipping
+    // excess draws cuts canvas GPU work by ~33% on mobile, reducing heat.
+    const now = performance.now()
+    const bigSource0 = swapped && currentGuest ? currentGuest : currentTrainer
+    const shouldSkip = (now - lastDrawMs) < (minFrameMs - 2)
+    if (shouldSkip) {
+      if (bigSource0 && typeof bigSource0.requestVideoFrameCallback === 'function') {
+        try { bigSource0.requestVideoFrameCallback(drawAll); return } catch {}
+      }
+      requestAnimationFrame(drawAll)
+      return
+    }
+    lastDrawMs = now
     const trainerVideo = currentTrainer
     const guestVideo   = currentGuest
     const hasGuest = !!(guestVideo && guestVideo.readyState >= 2 && !guestVideo.paused)

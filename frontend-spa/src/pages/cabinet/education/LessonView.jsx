@@ -6,7 +6,6 @@ import {
 import api from '../../../api/axios'
 import VodPlayer from '../../../components/education/VodPlayer'
 import AudioPlayer from '../../../components/education/AudioPlayer'
-import Watermark from '../../../components/education/Watermark'
 import useContentProtection from '../../../components/education/useContentProtection'
 
 export default function LessonView() {
@@ -162,8 +161,8 @@ export default function LessonView() {
                       onReady={v => { videoRef.current = v }}
                       startAt={startAt}
                       poster={lesson.thumbnail_url || ''}
+                      watermarkText={watermarkText}
                     />
-                    <Watermark text={watermarkText} />
                   </>
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-white/70 text-sm">

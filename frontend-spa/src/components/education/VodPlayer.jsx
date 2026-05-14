@@ -20,6 +20,7 @@ import Hls from 'hls.js'
 import '@vidstack/react/player/styles/base.css'
 import '@vidstack/react/player/styles/plyr/theme.css'
 import './VodPlayer.css'
+import Watermark from './Watermark'
 
 export default function VodPlayer({
   src,
@@ -30,6 +31,7 @@ export default function VodPlayer({
   onTimeUpdate,
   onReady,
   live = false,
+  watermarkText = '',
 }) {
   const playerRef   = useRef(null)
   const seekedRef   = useRef(false)
@@ -100,6 +102,10 @@ export default function VodPlayer({
       className="vod-player w-full h-full"
     >
       <MediaProvider />
+      {/* Watermark inside MediaPlayer so Plyr's own fullscreen button
+          keeps it visible — fullscreen captures the MediaPlayer element,
+          not just the underlying <video>. */}
+      <Watermark text={watermarkText} />
       <PlyrLayout
         icons={plyrLayoutIcons}
         displayDuration

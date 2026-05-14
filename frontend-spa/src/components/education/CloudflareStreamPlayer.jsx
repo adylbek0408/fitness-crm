@@ -127,15 +127,16 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       if (cleanedUp || !hasPlayed) return
       clearStall()
       stallTimer = setTimeout(() => {
-        if (cleanedUp || !v.paused === false) {}    // no-op guard
         if (cleanedUp) return
         stallAttempts++
-        console.warn('[player] stalled >5s — recovery attempt', stallAttempts,
+        console.warn('[player] stalled >8s — recovery attempt', stallAttempts,
           'currentTime:', v.currentTime, 'buffered:', v.buffered.length)
         // First try: just nudge play
         v.play().catch(() => {})
-        // After 2 failed nudges: jump to live edge by reloading
-        if (stallAttempts >= 2 && live) {
+        // After 3 failed nudges: jump to live edge by reloading.
+        // Threshold raised from 2→3 to avoid jarring live-edge resets on brief
+        // congestion (each reset appears as a ~10 s time jump to the viewer).
+        if (stallAttempts >= 3 && live) {
           stallAttempts = 0
           try {
             if (hlsRef.current) {
@@ -146,7 +147,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             }
           } catch {}
         }
-      }, 5000)
+      }, 8000)
     }
     const onTimeUpdate = () => { stallAttempts = 0; clearStall() }
     v.addEventListener('waiting',    onWaiting)
@@ -514,7 +515,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         // Hide native controls while our "tap to start" overlay is active —
         // otherwise iOS shows a grey play button that visually competes.
         controls={!needsTap}
-        controlsList="nodownload noremoteplayback"
+        controlsList="nodownload noremoteplayback nofullscreen"
         disablePictureInPicture={false}
       />
 

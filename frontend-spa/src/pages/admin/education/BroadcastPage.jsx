@@ -468,11 +468,16 @@ export default function BroadcastPage() {
         }
       })
 
+      // Canvas is always capped at 720p (mixW/mixH above), so cap video bitrate
+      // at 2500 Kbps regardless of selected quality — sending 4500 Kbps for a
+      // 720p canvas makes the WebRTC encoder run at max effort for no viewer benefit
+      // and heats up the device noticeably.
+      const whipVideoKbps = Math.min(q.videoKbps, 2500)
       outputStream.getTracks().forEach(t => {
         const s = pc.addTrack(t, outputStream)
         try {
           const p = s.getParameters(); if (!p.encodings) p.encodings = [{}]
-          if (t.kind === 'video') { p.encodings[0].maxBitrate = q.videoKbps * 1000; p.encodings[0].maxFramerate = q.frameRate }
+          if (t.kind === 'video') { p.encodings[0].maxBitrate = whipVideoKbps * 1000; p.encodings[0].maxFramerate = q.frameRate }
           else p.encodings[0].maxBitrate = 128000
           s.setParameters(p).catch(() => {})
         } catch {}
