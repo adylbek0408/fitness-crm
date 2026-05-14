@@ -86,7 +86,7 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
             # below for tags. Keep direct group filter as the primary path.
         qs = Lesson.objects.filter(
             is_published=True, deleted_at__isnull=True,
-        ).filter(q).distinct()
+        ).filter(q).prefetch_related('groups').distinct()
 
         # Tag intersection fallback (handles JSONField cleanly).
         if client_tags:

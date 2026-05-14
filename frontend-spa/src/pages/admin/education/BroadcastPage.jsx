@@ -101,6 +101,7 @@ export default function BroadcastPage() {
   const [guestRemoteStream, setGuestRemoteStream] = useState(null)
   const guestPollRef     = useRef(null)
   const guestP2PRef      = useRef(null)         // { pc, remoteStream, close }
+  const startingGuestRef = useRef(false)        // guard against concurrent startGuestStage calls
   // The visual + audio mixers are now ALWAYS-ON for the duration of the
   // broadcast. They are the single source of truth that feeds both the WHIP
   // sender (→ Cloudflare) and the local MediaRecorder (→ archive). This way
@@ -382,7 +383,7 @@ export default function BroadcastPage() {
         if (active && (!cur || cur.id !== active.id || cur.status !== 'active')) {
           setActiveGuest(active)
           // start P2P only if not already running for this guest
-          if (!guestP2PRef.current || guestP2PRef.current._guestId !== active.id) {
+          if ((!guestP2PRef.current && !startingGuestRef.current) || (guestP2PRef.current && guestP2PRef.current._guestId !== active.id)) {
             startGuestStage(active)
           }
         } else if (!active && invited) {
@@ -695,6 +696,8 @@ export default function BroadcastPage() {
   // Start P2P with guest + composite into CF stream
   const startGuestStage = async (guest) => {
     if (!localStreamRef.current || !pcRef.current) return
+    if (startingGuestRef.current) return
+    startingGuestRef.current = true
     setGuestStatus('connecting')
 
     // Hidden video element for received guest stream
@@ -745,6 +748,8 @@ export default function BroadcastPage() {
     } catch(e) {
       console.warn('[trainer] guest P2P failed:', e)
       setGuestStatus('failed')
+    } finally {
+      startingGuestRef.current = false
     }
   }
 

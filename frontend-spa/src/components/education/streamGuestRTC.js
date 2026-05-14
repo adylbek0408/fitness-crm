@@ -382,7 +382,7 @@ export async function startTrainerP2P({
 
   const close = () => {
     clearInterval(pollTimer)
-    try { pc.getSenders().forEach(s => s.track && s.track.stop && null) } catch {}
+    try { pc.getSenders().forEach(s => s.track?.stop?.()) } catch {}
     try { pc.close() } catch {}
   }
 
