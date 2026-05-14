@@ -132,14 +132,22 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         console.warn('[player] stalled >4s — recovery attempt', stallAttempts,
           'currentTime:', v.currentTime, 'buffered:', v.buffered.length)
         v.play().catch(() => {})
-        // After 2 stalls jump to live edge — avoids brief-congestion jitter
-        // but still catches real freezes faster than the old 3-attempt threshold.
         if (stallAttempts >= 2 && live) {
           stallAttempts = 0
           try {
             if (hlsRef.current) {
+              // HLS path: jump back to live edge
               hlsRef.current.startLoad(-1)
-            } else if (!v.srcObject) {
+            } else if (v.srcObject) {
+              // WHEP path: srcObject is alive in JS but ICE may be dead —
+              // close PC and restart WHEP from scratch.
+              console.warn('[player] WHEP stall reconnect')
+              try { whepRef.current?.close() } catch {}
+              whepRef.current = null
+              v.srcObject = null
+              hasPlayed = false
+              tryWhep().catch(() => {})
+            } else {
               v.load()
               v.play().catch(() => {})
             }
@@ -268,6 +276,25 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
                   setNeedsTap(true)
                   setLoading(false)
                 }
+              }
+            }
+
+            // Replace initial ICE handler (which used trackReject) with a
+            // live monitor: reconnect WHEP if ICE drops mid-stream.
+            // Without this, a mid-stream ICE failure leaves v.srcObject pointing
+            // to a dead MediaStream and no recovery ever happens.
+            const livePc = pc
+            livePc.oniceconnectionstatechange = () => {
+              const state = livePc.iceConnectionState
+              console.log('[player] WHEP ICE (live):', state)
+              if ((state === 'failed' || state === 'disconnected') && !cleanedUp) {
+                console.warn('[player] WHEP dropped mid-stream — reconnecting in 2s')
+                try { livePc.close() } catch {}
+                if (whepRef.current === livePc) whepRef.current = null
+                v.srcObject = null
+                hasPlayed = false
+                stallAttempts = 0
+                setTimeout(() => { if (!cleanedUp) tryWhep().catch(() => {}) }, 2000)
               }
             }
             return   // done — HLS loop will also exit because hasPlayed flips via onPlaying
