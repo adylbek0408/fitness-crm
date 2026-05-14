@@ -102,6 +102,7 @@ export default function BroadcastPage() {
   const guestPollRef     = useRef(null)
   const guestP2PRef      = useRef(null)         // { pc, remoteStream, close }
   const startingGuestRef = useRef(false)        // guard against concurrent startGuestStage calls
+  const guestRetryRef    = useRef(0)            // # of failed P2P attempts for current guest
   // The visual + audio mixers are now ALWAYS-ON for the duration of the
   // broadcast. They are the single source of truth that feeds both the WHIP
   // sender (→ Cloudflare) and the local MediaRecorder (→ archive). This way
@@ -388,9 +389,14 @@ export default function BroadcastPage() {
         const invited = guests.find(g => g.status === 'invited')
         const cur = activeGuest
         if (active && (!cur || cur.id !== active.id || cur.status !== 'active')) {
+          // New guest (different id) → reset retry counter
+          if (!cur || cur.id !== active.id) guestRetryRef.current = 0
           setActiveGuest(active)
-          // start P2P only if not already running for this guest
-          if ((!guestP2PRef.current && !startingGuestRef.current) || (guestP2PRef.current && guestP2PRef.current._guestId !== active.id)) {
+          // Start P2P if: (no session running AND under retry limit) OR session
+          // is for a different guest (trainer kicked one and invited another).
+          const noSession = !guestP2PRef.current && !startingGuestRef.current
+          const wrongGuest = guestP2PRef.current && guestP2PRef.current._guestId !== active.id
+          if ((noSession && guestRetryRef.current < 3) || wrongGuest) {
             startGuestStage(active)
           }
         } else if (!active && invited) {
@@ -472,12 +478,15 @@ export default function BroadcastPage() {
       // PIP, swap) without rewiring MediaRecorder mid-broadcast.
       const mixW = Math.min(q.width, 1280)
       const mixH = Math.min(q.height, 720)
+      // Canvas fps scales with the quality setting. The canvas only feeds WHIP
+      // when a guest PIP is visible; otherwise raw camera is used (no canvas
+      // overhead). The recording always comes from the canvas, so higher fps
+      // means better archive quality on faster devices.
+      const canvasFps = quality === '480p' ? 15 : quality === '1080p' ? 24 : 20
       let mixedStream = null
       try {
-        // 15 fps mixer — visually indistinguishable from 20 fps for fitness
-        // video; reduces canvas CPU load by ~25% and lowers device temperature.
         const mixer = createMixerCanvas({
-          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: 15,
+          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: canvasFps,
         })
         mixerRef.current = mixer
 
@@ -617,7 +626,7 @@ export default function BroadcastPage() {
               recordedChunksRef.current.push(blob)
             })
           }
-          mr.start(10_000)  // flush chunk every 10 s
+          mr.start(5_000)  // flush chunk every 5 s — halves max data loss on crash
           mediaRecorderRef.current = mr
         }
       } catch(e) { console.warn('[recorder] MediaRecorder start failed:', e) }
@@ -774,6 +783,7 @@ export default function BroadcastPage() {
       guestP2PRef.current = session
     } catch(e) {
       console.warn('[trainer] guest P2P failed:', e)
+      guestRetryRef.current += 1
       setGuestStatus('failed')
     } finally {
       startingGuestRef.current = false
@@ -808,6 +818,7 @@ export default function BroadcastPage() {
     setGuestStatus('')
     setGuestRemoteStream(null)
     setPipSwapped(false)   // next guest starts in default layout
+    guestRetryRef.current = 0  // reset so next invited guest starts fresh
     // Detach guest from mixers — canvas keeps drawing trainer-only.
     try { mixerRef.current?.setGuestVideo(null) } catch {}
     try { audioMixerRef.current?.removeGuest() } catch {}

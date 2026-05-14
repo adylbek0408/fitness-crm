@@ -100,7 +100,8 @@ class LessonProgress(UUIDTimestampedModel):
     class Meta:
         unique_together = [('client', 'lesson')]
         indexes = [
-            models.Index(fields=['client', 'lesson']),
+            # unique_together already creates a (client, lesson) index;
+            # keep only the non-covered one.
             models.Index(fields=['is_completed']),
         ]
 
@@ -180,6 +181,7 @@ class LiveStream(UUIDTimestampedModel):
             models.Index(fields=['status']),
             models.Index(fields=['trainer']),
             models.Index(fields=['cf_input_uid']),
+            models.Index(fields=['deleted_at']),  # trash / soft-delete filter
         ]
 
     def __str__(self):
@@ -376,6 +378,12 @@ class StreamGuest(UUIDTimestampedModel):
     class Meta:
         app_label = 'education'
         ordering = ['-created_at']
+        indexes = [
+            # Hot path: guest invite cancels previous invited/active rows for this
+            # (stream, client) pair; guest poll reads active/invited rows per stream.
+            models.Index(fields=['stream', 'status', 'deleted_at']),
+            models.Index(fields=['client', 'status']),
+        ]
 
     def __str__(self):
         return f'{self.client} guest @ {self.stream_id}'
