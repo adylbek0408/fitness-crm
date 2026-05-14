@@ -645,7 +645,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             return Response({'error': 'client_id required'}, status=400)
         try:
             client = Client.objects.get(pk=client_id)
-        except Client.DoesNotExist:
+        except (Client.DoesNotExist, ValueError, TypeError):
             return Response({'error': 'client not found'}, status=404)
 
         # Cancel ALL existing pending or active invites for this client in
@@ -720,13 +720,24 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             guest.save(update_fields=['offer_sdp', 'answer_sdp', 'trainer_ice', 'guest_ice'])
             return Response({'ok': True})
         if 'offer_sdp' in data:
-            guest.offer_sdp = data['offer_sdp'] or ''
+            sdp = data['offer_sdp'] or ''
+            if not isinstance(sdp, str) or len(sdp) > 32_000:
+                return Response({'error': 'SDP too large'}, status=400)
+            guest.offer_sdp = sdp
             guest.answer_sdp = ''
             guest.trainer_ice = []
             guest.guest_ice = []
             guest.save(update_fields=['offer_sdp', 'answer_sdp', 'trainer_ice', 'guest_ice'])
         if 'ice' in data and data['ice']:
+            import json as _json
+            try:
+                if len(_json.dumps(data['ice'])) > 4_000:
+                    return Response({'error': 'ICE candidate too large'}, status=400)
+            except (TypeError, ValueError):
+                return Response({'error': 'invalid ICE'}, status=400)
             ice_list = list(guest.trainer_ice or [])
+            if len(ice_list) >= 200:
+                return Response({'error': 'too many ICE candidates'}, status=429)
             ice_list.append(data['ice'])
             guest.trainer_ice = ice_list
             guest.save(update_fields=['trainer_ice'])

@@ -194,8 +194,8 @@ export default function StreamLive() {
       turnIceServers = tr.data?.iceServers
     } catch { /* falls back to default STUN */ }
 
-    // 30s timeout: if trainer never sends offer / connection never establishes,
-    // cleanly tear down and tell user instead of spinning forever.
+    // 45s timeout: mobile networks (cellular) can take 10–15 s just for ICE
+    // gathering, so 30 s was too tight for students on weak connections.
     const timeoutId = setTimeout(() => {
       if (!connected) {
         timedOut = true
@@ -204,7 +204,7 @@ export default function StreamLive() {
         setTimeout(() => setWarning(''), 5000)
         leaveStage(true)
       }
-    }, 30000)
+    }, 45000)
 
     try {
       const session = await startGuestP2P({

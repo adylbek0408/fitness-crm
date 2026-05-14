@@ -686,16 +686,26 @@ class CabinetStreamTurnCredentialsView(APIView):
 
     def post(self, request, pk):
         from django.shortcuts import get_object_or_404
+        from django.core.cache import cache
         stream = get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
         _ensure_stream_group_access(stream, request.user.client)
+
+        # Cache credentials per stream for 60 s — avoids hammering the CF API
+        # if multiple students accept simultaneously or a client retries rapidly.
+        cache_key = f'turn_creds_{pk}'
+        cached = cache.get(cache_key)
+        if cached:
+            return Response({'iceServers': cached})
+
         import os, requests as req_lib
         key_id  = os.environ.get('CF_TURN_KEY_ID', '')
         key_tok = os.environ.get('CF_TURN_API_TOKEN', '')
+        fallback = [
+            {'urls': 'stun:stun.cloudflare.com:3478'},
+            {'urls': 'stun:stun.l.google.com:19302'},
+        ]
         if not key_id or not key_tok:
-            return Response({'iceServers': [
-                {'urls': 'stun:stun.cloudflare.com:3478'},
-                {'urls': 'stun:stun.l.google.com:19302'},
-            ]})
+            return Response({'iceServers': fallback})
         try:
             resp = req_lib.post(
                 f'https://rtc.live.cloudflare.com/v1/turn/keys/{key_id}/credentials/generate-ice-servers',
@@ -707,18 +717,13 @@ class CabinetStreamTurnCredentialsView(APIView):
             data = resp.json()
             ice = data.get('iceServers', {})
             ice_servers = [ice] if isinstance(ice, dict) else ice
-            ice_servers = [
-                {'urls': 'stun:stun.cloudflare.com:3478'},
-                {'urls': 'stun:stun.l.google.com:19302'},
-            ] + ice_servers
+            ice_servers = fallback + ice_servers
+            cache.set(cache_key, ice_servers, 60)
             return Response({'iceServers': ice_servers})
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning('CF TURN credentials failed: %s', e)
-            return Response({'iceServers': [
-                {'urls': 'stun:stun.cloudflare.com:3478'},
-                {'urls': 'stun:stun.l.google.com:19302'},
-            ]})
+            return Response({'iceServers': fallback})
 
 
 class CabinetStreamGuestSignalView(APIView):
@@ -760,7 +765,7 @@ class CabinetStreamGuestSignalView(APIView):
         # real ICE candidates <1 KB.
         if 'answer_sdp' in data:
             sdp = data['answer_sdp'] or ''
-            if len(sdp) > 32_000:
+            if not isinstance(sdp, str) or len(sdp) > 32_000:
                 return Response({'error': 'SDP too large'}, status=400)
             guest.answer_sdp = sdp
             guest.save(update_fields=['answer_sdp'])
