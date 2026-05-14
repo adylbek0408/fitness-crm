@@ -235,6 +235,10 @@ export default function StreamLive() {
         onFailed: () => {
           clearTimeout(timeoutId)
           setStageState('failed')
+          // Auto-cleanup after 5 s so the backend guest row doesn't stay
+          // in 'active' state forever when P2P dies mid-session. The student
+          // sees the error briefly, then the stage UI is dismissed cleanly.
+          setTimeout(() => leaveStage(true), 5000)
         },
       })
       stagePcRef.current = session

@@ -350,12 +350,31 @@ export async function startTrainerP2P({
     }
   })
 
+  // Grace period before calling onFailed — mobile networks frequently hop
+  // between WiFi and LTE, causing a brief 'disconnected' state that resolves
+  // on its own within 2–3 s. Firing onFailed immediately would kill the stage
+  // for a transient blip. We wait 5 s; if the state comes back to 'connected'
+  // the timer is cancelled. True hard failures (state === 'failed') skip the
+  // timer and call onFailed immediately.
+  let iceFailTimer = null
   pc.addEventListener('iceconnectionstatechange', () => {
-    console.log('[trainer P2P] ice:', pc.iceConnectionState)
-    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+    const state = pc.iceConnectionState
+    console.log('[trainer P2P] ice:', state)
+    if (state === 'connected' || state === 'completed') {
+      clearTimeout(iceFailTimer); iceFailTimer = null
       onConnected?.()
     }
-    if (pc.iceConnectionState === 'failed') onFailed?.()
+    if (state === 'disconnected') {
+      iceFailTimer = setTimeout(() => {
+        if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+          onFailed?.()
+        }
+      }, 5000)
+    }
+    if (state === 'failed') {
+      clearTimeout(iceFailTimer); iceFailTimer = null
+      onFailed?.()
+    }
   })
 
   // Create offer — wrap async steps so PC is closed on any failure
@@ -393,6 +412,7 @@ export async function startTrainerP2P({
 
   const close = () => {
     clearInterval(pollTimer)
+    clearTimeout(iceFailTimer)
     // Do NOT stop sender tracks — they belong to localStream (trainer's camera)
     // and are still needed for the WHIP broadcast after the guest leaves.
     try { pc.close() } catch {}
@@ -435,12 +455,25 @@ export async function startGuestP2P({
     if (e.candidate) postIce(e.candidate.toJSON()).catch(() => {})
   })
 
+  let iceFailTimer = null
   pc.addEventListener('iceconnectionstatechange', () => {
-    console.log('[guest P2P] ice:', pc.iceConnectionState)
-    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+    const state = pc.iceConnectionState
+    console.log('[guest P2P] ice:', state)
+    if (state === 'connected' || state === 'completed') {
+      clearTimeout(iceFailTimer); iceFailTimer = null
       onConnected?.()
     }
-    if (pc.iceConnectionState === 'failed') onFailed?.()
+    if (state === 'disconnected') {
+      iceFailTimer = setTimeout(() => {
+        if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+          onFailed?.()
+        }
+      }, 5000)
+    }
+    if (state === 'failed') {
+      clearTimeout(iceFailTimer); iceFailTimer = null
+      onFailed?.()
+    }
   })
 
   const tick = async () => {
@@ -469,6 +502,7 @@ export async function startGuestP2P({
 
   const close = () => {
     clearInterval(pollTimer)
+    clearTimeout(iceFailTimer)
     try { pc.close() } catch {}
   }
 
