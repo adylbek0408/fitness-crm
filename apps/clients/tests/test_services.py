@@ -360,3 +360,27 @@ class TestClientService:
         client.refresh_from_db()
         assert client.bonus_percent == 5
         assert client.group_id == group.id
+
+    def test_cancel_payment_voids_bonus_accruals(self):
+        """
+        Regression: cancel_payment was including 'bonus_balance' in update_fields
+        while holding a stale in-memory value, silently reverting the
+        void_accruals_for_refund F-expression update and leaving the client
+        with the pre-void balance.
+        """
+        client = Client.objects.create(
+            first_name='Отмен', last_name='Платёж',
+            phone='+79997700100',
+            training_format='offline', group_type='1.5h',
+            payment_type='full', status='new',
+        )
+        FullPayment.objects.create(client=client, amount=Decimal('10000.00'))
+        PaymentService().mark_full_payment_paid(str(client.id))
+        client.refresh_from_db()
+        assert client.bonus_balance == Decimal('1000.00')  # 10% начислено
+
+        ClientService().cancel_payment(str(client.id))
+        client.refresh_from_db()
+        assert client.bonus_balance == Decimal('0.00'), (
+            'cancel_payment must void bonus accruals, not restore stale bonus_balance'
+        )

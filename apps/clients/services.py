@@ -312,7 +312,7 @@ class ClientService(BaseService):
         new_status = 'trial' if client.is_trial else 'new'
         client.group = None
         client.status = new_status
-        client.save(update_fields=['group', 'status', 'bonus_balance'])
+        client.save(update_fields=['group', 'status'])
 
         self.logger.info(
             f'Payment cancelled for client {client_id}. '
@@ -595,7 +595,7 @@ class ClientService(BaseService):
 
         client.group = None
         client.status = 'frozen'
-        client.save(update_fields=['group', 'status', 'payment_type', 'bonus_balance'])
+        client.save(update_fields=['group', 'status', 'payment_type'])
 
         self._record_status_change(
             client, old_status=client_status_before_refund,
