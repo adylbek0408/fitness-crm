@@ -491,13 +491,43 @@ for s in LiveStream.objects.all().order_by('-created_at')[:5]:
 ## Состояние git (после этой сессии)
 
 ```
-main: 7698691 — education: fix CF Stream webhook payload parsing
-main-1: 3701d62 — education: fix 5 stream/consultation bugs
-main-2: 87dd6de — education: Jitsi moderator fix, pro player, content security
-main-3: b07b3fb — fix: consultation kicks & stream playback (друг)
+main:   937052a — education: fix 3 bugs — manual archive button, progress reset, lesson nav pagination
+main-1: 38ef7d5 — education: fix 3 bugs — edit description data loss, error icon, add recBytes indicator
+main-2: af06ed5 — education: fix startBroadcast error path + MediaRecorder audio 160kbps
+main-3: 91585bd — education: add retry button for failed recording upload
+main-4: 8ca2872 — education: fix cabinet guest-leave missing deleted_at + 3 regression tests
 ```
 
 Все изменения закоммичены. Незакоммиченных файлов нет.
+
+---
+
+## Что сделано в последней сессии (2026-05-15 — аудит качества)
+
+Полный обход всех файлов education-модуля: frontend (JSX) + backend (views/cabinet_views). Найдено и исправлено 3 бага в коммите `937052a`:
+
+### 1. StreamsAdmin.jsx — мёртвый пропс `onManualArchive`
+- `performManualArchive` передавался в `StreamCard` как пропс, но кнопки внутри компонента не было — завершённый стрим без записи нельзя было заархивировать через UI.
+- Добавлена кнопка «Архив» (amber) для `isArchived && !hasRecording && !showRecProgress`.
+
+### 2. LessonView.jsx — `lastSavedPercent` не сбрасывался при навигации
+- При переходе между уроками реф хранил процент предыдущего урока. Если оба урока достигали одинакового процента, первый `/progress/` POST нового урока молча пропускался.
+- Добавлен `lastSavedPercent.current = 0` в начало эффекта `[id, nav]`.
+
+### 3. LessonView.jsx — список уроков обрезался на 25 элементах
+- `GET /cabinet/education/lessons/` без `?page_size` возвращал дефолтные 25 (PAGE_SIZE=25 в settings). У студентов с 26+ уроками `currentIdx === -1`, кнопки «Предыдущий/Следующий» не показывались.
+- Добавлен `?page_size=200` в запрос списка уроков.
+
+### Аудит (без изменений — баги не найдены):
+ConsultationsAdmin, LessonsAdmin, EducationStats, StreamArchive, LessonsList, AudioPlayer, BroadcastPage, UploadContext, recordingStore.js, streamGuestRTC.js, StreamLive, ConsultationRoom, cabinet_views.py, views.py.
+
+82/82 тестов проходят.
+
+---
+
+## Следующий конкретный шаг
+
+Модуль завершён. Если нужна доработка — деплоить через `npm run build` + `systemctl restart fitness-crm`.
 
 ---
 
