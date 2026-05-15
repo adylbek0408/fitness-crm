@@ -80,6 +80,12 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
+  const autoResize = (e) => {
+    const ta = e.target
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.min(ta.scrollHeight, 80)}px`
+  }
+
   const fmtTime = iso => {
     try {
       return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
@@ -132,13 +138,12 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
           <textarea
             ref={inputRef}
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={e => { setText(e.target.value); autoResize(e) }}
             onKeyDown={handleKey}
             placeholder="Напишите сообщение…"
             rows={1}
             maxLength={500}
-            className="flex-1 bg-transparent text-sm text-white placeholder-white/35 resize-none outline-none min-h-[24px] max-h-[80px] leading-snug"
-            style={{ fieldSizing: 'content' }}
+            className="flex-1 bg-transparent text-sm text-white placeholder-white/35 resize-none outline-none min-h-[24px] max-h-[80px] leading-snug overflow-y-hidden"
           />
           <button
             onClick={send}

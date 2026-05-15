@@ -21,7 +21,9 @@ export default defineConfig({
           /^\/static\//,
           /\.(?:png|jpg|jpeg|gif|webp|svg|pdf|zip)$/i,
         ],
-        // Не кэшировать медиа и API — они всегда свежие с сервера
+        // Не кэшировать медиа и API — они всегда свежие с сервера.
+        // CF Stream и upload-эндпоинты тоже принудительно через сеть, чтобы
+        // SW не зацепил по ошибке HLS-сегменты или TUS PATCH ответы.
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/[^/]+\/media\//,
@@ -29,6 +31,14 @@ export default defineConfig({
           },
           {
             urlPattern: /^https?:\/\/[^/]+\/api\//,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https?:\/\/[^/]*cloudflarestream\.com\//,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https?:\/\/upload\.cloudflarestream\.com\//,
             handler: 'NetworkOnly',
           },
         ],

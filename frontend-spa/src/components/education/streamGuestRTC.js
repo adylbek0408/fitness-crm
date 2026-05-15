@@ -47,7 +47,7 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
   let currentGuest = guestVideo || null
   let swapped = false   // when true: guest is fullscreen, trainer is PIP
   let rvfcSupported = currentTrainer && typeof currentTrainer.requestVideoFrameCallback === 'function'
-  const minFrameMs = 1000 / fps   // e.g. 50 ms for 20 fps
+  let minFrameMs = 1000 / fps   // mutable — setFps() changes this at runtime
   let lastDrawMs = 0
 
   // Helper: cover-fit a video element into a target rect with rounded corners.
@@ -94,13 +94,21 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
     return { gw, gh, gx: width - gw - margin, gy: height - gh - margin }
   }
 
-  // ── Frame draw — no manual throttle; captureStream(fps) does the sampling. ──
-  // The previous throttle (`if now - lastDraw < minFrameMs: skip`) produced
-  // uneven cadence when source was 30fps and target was 20fps (drew at 0, 67,
-  // 133, … → visible micro-jitter for the trainer alone, hidden once the
-  // guest PIP added a second moving element to mask it). Drawing on every
-  // rVFC tick is cheap (single drawImage + optional PIP) and lets captureStream
-  // decimate to fps internally — output cadence is smooth.
+  // ── rAF fallback scheduler (throttled to fps) ──────────────────────────────
+  let lastRafTime = 0
+  const rafSchedule = () => {
+    if (!running) return
+    requestAnimationFrame((ts) => {
+      if (!running) return
+      if (ts - lastRafTime >= minFrameMs) {
+        lastRafTime = ts
+        drawAll()
+      } else {
+        rafSchedule()
+      }
+    })
+  }
+
   const drawAll = () => {
     if (!running) return
     // Throttle actual draws to fps target — rVFC fires at the source frame rate
@@ -150,11 +158,12 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
 
     // Schedule next frame — prefer rVFC on the *currently big* source so we
     // redraw whenever its frames arrive. If big has rVFC, hook it; otherwise
-    // fall back to rAF (~60fps, captureStream still decimates).
+    // fall back to rAF throttled to fps (captureStream also decimates, but
+    // drawing at 60fps on rAF wastes CPU/battery and overheats the device).
     if (bigSource && typeof bigSource.requestVideoFrameCallback === 'function') {
       try { bigSource.requestVideoFrameCallback(drawAll); return } catch {}
     }
-    requestAnimationFrame(drawAll)
+    rafSchedule()
   }
 
   // Polyfill roundRect for older browsers (Safari < 16)
@@ -187,8 +196,14 @@ export function createMixerCanvas({ trainerVideo, guestVideo, width = 1280, heig
   // canvas — WHIP stream to viewers AND the local MediaRecorder archive — so
   // the recording matches what the trainer chose to show during the broadcast.
   const setSwapped = (v) => { swapped = !!v }
+  // Dynamically throttle the canvas draw rate. Use a low fps (e.g. 10) when
+  // no guest is on stage (WHIP uses raw camera anyway — canvas only feeds
+  // MediaRecorder). Restore full fps when a guest joins so viewers see smooth
+  // PIP. canvas.captureStream(fps) arg is just a hint; the actual capture
+  // rate follows how fast we commit frames via drawAll.
+  const setFps = (newFps) => { minFrameMs = 1000 / newFps }
 
-  return { canvas, stream, stop, setGuestVideo, setTrainerVideo, setSwapped }
+  return { canvas, stream, stop, setGuestVideo, setTrainerVideo, setSwapped, setFps }
 }
 
 // ── Audio mixer (Web Audio API) ─────────────────────────────────────────────
@@ -220,9 +235,29 @@ export function createAudioMixer(trainerStream, guestStream) {
     } catch {}
   }
 
-  // iOS Safari suspends AudioContext when the tab is backgrounded — the
-  // mixed track then carries silence and the recording goes mute.
-  // Resume the context whenever we come back to the foreground.
+  // iOS Safari (and increasingly Chrome) create AudioContext in `suspended`
+  // state. The destination track exists but emits silence until resume() is
+  // called. Try once immediately — caller is expected to be in a user-gesture
+  // path (button click), so this almost always succeeds. If it doesn't, the
+  // visibilitychange handler below picks it up the next time the tab is
+  // foregrounded.
+  try {
+    if (audioCtx.state === 'suspended') {
+      // Don't await — caller's lifecycle continues regardless. The promise
+      // resolves asynchronously and audio starts flowing as soon as it does.
+      audioCtx.resume().catch((e) => console.warn('[audio] initial resume failed:', e))
+    }
+  } catch (e) { console.warn('[audio] resume attempt threw:', e) }
+
+  // Periodically poke the context if it slid back to suspended (some Chrome
+  // versions do this when the source camera stream is renegotiated). Cheap
+  // probe — runs every 5s while the mixer exists.
+  const watchdog = setInterval(() => {
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {})
+    }
+  }, 5000)
+
   const onVisibility = () => {
     if (!document.hidden && audioCtx.state === 'suspended') {
       audioCtx.resume().catch(() => {})
@@ -252,6 +287,7 @@ export function createAudioMixer(trainerStream, guestStream) {
   }
 
   const close = () => {
+    try { clearInterval(watchdog) } catch {}
     try { document.removeEventListener('visibilitychange', onVisibility) } catch {}
     try { trainerSrc.disconnect() } catch {}
     try { guestSrc?.disconnect() } catch {}
@@ -314,18 +350,42 @@ export async function startTrainerP2P({
     }
   })
 
+  // Grace period before calling onFailed — mobile networks frequently hop
+  // between WiFi and LTE, causing a brief 'disconnected' state that resolves
+  // on its own within 2–3 s. Firing onFailed immediately would kill the stage
+  // for a transient blip. We wait 5 s; if the state comes back to 'connected'
+  // the timer is cancelled. True hard failures (state === 'failed') skip the
+  // timer and call onFailed immediately.
+  let iceFailTimer = null
   pc.addEventListener('iceconnectionstatechange', () => {
-    console.log('[trainer P2P] ice:', pc.iceConnectionState)
-    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+    const state = pc.iceConnectionState
+    console.log('[trainer P2P] ice:', state)
+    if (state === 'connected' || state === 'completed') {
+      clearTimeout(iceFailTimer); iceFailTimer = null
       onConnected?.()
     }
-    if (pc.iceConnectionState === 'failed') onFailed?.()
+    if (state === 'disconnected') {
+      iceFailTimer = setTimeout(() => {
+        if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+          onFailed?.()
+        }
+      }, 5000)
+    }
+    if (state === 'failed') {
+      clearTimeout(iceFailTimer); iceFailTimer = null
+      onFailed?.()
+    }
   })
 
-  // Create offer
-  const offer = await pc.createOffer()
-  await pc.setLocalDescription(offer)
-  await postOffer(offer.sdp)
+  // Create offer — wrap async steps so PC is closed on any failure
+  try {
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+    await postOffer(offer.sdp)
+  } catch (e) {
+    try { pc.close() } catch {}
+    throw e
+  }
 
   // Poll for answer + guest ICE
   const tick = async () => {
@@ -352,7 +412,9 @@ export async function startTrainerP2P({
 
   const close = () => {
     clearInterval(pollTimer)
-    try { pc.getSenders().forEach(s => s.track && s.track.stop && null) } catch {}
+    clearTimeout(iceFailTimer)
+    // Do NOT stop sender tracks — they belong to localStream (trainer's camera)
+    // and are still needed for the WHIP broadcast after the guest leaves.
     try { pc.close() } catch {}
   }
 
@@ -393,12 +455,25 @@ export async function startGuestP2P({
     if (e.candidate) postIce(e.candidate.toJSON()).catch(() => {})
   })
 
+  let iceFailTimer = null
   pc.addEventListener('iceconnectionstatechange', () => {
-    console.log('[guest P2P] ice:', pc.iceConnectionState)
-    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+    const state = pc.iceConnectionState
+    console.log('[guest P2P] ice:', state)
+    if (state === 'connected' || state === 'completed') {
+      clearTimeout(iceFailTimer); iceFailTimer = null
       onConnected?.()
     }
-    if (pc.iceConnectionState === 'failed') onFailed?.()
+    if (state === 'disconnected') {
+      iceFailTimer = setTimeout(() => {
+        if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+          onFailed?.()
+        }
+      }, 5000)
+    }
+    if (state === 'failed') {
+      clearTimeout(iceFailTimer); iceFailTimer = null
+      onFailed?.()
+    }
   })
 
   const tick = async () => {
@@ -427,6 +502,7 @@ export async function startGuestP2P({
 
   const close = () => {
     clearInterval(pollTimer)
+    clearTimeout(iceFailTimer)
     try { pc.close() } catch {}
   }
 

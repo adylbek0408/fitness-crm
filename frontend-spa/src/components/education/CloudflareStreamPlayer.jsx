@@ -145,25 +145,31 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       stallTimer = setTimeout(() => {
         if (cleanedUp) return
         stallAttempts++
-        console.warn('[player] stalled >8s — recovery attempt', stallAttempts,
+        console.warn('[player] stalled >4s — recovery attempt', stallAttempts,
           'currentTime:', v.currentTime, 'buffered:', v.buffered.length)
-        // First try: just nudge play
         v.play().catch(() => {})
-        // After 3 failed nudges: jump to live edge by reloading.
-        // Threshold raised from 2→3 to avoid jarring live-edge resets on brief
-        // congestion (each reset appears as a ~10 s time jump to the viewer).
-        if (stallAttempts >= 3 && live) {
+        if (stallAttempts >= 2 && live) {
           stallAttempts = 0
           try {
             if (hlsRef.current) {
-              hlsRef.current.startLoad(-1)         // -1 = resume from live edge
-            } else if (!v.srcObject) {
+              // HLS path: jump back to live edge
+              hlsRef.current.startLoad(-1)
+            } else if (v.srcObject) {
+              // WHEP path: srcObject is alive in JS but ICE may be dead —
+              // close PC and restart WHEP from scratch.
+              console.warn('[player] WHEP stall reconnect')
+              try { whepRef.current?.close() } catch {}
+              whepRef.current = null
+              v.srcObject = null
+              hasPlayed = false
+              tryWhep().catch(() => {})
+            } else {
               v.load()
               v.play().catch(() => {})
             }
           } catch {}
         }
-      }, 8000)
+      }, 4000)
     }
     const onTimeUpdate = () => { stallAttempts = 0; clearStall() }
     v.addEventListener('waiting',    onWaiting)
@@ -209,9 +215,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             })
 
             if (!resp.ok) {
-              console.warn('[player] WHEP HTTP', resp.status, '— retrying in 15s')
+              console.warn('[player] WHEP HTTP', resp.status, '— retrying in 5s')
               pc.close(); whepRef.current = null
-              await new Promise(r => setTimeout(r, 15000))
+              await new Promise(r => setTimeout(r, 5000))
               continue
             }
 
@@ -224,19 +230,19 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             const trackTimeout = setTimeout(
               () => trackReject(new Error('WHEP: no track in 8s')), 8000
             )
+            // Collect all tracks into one MediaStream. WHEP fires ontrack
+            // separately for video and audio (unified-plan) — resolving on the
+            // first event would miss the other track. A 100ms debounce lets
+            // all synchronously-arriving tracks accumulate before we commit.
+            const sharedStream = new MediaStream()
+            let resolveTimer = null
             pc.ontrack = e => {
               clearTimeout(trackTimeout)
               const kind = e.track?.kind
-              const sId  = e.streams?.[0]?.id
-              const aT   = e.streams?.[0]?.getAudioTracks?.()?.length ?? 0
-              const vT   = e.streams?.[0]?.getVideoTracks?.()?.length ?? 0
-              console.log(`[player] WHEP ontrack kind=${kind} streamId=${sId} streamAudio=${aT} streamVideo=${vT}`)
-              // We accept the first stream that arrives. If audio arrives in a
-              // later ontrack call (because video came first), it will be added
-              // to the SAME MediaStream object (per WHIP spec / unified-plan) —
-              // and the <video> element's srcObject picks it up automatically.
-              if (e.streams?.[0]) trackResolve(e.streams[0])
-              else { const s = new MediaStream(); s.addTrack(e.track); trackResolve(s) }
+              console.log(`[player] WHEP ontrack kind=${kind}`)
+              sharedStream.addTrack(e.track)
+              clearTimeout(resolveTimer)
+              resolveTimer = setTimeout(() => trackResolve(sharedStream), 100)
             }
             pc.oniceconnectionstatechange = () => {
               console.log('[player] WHEP ICE:', pc.iceConnectionState)
@@ -288,14 +294,33 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
                 }
               }
             }
+
+            // Replace initial ICE handler (which used trackReject) with a
+            // live monitor: reconnect WHEP if ICE drops mid-stream.
+            // Without this, a mid-stream ICE failure leaves v.srcObject pointing
+            // to a dead MediaStream and no recovery ever happens.
+            const livePc = pc
+            livePc.oniceconnectionstatechange = () => {
+              const state = livePc.iceConnectionState
+              console.log('[player] WHEP ICE (live):', state)
+              if ((state === 'failed' || state === 'disconnected') && !cleanedUp) {
+                console.warn('[player] WHEP dropped mid-stream — reconnecting in 2s')
+                try { livePc.close() } catch {}
+                if (whepRef.current === livePc) whepRef.current = null
+                v.srcObject = null
+                hasPlayed = false
+                stallAttempts = 0
+                setTimeout(() => { if (!cleanedUp) tryWhep().catch(() => {}) }, 2000)
+              }
+            }
             return   // done — HLS loop will also exit because hasPlayed flips via onPlaying
 
           } catch (err) {
-            console.warn('[player] WHEP error:', err?.message, '— retrying in 15s')
+            console.warn('[player] WHEP error:', err?.message, '— retrying in 5s')
             try { pc?.close() } catch {}
             if (whepRef.current === pc) whepRef.current = null
             if (cleanedUp || hasPlayed) return
-            await new Promise(r => setTimeout(r, 15000))
+            await new Promise(r => setTimeout(r, 5000))
           }
         }
       }
@@ -420,7 +445,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         nudgeMaxRetry:                10,
         capLevelToPlayerSize:         true,
         maxStarvationDelay:           4,
-        abrEwmaDefaultEstimate:       1_500_000,   // стартуем с 1.5 Mbps — реалистично для мобильного, не утопит сеть
+        abrEwmaDefaultEstimate:       3_000_000,   // стартуем с 3 Mbps — хорошая точка для WiFi/4G; ABR опустит сам если нужно
         // Per-request retries before escalating to FATAL:
         manifestLoadingMaxRetry:      4,
         manifestLoadingRetryDelay:    1500,
@@ -534,7 +559,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         // nofullscreen is ignored by iOS Safari; the CSS in
         // CloudflareStreamPlayer.css hides the button via pseudo-element.
         controlsList="nodownload noremoteplayback nofullscreen"
-        disablePictureInPicture={false}
+        disablePictureInPicture={true}
       />
 
       {/* Watermark must be INSIDE this component so it survives any

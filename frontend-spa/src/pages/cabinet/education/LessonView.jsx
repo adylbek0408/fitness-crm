@@ -19,7 +19,15 @@ export default function LessonView() {
   const videoRef = useRef(null)
   const playerShellRef = useRef(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isCssFull,    setIsCssFull]    = useState(false)
   const lastSavedPercent = useRef(0)
+  const warningTimerRef  = useRef(null)
+
+  const showWarning = (msg, ms = 4000) => {
+    clearTimeout(warningTimerRef.current)
+    setWarning(msg)
+    warningTimerRef.current = setTimeout(() => setWarning(''), ms)
+  }
 
   useContentProtection({
     videoRef,
@@ -29,8 +37,7 @@ export default function LessonView() {
         shortcut: 'Запись/печать заблокирована.',
         devtools: 'Закройте инструменты разработчика для продолжения.',
       }
-      setWarning(map[kind] || 'Подозрительная активность.')
-      setTimeout(() => setWarning(''), 4000)
+      showWarning(map[kind] || 'Подозрительная активность.')
     },
   })
 
@@ -39,16 +46,19 @@ export default function LessonView() {
       nav('/cabinet'); return
     }
     setLoading(true)
+    const ctrl = new AbortController()
     Promise.all([
-      api.get(`/cabinet/education/lessons/${id}/`),
-      api.get('/cabinet/education/lessons/').catch(() => null),
+      api.get(`/cabinet/education/lessons/${id}/`, { signal: ctrl.signal }),
+      api.get('/cabinet/education/lessons/', { signal: ctrl.signal }).catch(() => null),
     ]).then(([lr, allR]) => {
       setLesson(lr.data)
       if (allR) setLessons(allR.data?.results || allR.data || [])
     }).catch(e => {
+      if (e.name === 'CanceledError' || e.name === 'AbortError') return
       if (e.response?.status === 403) setError('Этот урок недоступен для вашей группы.')
       else setError(e.response?.data?.detail || 'Ошибка загрузки')
     }).finally(() => setLoading(false))
+    return () => { ctrl.abort(); clearTimeout(warningTimerRef.current) }
   }, [id, nav])
 
   useEffect(() => {
@@ -64,6 +74,12 @@ export default function LessonView() {
     }
   }, [])
 
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && isCssFull) setIsCssFull(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isCssFull])
+
   const toggleFullscreen = async () => {
     const node = playerShellRef.current
     if (!node) return
@@ -71,11 +87,13 @@ export default function LessonView() {
       if (document.fullscreenElement || document.webkitFullscreenElement) {
         if (document.exitFullscreen) await document.exitFullscreen()
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
-      } else if (node.requestFullscreen) {
-        await node.requestFullscreen()
-      } else if (node.webkitRequestFullscreen) {
-        node.webkitRequestFullscreen()
+        return
       }
+      if (isCssFull) { setIsCssFull(false); return }
+      if (node.requestFullscreen) { try { await node.requestFullscreen(); return } catch {} }
+      if (node.webkitRequestFullscreen) { try { node.webkitRequestFullscreen(); return } catch {} }
+      // iOS Safari: CSS fake fullscreen keeps watermark visible
+      setIsCssFull(true)
     } catch {}
   }
 
@@ -150,7 +168,10 @@ export default function LessonView() {
                 ref={playerShellRef}
                 data-protected-root
                 className="relative aspect-video rounded-2xl overflow-hidden bg-black shadow-lg border border-gray-900"
-                style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+                style={{
+                  ...(isCssFull ? { position: 'fixed', inset: 0, width: '100vw', height: '100dvh', zIndex: 100, aspectRatio: 'auto', borderRadius: 0 } : {}),
+                  userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+                }}
               >
                 {lesson.playback_url ? (
                   <>
@@ -173,10 +194,10 @@ export default function LessonView() {
                   type="button"
                   onClick={toggleFullscreen}
                   className="absolute top-3 right-3 z-20 rounded-xl bg-black/50 border border-white/10 text-white p-2.5 hover:bg-black/75 transition"
-                  aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
-                  title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
+                  aria-label={(isFullscreen || isCssFull) ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
+                  title={(isFullscreen || isCssFull) ? 'Выйти из полноэкранного режима' : 'Открыть на весь экран'}
                 >
-                  {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  {(isFullscreen || isCssFull) ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                 </button>
               </div>
             ) : (

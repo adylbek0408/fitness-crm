@@ -28,6 +28,7 @@ export default function StreamLive() {
   const [accessDenied, setAccessDenied] = useState('')
   const [showViewers,  setShowViewers]  = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isCssFull,    setIsCssFull]    = useState(false)
 
   // Guest stage state
   const [guestInvite,    setGuestInvite]    = useState(null)
@@ -45,6 +46,13 @@ export default function StreamLive() {
   const stageRemoteStreamRef = useRef(null)       // latest MediaStream from P2P (so we can re-bind on remount)
   const stagePreviewRef     = useRef(null)        // <video> for our own camera preview
   const guestPollRef        = useRef(null)
+  const warningTimerRef     = useRef(null)
+
+  const showWarning = (msg, ms = 4000) => {
+    clearTimeout(warningTimerRef.current)
+    setWarning(msg)
+    warningTimerRef.current = setTimeout(() => setWarning(''), ms)
+  }
 
   const videoRef       = useRef(null)
   const playerRef      = useRef(null)   // CloudflareStreamPlayer imperative handle
@@ -54,8 +62,7 @@ export default function StreamLive() {
     videoRef,
     rootRef: playerShellRef,
     onSuspect: kind => {
-      setWarning(kind === 'devtools' ? 'Закройте инструменты разработчика.' : 'Запись заблокирована.')
-      setTimeout(() => setWarning(''), 4000)
+      showWarning(kind === 'devtools' ? 'Закройте инструменты разработчика.' : 'Запись заблокирована.')
     },
   })
 
@@ -75,6 +82,7 @@ export default function StreamLive() {
       ? `/cabinet/education/streams/active/?id=${streamId}`
       : '/cabinet/education/streams/active/'
 
+    let ok = true
     let inflight = false
     const tick = async () => {
       if (streamEndedRef.current) return
@@ -103,13 +111,13 @@ export default function StreamLive() {
         if (!joinedRef.current) {
           joinedRef.current = true
           api.post(`/cabinet/education/streams/${s.id}/join/`)
-            .then(r2 => setJoined(r2.data))
+            .then(r2 => { if (ok) setJoined(r2.data) })
             .catch(() => { joinedRef.current = false })
         }
 
         api.post(`/cabinet/education/streams/${s.id}/heartbeat/`).catch(() => {})
         api.get(`/cabinet/education/streams/${s.id}/viewers/`)
-          .then(r2 => setViewers(r2.data || []))
+          .then(r2 => { if (ok) setViewers(r2.data || []) })
           .catch(() => {})
       } catch {}
       finally { inflight = false }
@@ -117,7 +125,7 @@ export default function StreamLive() {
 
     tick()
     const id = setInterval(tick, 8000)
-    return () => { clearInterval(id); joinedRef.current = false }
+    return () => { ok = false; clearInterval(id); joinedRef.current = false }
   }, [streamId])
 
   // ── Guest invite polling ──────────────────────────────────────────────────
@@ -158,8 +166,7 @@ export default function StreamLive() {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
     } catch(e) {
-      setWarning('Нужен доступ к камере и микрофону. Разрешите в настройках браузера.')
-      setTimeout(() => setWarning(''), 5000)
+      showWarning('Нужен доступ к камере и микрофону. Разрешите в настройках браузера.', 5000)
       setStageState('')
       return
     }
@@ -170,8 +177,7 @@ export default function StreamLive() {
       // Tell backend we accept
       await api.post(`/cabinet/education/streams/${stream.id}/guest/`)
     } catch(e) {
-      setWarning('Не удалось принять приглашение.')
-      setTimeout(() => setWarning(''), 4000)
+      showWarning('Не удалось принять приглашение.')
       setStageState('')
       try { localStream.getTracks().forEach(t => t.stop()) } catch {}
       return
@@ -193,17 +199,16 @@ export default function StreamLive() {
       turnIceServers = tr.data?.iceServers
     } catch { /* falls back to default STUN */ }
 
-    // 30s timeout: if trainer never sends offer / connection never establishes,
-    // cleanly tear down and tell user instead of spinning forever.
+    // 45s timeout: mobile networks (cellular) can take 10–15 s just for ICE
+    // gathering, so 30 s was too tight for students on weak connections.
     const timeoutId = setTimeout(() => {
       if (!connected) {
         timedOut = true
         setStageState('failed')
-        setWarning('Не удалось установить связь с тренером. Попробуйте ещё раз.')
-        setTimeout(() => setWarning(''), 5000)
+        showWarning('Не удалось установить связь с тренером. Попробуйте ещё раз.', 5000)
         leaveStage(true)
       }
-    }, 30000)
+    }, 45000)
 
     try {
       const session = await startGuestP2P({
@@ -230,6 +235,10 @@ export default function StreamLive() {
         onFailed: () => {
           clearTimeout(timeoutId)
           setStageState('failed')
+          // Auto-cleanup after 5 s so the backend guest row doesn't stay
+          // in 'active' state forever when P2P dies mid-session. The student
+          // sees the error briefly, then the stage UI is dismissed cleanly.
+          setTimeout(() => leaveStage(true), 5000)
         },
       })
       stagePcRef.current = session
@@ -260,6 +269,7 @@ export default function StreamLive() {
     stageLocalRef.current = null
     if (stagePreviewRef.current) stagePreviewRef.current.srcObject = null
     if (stageRemoteRef.current) stageRemoteRef.current.srcObject = null
+    try { stageRemoteStreamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
     stageRemoteStreamRef.current = null
     setOnStage(false)
     setStageState('')
@@ -280,6 +290,7 @@ export default function StreamLive() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      clearTimeout(warningTimerRef.current)
       try { stagePcRef.current?.close() } catch {}
       try { stageLocalRef.current?.getTracks().forEach(t => t.stop()) } catch {}
     }
@@ -313,6 +324,13 @@ export default function StreamLive() {
     }
   }, [])
 
+  // Escape key exits CSS fake fullscreen (keyboard users / desktop)
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && isCssFull) setIsCssFull(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isCssFull])
+
   const toggleFullscreen = async () => {
     try {
       if (document.fullscreenElement || document.webkitFullscreenElement) {
@@ -320,16 +338,12 @@ export default function StreamLive() {
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
         return
       }
-      // Always fullscreen the shell div (video + watermark together).
-      // Never fall back to video.webkitEnterFullscreen() — that path
-      // fullscreens only the <video> element and the watermark disappears.
-      // On iOS < 16.4 where div fullscreen isn't supported, the call throws
-      // and we do nothing: the native fullscreen button is hidden via CSS
-      // (.cf-player video::-webkit-media-controls-fullscreen-button),
-      // so students can't accidentally trigger watermark-free fullscreen.
+      if (isCssFull) { setIsCssFull(false); return }
       const node = playerShellRef.current
-      if (node?.requestFullscreen)       { await node.requestFullscreen();      return }
-      if (node?.webkitRequestFullscreen) { node.webkitRequestFullscreen();      return }
+      if (node?.requestFullscreen) { try { await node.requestFullscreen(); return } catch {} }
+      if (node?.webkitRequestFullscreen) { try { node.webkitRequestFullscreen(); return } catch {} }
+      // iOS Safari: use CSS fake fullscreen so watermark stays visible
+      setIsCssFull(true)
     } catch {}
   }
 
@@ -356,7 +370,10 @@ export default function StreamLive() {
               broadcast instead of staring at a black screen. */}
           <div ref={playerShellRef} data-protected-root
                className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto"
-               style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
+               style={{
+                 ...(isCssFull ? { position: 'fixed', inset: 0, width: '100vw', height: '100dvh', zIndex: 100, aspectRatio: 'auto' } : {}),
+                 userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+               }}>
             {!showStageVideo && (
               // Watermark is rendered INSIDE CloudflareStreamPlayer via
               // watermarkText prop — this keeps it in the same DOM subtree
@@ -416,9 +433,9 @@ export default function StreamLive() {
                   by the watermark / live label, so giving an explicit button
                   in our top bar is the more reliable affordance. */}
               <button type="button" onClick={toggleFullscreen}
-                aria-label={isFullscreen ? 'Свернуть' : 'Во весь экран'}
+                aria-label={(isFullscreen || isCssFull) ? 'Свернуть' : 'Во весь экран'}
                 className="inline-flex pointer-events-auto p-2 rounded-xl bg-black/40 border border-white/10 backdrop-blur active:bg-black/60">
-                {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                {(isFullscreen || isCssFull) ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
               </button>
             </div>
 

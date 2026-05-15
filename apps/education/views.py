@@ -15,7 +15,7 @@ import logging
 import uuid as _uuid
 from datetime import timedelta
 
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured, ValidationError as DjangoValidationError
 from django.db.models import Avg, Count, Max, Q, Subquery
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -225,6 +225,19 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         verify the upload completed.
         """
         lesson = self.get_object()
+
+        # A published lesson must be playable — block if no media source is set.
+        if lesson.lesson_type == 'video' and not lesson.stream_uid and not lesson.r2_key:
+            return Response(
+                {'detail': 'Нельзя опубликовать видео-урок без загруженного файла.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if lesson.lesson_type == 'audio' and not lesson.r2_key:
+            return Response(
+                {'detail': 'Нельзя опубликовать аудио-урок без загруженного файла.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         duration = request.data.get('duration_sec')
         thumb = request.data.get('thumbnail_url')
         update = []
@@ -428,8 +441,8 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def trash(self, request):
-        """List soft-deleted lessons."""
-        qs = Lesson.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        """List soft-deleted lessons (most-recent 500)."""
+        qs = Lesson.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')[:500]
         return Response(LessonAdminSerializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'])
@@ -499,13 +512,13 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
         stream = self.get_object()
-        if stream.status not in ('scheduled', 'live'):
+        if stream.status != 'scheduled':
             return Response(
                 {'detail': f'Cannot start from status={stream.status}'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         stream.status = 'live'
-        stream.started_at = stream.started_at or timezone.now()
+        stream.started_at = timezone.now()
         stream.save(update_fields=['status', 'started_at', 'updated_at'])
         return Response(LiveStreamAdminSerializer(stream).data)
 
@@ -555,7 +568,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def end(self, request, pk=None):
         stream = self.get_object()
-        if stream.status not in ('live', 'scheduled'):
+        if stream.status != 'live':
             return Response(
                 {'detail': f'Cannot end from status={stream.status}'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -564,10 +577,16 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         stream.ended_at = timezone.now()
         stream.save(update_fields=['status', 'ended_at', 'updated_at'])
         # Mark all viewers as left
-        from .models import StreamViewer
+        from .models import StreamViewer, StreamGuest
         StreamViewer.objects.filter(stream=stream, is_active=True).update(
             is_active=False, left_at=timezone.now(),
         )
+        # Cancel any invited/active guests so they learn the stream ended
+        StreamGuest.objects.filter(
+            stream=stream,
+            status__in=['invited', 'active'],
+            deleted_at__isnull=True,
+        ).update(status='ended', deleted_at=timezone.now())
 
         # Proxy WHIP DELETE to Cloudflare so recording is triggered reliably.
         # Prefer the session URL (from whip-proxy response); fall back to the
@@ -640,37 +659,44 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             ).select_related('client')
             return Response(StreamGuestSerializer(qs, many=True).data)
 
+        if stream.status != 'live':
+            return Response({'error': 'stream must be live to invite guests'}, status=400)
+
         client_id = request.data.get('client_id')
         if not client_id:
             return Response({'error': 'client_id required'}, status=400)
         try:
             client = Client.objects.get(pk=client_id)
-        except Client.DoesNotExist:
+        except (Client.DoesNotExist, ValueError, TypeError, DjangoValidationError):
             return Response({'error': 'client not found'}, status=404)
 
-        # Cancel ALL existing pending or active invites for this client in
-        # this stream — not just 'invited'. If a previous P2P session is
-        # half-alive (status='active' but the guest already navigated away,
-        # or trainer kicked them via guest_end which only flips status),
-        # leaving it visible would create two parallel guest_polls on the
-        # student side — they'd see double invites or even start two P2P
-        # PCs to the same trainer.
-        # We hard-flag them as ended AND set deleted_at so the student-side
-        # /cabinet/.../guest/ endpoint stops returning them.
-        from django.utils import timezone as dj_tz
-        now = dj_tz.now()
-        StreamGuest.objects.filter(
-            stream=stream, client=client,
-            status__in=['invited', 'active'],
-            deleted_at__isnull=True,
-        ).update(status='ended', deleted_at=now)
+        # Validate the client can actually access this stream
+        if stream.groups.exists() and (
+            not client.group_id
+            or not stream.groups.filter(id=client.group_id).exists()
+        ):
+            return Response(
+                {'error': 'client is not in a group that can access this stream'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        # WebRTC P2P (no Jitsi): trainer initiates the offer once guest accepts.
-        guest = StreamGuest.objects.create(
-            stream=stream,
-            client=client,
-            jitsi_room='',
-        )
+        # Atomically cancel old invites and create new one — stream row lock
+        # serialises concurrent invites so we never produce duplicate active guests.
+        from django.db import transaction as _txn
+        from django.utils import timezone as dj_tz
+        with _txn.atomic():
+            LiveStream.objects.select_for_update().get(pk=stream.pk)  # row-level lock
+            now = dj_tz.now()
+            StreamGuest.objects.filter(
+                stream=stream, client=client,
+                status__in=['invited', 'active'],
+                deleted_at__isnull=True,
+            ).update(status='ended', deleted_at=now)
+            guest = StreamGuest.objects.create(
+                stream=stream,
+                client=client,
+                jitsi_room='',
+            )
         return Response(StreamGuestSerializer(guest).data, status=201)
 
     @action(detail=True, methods=['post'], url_path=r'guests/(?P<guest_id>[^/.]+)/end')
@@ -682,7 +708,8 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         except StreamGuest.DoesNotExist:
             return Response(status=404)
         guest.status = 'ended'
-        guest.save(update_fields=['status'])
+        guest.deleted_at = timezone.now()
+        guest.save(update_fields=['status', 'deleted_at'])
         return Response(status=204)
 
     @action(
@@ -713,6 +740,8 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         # POST
         data = request.data or {}
         if data.get('reset'):
+            if guest.status not in ('invited', 'active'):
+                return Response({'error': 'cannot reset signaling on a non-active guest'}, status=400)
             guest.offer_sdp = ''
             guest.answer_sdp = ''
             guest.trainer_ice = []
@@ -720,13 +749,24 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
             guest.save(update_fields=['offer_sdp', 'answer_sdp', 'trainer_ice', 'guest_ice'])
             return Response({'ok': True})
         if 'offer_sdp' in data:
-            guest.offer_sdp = data['offer_sdp'] or ''
+            sdp = data['offer_sdp'] or ''
+            if not isinstance(sdp, str) or len(sdp) > 32_000:
+                return Response({'error': 'SDP too large'}, status=400)
+            guest.offer_sdp = sdp
             guest.answer_sdp = ''
             guest.trainer_ice = []
             guest.guest_ice = []
             guest.save(update_fields=['offer_sdp', 'answer_sdp', 'trainer_ice', 'guest_ice'])
         if 'ice' in data and data['ice']:
+            import json as _json
+            try:
+                if len(_json.dumps(data['ice'])) > 4_000:
+                    return Response({'error': 'ICE candidate too large'}, status=400)
+            except (TypeError, ValueError):
+                return Response({'error': 'invalid ICE'}, status=400)
             ice_list = list(guest.trainer_ice or [])
+            if len(ice_list) >= 200:
+                return Response({'error': 'too many ICE candidates'}, status=429)
             ice_list.append(data['ice'])
             guest.trainer_ice = ice_list
             guest.save(update_fields=['trainer_ice'])
@@ -1010,6 +1050,11 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         Requires nginx: client_max_body_size 2g (see deploy/nginx.conf).
         """
         stream = self.get_object()
+        if stream.status not in ('ended', 'archived'):
+            return Response(
+                {'detail': 'Можно загрузить запись только завершённого эфира.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if stream.archived_lesson_id:
             return Response({'detail': 'У эфира уже есть запись.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1128,7 +1173,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def trash(self, request):
-        qs = LiveStream.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        qs = LiveStream.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')[:500]
         return Response(LiveStreamAdminSerializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'])
@@ -1200,6 +1245,11 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
     def join_as_trainer(self, request, pk=None):
         """Return Jitsi room info for the trainer without incrementing used_count."""
         consultation = self.get_object()
+        # Auto-expire if deadline passed
+        if consultation.status == 'active' and consultation.expires_at \
+                and consultation.expires_at < timezone.now():
+            consultation.status = 'expired'
+            consultation.save(update_fields=['status', 'updated_at'])
         # Allow trainer to rejoin 'used' consultations while still ongoing
         if consultation.status not in ('active', 'used'):
             return Response(
@@ -1244,7 +1294,7 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def trash(self, request):
-        qs = Consultation.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')
+        qs = Consultation.objects.filter(deleted_at__isnull=False).order_by('-deleted_at')[:500]
         return Response(self.get_serializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'])
@@ -1253,6 +1303,11 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
         if not consultation:
             return Response({'detail': 'Not found in trash.'},
                             status=status.HTTP_404_NOT_FOUND)
+        if consultation.status in ('used', 'expired', 'cancelled'):
+            return Response(
+                {'detail': f'Cannot restore {consultation.status} consultation. Create a new one.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         consultation.deleted_at = None
         consultation.status = 'active'
         consultation.save(update_fields=['deleted_at', 'status', 'updated_at'])

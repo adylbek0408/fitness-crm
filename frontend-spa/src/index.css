@@ -42,6 +42,17 @@
   }
 
   * { box-sizing: border-box; }
+
+  /* ── Защита водяного знака ──────────────────────────────────────────────────
+     Нативная кнопка fullscreen внутри <video controls> делает fullscreen только
+     на самом <video>, обходя shell-обёртку с водяным знаком. Скрываем её
+     глобально для всех защищённых плееров — полноэкранный режим доступен
+     только через нашу кнопку, которая фуллскринит весь shell вместе с водяным
+     знаком. */
+  [data-protected-root] video::-webkit-media-controls-fullscreen-button,
+  [data-protected-root] video::-webkit-media-controls-picture-in-picture-button {
+    display: none !important;
+  }
 }
 
 @layer components {

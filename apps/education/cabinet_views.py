@@ -86,7 +86,7 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
             # below for tags. Keep direct group filter as the primary path.
         qs = Lesson.objects.filter(
             is_published=True, deleted_at__isnull=True,
-        ).filter(q).distinct()
+        ).filter(q).prefetch_related('groups').distinct()
 
         # Tag intersection fallback (handles JSONField cleanly).
         if client_tags:
@@ -265,16 +265,22 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         # last_watched_at is auto_now in the model — ensure update_or_create
         # actually bumps it even when nothing else changed.
         from django.utils import timezone as _tz
-        progress, _ = LessonProgress.objects.update_or_create(
+        # Use get_or_create + explicit save instead of update_or_create to
+        # avoid the race condition where two concurrent requests from the same
+        # client (two browser tabs) both see no row and both try to INSERT,
+        # hitting the unique_together constraint and raising IntegrityError.
+        progress, _ = LessonProgress.objects.get_or_create(
             client=client,
             lesson=lesson,
-            defaults={
-                'last_position_sec': position,
-                'percent_watched': percent,
-                'is_completed': is_completed,
-                'last_watched_at': _tz.now(),
-            },
+            defaults={'last_position_sec': 0, 'percent_watched': 0},
         )
+        progress.last_position_sec = position
+        progress.percent_watched   = percent
+        progress.is_completed      = is_completed
+        progress.last_watched_at   = _tz.now()
+        progress.save(update_fields=[
+            'last_position_sec', 'percent_watched', 'is_completed', 'last_watched_at',
+        ])
         return Response(LessonProgressSerializer(progress).data)
 
 
@@ -315,9 +321,11 @@ class CabinetStreamView(APIView):
             except LiveStream.DoesNotExist:
                 return Response({'stream': None, 'reason': 'not_found'})
             # Access check: stream must belong to client's group OR have no groups assigned
-            if stream.groups.exists() and client.group_id:
-                if not stream.groups.filter(id=client.group_id).exists():
-                    return Response({'stream': None, 'reason': 'forbidden'})
+            if stream.groups.exists() and (
+                not client.group_id
+                or not stream.groups.filter(id=client.group_id).exists()
+            ):
+                return Response({'stream': None, 'reason': 'forbidden'})
         else:
             # Auto-detect: find a live stream for this student.
             stream = None
@@ -369,11 +377,14 @@ class CabinetStreamJoinView(APIView):
         ):
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
-        qs = StreamViewer.objects.filter(stream=stream, client=client)
-        qs.update(is_active=True, left_at=None)
-        viewer = qs.first()
-        if not viewer:
-            viewer = StreamViewer.objects.create(stream=stream, client=client, is_active=True)
+        viewer, created = StreamViewer.objects.get_or_create(
+            stream=stream, client=client,
+            defaults={'is_active': True},
+        )
+        if not created:
+            StreamViewer.objects.filter(pk=viewer.pk).update(is_active=True, left_at=None)
+            viewer.is_active = True
+            viewer.left_at = None
         webrtc_url = stream.cf_webrtc_playback_url or ''
         if '/webRTC/play' in webrtc_url:
             playback_url = webrtc_url
@@ -386,7 +397,10 @@ class CabinetStreamJoinView(APIView):
             'playback_url': playback_url,
             'playback_kind': playback_kind,
             'watermark': {
-                'text': f"{client.first_name or ''} {client.last_name or ''}".strip(),
+                'text': (
+                    f"{client.first_name or ''} {client.last_name or ''}".strip()
+                    or 'Ученик'
+                ),
             },
         })
 
@@ -397,33 +411,29 @@ class CabinetStreamHeartbeatView(APIView):
 
     def post(self, request, pk):
         client = request.user.client
+        # Always validate stream is still live — an existing viewer row must
+        # not keep incrementing heartbeats after the stream ends.
+        try:
+            stream = LiveStream.objects.get(pk=pk, status='live', deleted_at__isnull=True)
+        except LiveStream.DoesNotExist:
+            return Response({'detail': 'Stream not live.'}, status=status.HTTP_404_NOT_FOUND)
+
         viewer = StreamViewer.objects.filter(
             stream_id=pk, client=client, is_active=True,
         ).first()
         if not viewer:
             # No active viewer — try to revive an inactive one or create afresh.
-            # Stream must still be live and the client must have access.
-            try:
-                stream = LiveStream.objects.get(pk=pk, status='live', deleted_at__isnull=True)
-            except LiveStream.DoesNotExist:
-                return Response({'detail': 'Not joined.'},
-                                status=status.HTTP_404_NOT_FOUND)
             if stream.groups.exists() and (
                 not client.group_id
                 or not stream.groups.filter(id=client.group_id).exists()
             ):
-                return Response({'detail': 'Forbidden.'},
-                                status=status.HTTP_403_FORBIDDEN)
-            # update_or_create is safe now that (stream, client) is unique.
+                return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
             StreamViewer.objects.update_or_create(
                 stream=stream, client=client,
                 defaults={'is_active': True, 'left_at': None},
             )
             return Response({'ok': True, 'recreated': True})
-        # Cheap rate limit: legitimate clients heartbeat every 5–10 s. Drop
-        # spammy beats from a misbehaving (or malicious) client without
-        # writing to the DB, so /heartbeat/ can't be used to DoS the row by
-        # rewriting last_heartbeat_at thousands of times per second.
+        # Cheap rate limit: drop spammy beats without writing to DB.
         if viewer.last_heartbeat_at:
             since = (timezone.now() - viewer.last_heartbeat_at).total_seconds()
             if since < 2:
@@ -479,10 +489,12 @@ class ConsultationStatusView(APIView):
         except Consultation.DoesNotExist:
             return Response({'active': False, 'status': 'not_found'})
 
-        # Auto-expire stale rows.
-        if c.status == 'active' and c.expires_at and c.expires_at < timezone.now():
-            c.status = 'expired'
-            c.save(update_fields=['status', 'updated_at'])
+        # Auto-expire stale rows atomically — avoids overwriting a concurrent cancel.
+        if c.expires_at and c.expires_at < timezone.now():
+            Consultation.objects.filter(pk=c.pk, status='active').update(
+                status='expired', updated_at=timezone.now(),
+            )
+            c.refresh_from_db(fields=['status'])
 
         # 'used' means used_count reached max_uses but the call is still ongoing.
         # Only 'cancelled' and 'expired' mean the session is truly over.
@@ -508,11 +520,12 @@ class PublicConsultationView(APIView):
             return Response({'valid': False, 'reason': 'not_found'},
                             status=status.HTTP_404_NOT_FOUND)
 
-        # Auto-expire stale rows.
-        if consultation.status == 'active' and consultation.expires_at \
-                and consultation.expires_at < timezone.now():
-            consultation.status = 'expired'
-            consultation.save(update_fields=['status', 'updated_at'])
+        # Auto-expire stale rows atomically — avoids overwriting a concurrent cancel.
+        if consultation.expires_at and consultation.expires_at < timezone.now():
+            Consultation.objects.filter(pk=consultation.pk, status='active').update(
+                status='expired', updated_at=timezone.now(),
+            )
+            consultation.refresh_from_db(fields=['status'])
 
         # Allow 'used' consultations when the call hasn't been explicitly ended
         # (ended_at is None = trainer hasn't pressed Stop yet).
@@ -536,9 +549,12 @@ class PublicConsultationView(APIView):
         # legitimate refreshes / reconnects (network blips, mobile sleep,
         # student leaving and coming back). The trainer ends the call with
         # the explicit "Завершить" button.
+        # Atomic first-join timestamp — two concurrent requests can't both win.
         if not consultation.started_at:
-            consultation.started_at = timezone.now()
-            consultation.save(update_fields=['started_at', 'updated_at'])
+            Consultation.objects.filter(pk=consultation.pk, started_at__isnull=True).update(
+                started_at=timezone.now(), updated_at=timezone.now(),
+            )
+            consultation.refresh_from_db(fields=['started_at'])
 
         from django.conf import settings as dj_settings
         domain = (getattr(dj_settings, 'JITSI_DOMAIN', '') or '').strip() or 'meet.jit.si'
@@ -671,7 +687,7 @@ class CabinetStreamGuestView(APIView):
             client=client,
             status__in=['invited', 'active'],
             deleted_at__isnull=True,
-        ).update(status='ended')
+        ).update(status='ended', deleted_at=timezone.now())
         return Response(status=204)
 
 
@@ -686,16 +702,26 @@ class CabinetStreamTurnCredentialsView(APIView):
 
     def post(self, request, pk):
         from django.shortcuts import get_object_or_404
+        from django.core.cache import cache
         stream = get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
         _ensure_stream_group_access(stream, request.user.client)
+
+        # Cache credentials per stream for 60 s — avoids hammering the CF API
+        # if multiple students accept simultaneously or a client retries rapidly.
+        cache_key = f'turn_creds_{pk}'
+        cached = cache.get(cache_key)
+        if cached:
+            return Response({'iceServers': cached})
+
         import os, requests as req_lib
         key_id  = os.environ.get('CF_TURN_KEY_ID', '')
         key_tok = os.environ.get('CF_TURN_API_TOKEN', '')
+        fallback = [
+            {'urls': 'stun:stun.cloudflare.com:3478'},
+            {'urls': 'stun:stun.l.google.com:19302'},
+        ]
         if not key_id or not key_tok:
-            return Response({'iceServers': [
-                {'urls': 'stun:stun.cloudflare.com:3478'},
-                {'urls': 'stun:stun.l.google.com:19302'},
-            ]})
+            return Response({'iceServers': fallback})
         try:
             resp = req_lib.post(
                 f'https://rtc.live.cloudflare.com/v1/turn/keys/{key_id}/credentials/generate-ice-servers',
@@ -707,18 +733,13 @@ class CabinetStreamTurnCredentialsView(APIView):
             data = resp.json()
             ice = data.get('iceServers', {})
             ice_servers = [ice] if isinstance(ice, dict) else ice
-            ice_servers = [
-                {'urls': 'stun:stun.cloudflare.com:3478'},
-                {'urls': 'stun:stun.l.google.com:19302'},
-            ] + ice_servers
+            ice_servers = fallback + ice_servers
+            cache.set(cache_key, ice_servers, 60)
             return Response({'iceServers': ice_servers})
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning('CF TURN credentials failed: %s', e)
-            return Response({'iceServers': [
-                {'urls': 'stun:stun.cloudflare.com:3478'},
-                {'urls': 'stun:stun.l.google.com:19302'},
-            ]})
+            return Response({'iceServers': fallback})
 
 
 class CabinetStreamGuestSignalView(APIView):
@@ -760,7 +781,7 @@ class CabinetStreamGuestSignalView(APIView):
         # real ICE candidates <1 KB.
         if 'answer_sdp' in data:
             sdp = data['answer_sdp'] or ''
-            if len(sdp) > 32_000:
+            if not isinstance(sdp, str) or len(sdp) > 32_000:
                 return Response({'error': 'SDP too large'}, status=400)
             guest.answer_sdp = sdp
             guest.save(update_fields=['answer_sdp'])

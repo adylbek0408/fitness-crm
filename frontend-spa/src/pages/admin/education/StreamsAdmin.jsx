@@ -15,6 +15,7 @@ import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import Pagination from '../../../components/Pagination'
 import VodPlayer from '../../../components/education/VodPlayer'
+import GroupPicker, { GroupPickerLabel } from '../../../components/ui/GroupPicker'
 
 const PAGE_SIZE = 12
 
@@ -254,7 +255,7 @@ export default function StreamsAdmin() {
     setEditStream(s)
     setEditForm({
       title: s.title || '',
-      description: '',
+      description: s.description || '',
       group_ids: (s.groups || []).map(g => (typeof g === 'object' ? g.id : g)),
     })
   }
@@ -497,21 +498,13 @@ export default function StreamsAdmin() {
               </div>
               {editStream.archived_lesson && (
                 <div>
-                  <label className="text-xs font-medium text-gray-500 block mb-1 flex items-center gap-1"><Users size={11} /> Группы доступа к записи</label>
-                  <div className="rounded-xl border border-gray-200 max-h-40 overflow-y-auto p-2 space-y-1">
-                    {groups.map(g => {
-                      const checked = editForm.group_ids.includes(g.id)
-                      return (
-                        <label key={g.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm transition ${checked ? 'bg-rose-50 text-rose-700' : 'hover:bg-gray-50'}`}>
-                          <input type="checkbox" checked={checked}
-                            onChange={e => setEditForm(f => ({ ...f, group_ids: e.target.checked ? [...f.group_ids, g.id] : f.group_ids.filter(x => x !== g.id) }))}
-                            className="rounded text-rose-500"
-                          />
-                          Группа {g.number}
-                        </label>
-                      )
-                    })}
-                  </div>
+                  <GroupPickerLabel>Группы доступа к записи</GroupPickerLabel>
+                  <GroupPicker
+                    groups={groups}
+                    value={editForm.group_ids}
+                    onChange={ids => setEditForm(f => ({ ...f, group_ids: ids }))}
+                    accent="rose"
+                  />
                 </div>
               )}
               <div className="flex gap-2">
@@ -613,22 +606,14 @@ function StreamCreateModal({ form, setForm, groups, creating, onClose, onSubmit 
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1 flex items-center gap-1"><Users size={11} /> Группы</label>
-            <div className="rounded-xl border border-gray-200 max-h-44 overflow-y-auto p-2 space-y-1">
-              {groups.length === 0 && <p className="text-xs text-gray-400 p-2">Загрузка…</p>}
-              {groups.map(g => {
-                const checked = form.group_ids.includes(g.id)
-                return (
-                  <label key={g.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm transition ${checked ? 'bg-rose-50 text-rose-700' : 'hover:bg-gray-50'}`}>
-                    <input type="checkbox" checked={checked}
-                      onChange={e => setForm(f => ({ ...f, group_ids: e.target.checked ? [...f.group_ids, g.id] : f.group_ids.filter(x => x !== g.id) }))}
-                      className="rounded text-rose-500"
-                    />
-                    Группа {g.number}
-                  </label>
-                )
-              })}
-            </div>
+            <GroupPickerLabel>Группы</GroupPickerLabel>
+            <GroupPicker
+              groups={groups}
+              value={form.group_ids}
+              onChange={ids => setForm(f => ({ ...f, group_ids: ids }))}
+              accent="rose"
+              emptyText="Загрузка…"
+            />
           </div>
           <button onClick={onSubmit} disabled={creating}
             className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-md disabled:opacity-50 flex items-center justify-center gap-2">

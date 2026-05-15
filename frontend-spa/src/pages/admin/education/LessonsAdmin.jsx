@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import * as tus from 'tus-js-client'
 import {
   Upload, Trash2, Plus, CheckCircle2, Headphones, Play,
   Mic, Square, Video, FileAudio, Search, Users,
@@ -15,15 +14,16 @@ import ConfirmModal from '../../../components/ConfirmModal'
 import VodPlayer from '../../../components/education/VodPlayer'
 import LessonThumb from '../../../components/education/LessonThumb'
 import AppSelect from '../../../components/ui/AppSelect'
+import GroupPicker, { GroupPickerLabel } from '../../../components/ui/GroupPicker'
+import { useUploads } from '../../../contexts/UploadContext'
 
 const PAGE_SIZE = 12
 
 export default function LessonsAdmin() {
   const { user } = useOutletContext()
+  const { startUpload } = useUploads()
   const [lessons, setLessons]   = useState([])
   const [loading, setLoading]   = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [groups, setGroups]     = useState([])
   const [search, setSearch]     = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -69,7 +69,7 @@ export default function LessonsAdmin() {
   const recChunksRef = useRef([])
 
   const [form, setForm] = useState({
-    title: '', lesson_type: 'video', file: null, group_ids: [],
+    title: '', lesson_type: 'video', description: '', file: null, group_ids: [],
   })
   const [thumbnailBlob, setThumbnailBlob] = useState(null)
   const [thumbnailPreview, setThumbnailPreview] = useState('')
@@ -228,25 +228,12 @@ export default function LessonsAdmin() {
     return `${m}:${String(s).padStart(2, '0')}`
   }
 
-  // ── XHR upload with real progress ────────────────────────────────────────
-  const xhrUpload = (url, method, body, headers, onProgress) =>
-    new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open(method, url)
-      if (headers) Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v))
-      xhr.upload.onprogress = e => {
-        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
-      }
-      xhr.onload  = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve(xhr)
-        else reject(new Error(`Upload ${xhr.status}: ${xhr.responseText.slice(0, 200)}`))
-      }
-      xhr.onerror   = () => reject(new Error('Ошибка сети при загрузке'))
-      xhr.ontimeout = () => reject(new Error('Таймаут загрузки'))
-      xhr.send(body)
-    })
-
   // ── Upload lesson ────────────────────────────────────────────────────────
+  // Upload starts in the global UploadProvider. The modal closes immediately —
+  // progress, success and failure all live in the floating UploadDock at App
+  // root, so navigation, route changes and modal closure do not interrupt the
+  // upload. The provider also installs a beforeunload guard while any upload
+  // is in flight to keep the browser tab open.
   const handleUpload = async () => {
     if (!form.title.trim()) {
       setAlertModal({ title: 'Заполните название', message: 'Без названия урок не сохранится.', variant: 'error' })
@@ -262,100 +249,40 @@ export default function LessonsAdmin() {
       })
       return
     }
-    setUploading(true); setProgress(5)
-    try {
-      const init = await api.post('/education/lessons/upload-init/', {
-        title: form.title.trim(),
-        description: form.description?.trim() || '',
-        lesson_type: form.lesson_type,
-        groups: form.group_ids,
-        file_ext: form.file.name.split('.').pop().toLowerCase(),
-      })
-      const { lesson, upload } = init.data
-      setProgress(15)
 
-      // Capture thumbnail from video WHILE video uploads (in parallel)
-      let thumbBlob = thumbnailBlob // admin may have pre-selected
-      const thumbCapture = (form.lesson_type === 'video' && !thumbBlob)
-        ? captureVideoFrame(form.file)
-        : Promise.resolve(thumbnailBlob)
-
-      const onUploadProgress = ratio => {
-        // 15% (init done) → 72% (upload done), leaves 3% for finalize
-        setProgress(15 + Math.round(ratio * 57))
-      }
-
-      if (upload.kind === 'cf-direct') {
-        // CF Stream URL is TUS-compatible — use tus-js-client for chunked
-        // resumable upload. If connection drops mid-way, upload resumes
-        // from the last successful chunk instead of restarting from zero.
-        await new Promise((resolve, reject) => {
-          const tusUpload = new tus.Upload(form.file, {
-            uploadUrl:   upload.url,          // pre-created TUS URL from backend
-            chunkSize:   50 * 1024 * 1024,    // 50 MB per chunk
-            retryDelays: [0, 1000, 3000, 5000, 10000],
-            onProgress: (loaded, total) => {
-              if (total) onUploadProgress(loaded / total)
-            },
-            onSuccess: resolve,
-            onError:   reject,
-          })
-          tusUpload.start()
-        })
-      } else if (upload.kind === 'r2-presigned-put') {
-        await xhrUpload(
-          upload.url, 'PUT', form.file,
-          { 'Content-Type': upload.content_type },
-          onUploadProgress,
-        )
-      }
-
-      setProgress(75)
-      thumbBlob = await thumbCapture
-      await api.post(`/education/lessons/${lesson.id}/finalize/`, {})
-      setProgress(85)
-
-      // Upload thumbnail. If we got no blob (capture failed), warn but
-      // don't block the upload — admin can attach one manually later.
-      let thumbWarning = null
-      if (form.lesson_type === 'video') {
-        if (!thumbBlob) {
-          thumbWarning = 'Не удалось автоматически захватить кадр из видео. ' +
-                        'Откройте урок и нажмите кнопку «Обновить превью», ' +
-                        'чтобы добавить картинку вручную.'
-        } else {
-          const ok = await uploadThumbnailForLesson(lesson.id, thumbBlob)
-          if (!ok) {
-            thumbWarning = 'Видео сохранилось, но превью не загрузилось. ' +
-                          'Используйте кнопку «Обновить превью» в карточке урока.'
-          }
-        }
-      }
-
-      setProgress(100)
-      setForm({ title: '', lesson_type: 'video', file: null, group_ids: [] })
-      setThumbnailBlob(null)
-      setThumbnailPreview('')
-      setShowForm(false)
-      reload()
-
-      if (thumbWarning) {
-        setAlertModal({
-          title: 'Превью не сохранено',
-          message: thumbWarning,
-          variant: 'info',
-        })
-      }
-    } catch (e) {
-      setAlertModal({
-        title: 'Не удалось сохранить урок',
-        message: e.response?.data?.detail || e.message || 'Попробуйте ещё раз.',
-        variant: 'error',
-      })
-    } finally {
-      setUploading(false)
-      setTimeout(() => setProgress(0), 1500)
+    // Capture a thumbnail synchronously for videos. We don't want to wait for
+    // the auto-capture inside the provider — the user has already chosen the
+    // file and the preview ran. If they didn't pre-select, kick a best-effort
+    // capture here (non-blocking on the user; we await max 8 s in the helper).
+    let thumbBlob = thumbnailBlob
+    if (form.lesson_type === 'video' && !thumbBlob) {
+      try { thumbBlob = await captureVideoFrame(form.file) } catch {}
     }
+
+    startUpload({
+      title:         form.title.trim(),
+      description:   form.description || '',
+      lesson_type:   form.lesson_type,
+      group_ids:     form.group_ids,
+      file:          form.file,
+      thumbnailBlob: thumbBlob,
+    }, {
+      onComplete: () => { reload() },
+      onError: (e) => {
+        const msg = e?.response?.data?.detail || e?.message || 'Попробуйте ещё раз.'
+        setAlertModal({
+          title:   'Не удалось сохранить урок',
+          message: msg,
+          variant: 'error',
+        })
+      },
+    })
+
+    // Close the modal immediately — the dock will show progress + completion.
+    setForm({ title: '', lesson_type: 'video', description: '', file: null, group_ids: [] })
+    setThumbnailBlob(null)
+    setThumbnailPreview('')
+    setShowForm(false)
   }
 
   const performDelete = async () => {
@@ -606,14 +533,13 @@ export default function LessonsAdmin() {
           </>
         )}
 
-      {/* Upload modal */}
+      {/* Upload modal — closes immediately after submit; progress shown in
+          floating UploadDock at the App root (so navigation doesn't kill it). */}
       {showForm && (
         <UploadModal
           form={form}
           setForm={setForm}
           groups={groups}
-          uploading={uploading}
-          progress={progress}
           recording={recording}
           recSeconds={recSeconds}
           onRecord={startRecording}
@@ -1039,40 +965,13 @@ function EditLessonModal({ lesson, groups, onClose, onSaved, onError }) {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500 font-medium mb-1 flex items-center gap-1">
-              <Users size={12} /> Доступ для групп
-            </label>
-            <div className="rounded-xl border border-gray-200 max-h-44 overflow-y-auto p-2 space-y-1">
-              {groups.length === 0 && (
-                <p className="text-xs text-gray-400 p-2">Группы загружаются…</p>
-              )}
-              {groups.map(g => {
-                const checked = groupIds.includes(g.id)
-                return (
-                  <label
-                    key={g.id}
-                    className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm transition ${
-                      checked ? 'bg-purple-50 text-purple-700' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={e => setGroupIds(prev =>
-                        e.target.checked ? [...prev, g.id] : prev.filter(x => x !== g.id)
-                      )}
-                      className="rounded text-purple-500 focus:ring-purple-300"
-                    />
-                    <span>Группа {g.number}</span>
-                    {g.trainer && (
-                      <span className="text-xs text-gray-400 truncate">
-                        · {g.trainer.first_name} {g.trainer.last_name}
-                      </span>
-                    )}
-                  </label>
-                )
-              })}
-            </div>
+            <GroupPickerLabel>Доступ для групп</GroupPickerLabel>
+            <GroupPicker
+              groups={groups}
+              value={groupIds}
+              onChange={setGroupIds}
+              accent="purple"
+            />
             <p className="text-xs text-gray-400 mt-1.5">
               Ученики выбранных групп увидят этот урок в кабинете.
             </p>
@@ -1098,11 +997,19 @@ function EditLessonModal({ lesson, groups, onClose, onSaved, onError }) {
 // Upload modal
 // ───────────────────────────────────────────────────────────────────────────
 function UploadModal({
-  form, setForm, groups, uploading, progress,
+  form, setForm, groups,
   recording, recSeconds, onRecord, onStopRecord, fmtTime,
   thumbnailPreview, onVideoFileSelected,
   onClose, onSubmit,
 }) {
+  // Local guard so a double-click on Submit doesn't enqueue the upload
+  // twice. We don't need to wait — the parent closes us synchronously.
+  const [submitting, setSubmitting] = useState(false)
+  const handleSubmit = () => {
+    if (submitting) return
+    setSubmitting(true)
+    onSubmit()
+  }
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
       <div
@@ -1165,43 +1072,13 @@ function UploadModal({
 
           {/* Groups */}
           <div>
-            <label className="block text-xs text-gray-500 font-medium mb-1 flex items-center gap-1">
-              <Users size={12} /> Доступ для групп
-            </label>
-            <div className="rounded-xl border border-gray-200 max-h-44 overflow-y-auto p-2 space-y-1">
-              {groups.length === 0 && (
-                <p className="text-xs text-gray-400 p-2">Группы загружаются…</p>
-              )}
-              {groups.map(g => {
-                const checked = form.group_ids.includes(g.id)
-                return (
-                  <label
-                    key={g.id}
-                    className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm transition ${
-                      checked ? 'bg-rose-50 text-rose-700' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={e => setForm(f => ({
-                        ...f,
-                        group_ids: e.target.checked
-                          ? [...f.group_ids, g.id]
-                          : f.group_ids.filter(x => x !== g.id),
-                      }))}
-                      className="rounded text-rose-500 focus:ring-rose-300"
-                    />
-                    <span>Группа {g.number}</span>
-                    {g.trainer && (
-                      <span className="text-xs text-gray-400 truncate">
-                        · {g.trainer.first_name} {g.trainer.last_name}
-                      </span>
-                    )}
-                  </label>
-                )
-              })}
-            </div>
+            <GroupPickerLabel>Доступ для групп</GroupPickerLabel>
+            <GroupPicker
+              groups={groups}
+              value={form.group_ids}
+              onChange={ids => setForm(f => ({ ...f, group_ids: ids }))}
+              accent="rose"
+            />
           </div>
 
           {/* File */}
@@ -1283,49 +1160,22 @@ function UploadModal({
             </div>
           )}
 
-          {/* Progress bar */}
-          {progress > 0 && (
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-gray-500 mb-0.5">
-                <span>
-                  {progress < 15  ? 'Подготовка…'
-                  : progress < 75 ? `Загрузка файла — ${progress}%`
-                  : progress < 95 ? 'Финализация…'
-                  : progress < 100 ? 'Загрузка превью…'
-                  : '✓ Готово!'}
-                </span>
-                <span>{progress}%</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-rose-500 to-pink-500 transition-all duration-200"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              {progress >= 15 && progress < 75 && form?.file && (
-                <p className="text-xs text-gray-400 text-center">
-                  {(form.file.size / 1024 / 1024).toFixed(1)} МБ → Cloudflare
-                </p>
-              )}
-            </div>
+          {/* Background-upload notice — sets expectations so the user
+              doesn't worry when the modal closes immediately on submit. */}
+          {form.file && (
+            <p className="text-[11px] text-gray-400 text-center">
+              Загрузка пойдёт в фоне — можно закрыть это окно и работать
+              дальше. Прогресс отобразится в правом нижнем углу.
+            </p>
           )}
 
           {/* Submit */}
           <button
-            onClick={onSubmit}
-            disabled={uploading || recording}
+            onClick={handleSubmit}
+            disabled={submitting || recording}
             className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg hover:from-rose-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition"
           >
-            {uploading ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Загрузка…
-              </>
-            ) : (
-              <>
-                <Upload size={16} /> Загрузить и опубликовать
-              </>
-            )}
+            <Upload size={16} /> Загрузить и опубликовать
           </button>
         </div>
       </div>

@@ -12,6 +12,13 @@ import {
   createMixerCanvas, createAudioMixer,
   startTrainerP2P,
 } from '../../../components/education/streamGuestRTC'
+import {
+  appendChunk as recordAppendChunk,
+  assembleBlob as recordAssembleBlob,
+  clearChunks as recordClearChunks,
+  countBytes as recordCountBytes,
+  clearStale as recordClearStale,
+} from '../../../utils/recordingStore'
 
 export default function BroadcastPage() {
   const { id } = useParams()
@@ -24,18 +31,28 @@ export default function BroadcastPage() {
   const [micOn,        setMicOn]        = useState(true)
   const [camOn,        setCamOn]        = useState(true)
   const [facingMode,   setFacingMode]   = useState('user')
-  // Quality is fixed at the highest tier (1080p) — the picker was confusing
-  // and the trainer almost always wants max. If we ever need to scale down
-  // for slow connections, we can fall back automatically.
-  const quality = '1080p'
+  // Default to 720p — the browser is the encoder, and 1080p WHIP from a phone
+  // sustained for ≥10 min throttles the SoC, drops frames, and freezes for
+  // viewers. 720p @ 2.5 Mbps is the sweet spot for browser WebRTC: visually
+  // indistinguishable from 1080p for fitness video, and stays stable on every
+  // mid-range device we've tested. The trainer can bump it to 1080p from the
+  // pre-broadcast lobby if they're on a dedicated camera + wired network.
+  const [quality, setQuality] = useState('720p')
   const [elapsed,      setElapsed]      = useState(0)
   const [viewers,      setViewers]      = useState([])
   const [showViewers,  setShowViewers]  = useState(false)
   const [connState,    setConnState]    = useState('')
   const [cfStatus,     setCfStatus]     = useState(null)
-  const [recordingPct,  setRecordingPct]  = useState(0)
-  const [recordingDone, setRecordingDone] = useState(false)
-  const [uploadError,   setUploadError]   = useState('')
+  const [recordingPct,   setRecordingPct]   = useState(0)
+  const [recordingDone,  setRecordingDone]  = useState(false)
+  const [uploadError,    setUploadError]    = useState('')
+  // Incrementing this re-triggers the upload effect so the trainer can retry
+  // without reloading the page (IDB chunks survive the failed attempt).
+  const [uploadRetry,    setUploadRetry]    = useState(0)
+  // Live "MB recorded so far" indicator — read every 15 s from IDB; gives the
+  // trainer a sanity check ("yes, my browser is capturing this") and lets us
+  // warn before quota fills.
+  const [recBytes,       setRecBytes]       = useState(0)
   const [flipping,     setFlipping]     = useState(false)
   // When CF reports the live input is already connected (i.e. the trainer is
   // streaming from somewhere else), we ask before clobbering the other
@@ -87,21 +104,25 @@ export default function BroadcastPage() {
   const [guestRemoteStream, setGuestRemoteStream] = useState(null)
   const guestPollRef     = useRef(null)
   const guestP2PRef      = useRef(null)         // { pc, remoteStream, close }
+  const startingGuestRef = useRef(false)        // guard against concurrent startGuestStage calls
+  const guestRetryRef    = useRef(0)            // # of failed P2P attempts for current guest
   // The visual + audio mixers are now ALWAYS-ON for the duration of the
   // broadcast. They are the single source of truth that feeds both the WHIP
   // sender (→ Cloudflare) and the local MediaRecorder (→ archive). This way
   // every change visible live (flip-camera, guest in/out) is captured in the
   // recording — MediaRecorder snapshots tracks at start() so feeding it the
   // raw camera track would freeze the recording on the original camera.
-  const mixerRef         = useRef(null)         // { canvas, stream, stop, setGuestVideo, setTrainerVideo }
+  const mixerRef         = useRef(null)         // { canvas, stream, stop, setGuestVideo, setTrainerVideo, setFps }
   const audioMixerRef    = useRef(null)         // { mixedTrack, addGuest, removeGuest, replaceTrainer, close }
   const mixedOutputRef   = useRef(null)         // MediaStream — what's actually sent / recorded
+  const mixerFpsRef      = useRef(20)           // full-quality fps — restored when guest leaves
   const guestVideoElRef  = useRef(null)         // hidden <video> for received guest stream
   const guestPipVideoRef = useRef(null)         // visible PIP <video> in trainer preview
 
   const videoRef              = useRef(null)
   const pcRef                 = useRef(null)
   const localStreamRef        = useRef(null)
+  const whipVideoSenderRef    = useRef(null)  // RTCRtpSender for video on the WHIP PC
   const elapsedRef            = useRef(null)
   const statusRef             = useRef(status)
   const whipRef               = useRef(null)
@@ -134,7 +155,7 @@ export default function BroadcastPage() {
   }
 
   const constraints = (q, facing) => ({
-    video: { facingMode: { ideal: facing }, width: { ideal: q.width }, height: { ideal: q.height }, frameRate: { ideal: q.frameRate } },
+    video: { facingMode: { ideal: facing }, width: { ideal: q.width }, height: { ideal: q.height }, frameRate: { min: 15, ideal: q.frameRate } },
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   })
 
@@ -144,6 +165,11 @@ export default function BroadcastPage() {
     api.get('/education/streams/')
       .then(r => { const s = (pickList(r.data)).find(s => s.id === id); if (s) setStream(s); else setError('Эфир не найден') })
       .catch(() => setError('Ошибка загрузки'))
+    // Garbage-collect chunks from broadcasts that ended >24 h ago and never
+    // got uploaded (closed tab, crashed browser, hard refresh). Without this,
+    // a few interrupted broadcasts could quietly fill the user's IDB quota
+    // and bog down subsequent recordings.
+    recordClearStale().catch(() => {})
   }, [id])
 
   useEffect(() => { statusRef.current = status }, [status])
@@ -175,6 +201,17 @@ export default function BroadcastPage() {
   }, [status, id])
 
   useEffect(() => {
+    if (status !== 'live' || !id) { setRecBytes(0); return }
+    let ok = true
+    const check = async () => {
+      try { const b = await recordCountBytes(id); if (ok) setRecBytes(b) } catch {}
+    }
+    check()
+    const t = setInterval(check, 15000)
+    return () => { ok = false; clearInterval(t) }
+  }, [status, id])
+
+  useEffect(() => {
     if (status !== 'live' || !id) return
     let ok = true
     // External-stop poll: catches the case where a 2nd device hijacks the
@@ -189,6 +226,12 @@ export default function BroadcastPage() {
           // Stop recorder before tracks so the final chunk is flushed
           const mr = mediaRecorderRef.current
           if (mr && mr.state !== 'inactive') { try { mr.stop() } catch {} }
+          // Free mixers — they run rAF + AudioContext indefinitely if not stopped
+          try { mixerRef.current?.stop() } catch {}
+          mixerRef.current = null
+          try { audioMixerRef.current?.close() } catch {}
+          audioMixerRef.current = null
+          whipVideoSenderRef.current = null
           localStreamRef.current?.getTracks().forEach(t => t.stop())
           pcRef.current?.close()
           if (videoRef.current) videoRef.current.srcObject = null
@@ -229,16 +272,30 @@ export default function BroadcastPage() {
       try { await recorderStopPromise.current } catch {}
       recorderStopPromise.current = null
 
-      const chunks = recordedChunksRef.current || []
-      recordedChunksRef.current = []
-
-      if (chunks.length === 0) { clearUploadProgress(); nav('/admin/education/streams'); return }
-
-      // Use the actual mime type recorded, so iOS mp4 blobs are sent correctly.
       const mime = recorderMimeRef.current || 'video/webm'
       const ext  = mime.includes('mp4') ? 'mp4' : 'webm'
-      const blob = new Blob(chunks, { type: mime })
-      if (blob.size < 10_000) { clearUploadProgress(); nav('/admin/education/streams'); return }
+
+      // Primary source: IndexedDB. Fallback: in-memory chunks ref (used when
+      // IDB was unavailable on this device — see ondataavailable handler).
+      let blob = null
+      try {
+        blob = await recordAssembleBlob(id, mime)
+      } catch (e) {
+        console.warn('[recorder] IDB assemble failed:', e)
+      }
+      if ((!blob || blob.size === 0) && recordedChunksRef.current?.length) {
+        blob = new Blob(recordedChunksRef.current, { type: mime })
+      }
+      recordedChunksRef.current = []
+
+      // Nothing to upload — could be a cancelled session or a stream that
+      // ended before the first 10s chunk flushed.
+      if (!blob || blob.size < 10_000) {
+        try { await recordClearChunks(id) } catch {}
+        clearUploadProgress()
+        nav('/admin/education/streams')
+        return
+      }
 
       const fd = new FormData()
       fd.append('file', blob, `recording.${ext}`)
@@ -259,16 +316,18 @@ export default function BroadcastPage() {
           },
         })
         setRecordingPct(100); setRecordingDone(true)
-        // Backend returned 202 → it has the file and is uploading to CF in
-        // a background thread. Switch the sessionStorage flag to 'processing'
-        // so the streams list keeps the bar visible, then bail. Trainer can
-        // close the tab now without losing anything.
+        // Backend returned 202 → it has the file. Drop the on-disk chunks
+        // immediately so the next broadcast starts on a clean slate.
+        try { await recordClearChunks(id) } catch {}
         writeUploadProgress('processing', 100)
         setTimeout(() => { clearUploadProgress(); nav('/admin/education/streams') }, 1200)
       } catch(e) {
         const msg = e?.response?.data?.detail || e?.message || 'Ошибка загрузки'
         setUploadError(msg)
         clearUploadProgress()
+        // Do NOT clear IDB on failure — IDB chunks survive the attempt so
+        // the trainer can hit "Повторить загрузку". Stale chunks are GC'd
+        // by clearStale() after 24 h.
       } finally {
         setUploading(false)
       }
@@ -278,7 +337,7 @@ export default function BroadcastPage() {
     // No abort/cleanup here: we want the upload to complete even if the user
     // navigates away. The button is disabled while `uploading` is true; that
     // is the actual safeguard against losing the recording.
-  }, [status, id, nav])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, id, nav, uploadRetry])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Warn before unload if upload is still in flight — closing the tab WILL
   // abort the XHR and the recording will be lost.
@@ -345,9 +404,14 @@ export default function BroadcastPage() {
         const invited = guests.find(g => g.status === 'invited')
         const cur = activeGuest
         if (active && (!cur || cur.id !== active.id || cur.status !== 'active')) {
+          // New guest (different id) → reset retry counter
+          if (!cur || cur.id !== active.id) guestRetryRef.current = 0
           setActiveGuest(active)
-          // start P2P only if not already running for this guest
-          if (!guestP2PRef.current || guestP2PRef.current._guestId !== active.id) {
+          // Start P2P if: (no session running AND under retry limit) OR session
+          // is for a different guest (trainer kicked one and invited another).
+          const noSession = !guestP2PRef.current && !startingGuestRef.current
+          const wrongGuest = guestP2PRef.current && guestP2PRef.current._guestId !== active.id
+          if ((noSession && guestRetryRef.current < 3) || wrongGuest) {
             startGuestStage(active)
           }
         } else if (!active && invited) {
@@ -408,51 +472,91 @@ export default function BroadcastPage() {
       ls.getTracks().forEach(t => {
         t.addEventListener('ended', () => {
           console.warn('[track-ended]', t.kind, 'track ended unexpectedly')
-          if (statusRef.current === 'live') {
-            setError(
-              t.kind === 'video'
-                ? 'Камера отключена. Эфир остановлен — переподключите устройство и начните заново.'
-                : 'Микрофон отключён. Звук пропал.'
-            )
-            // Only fully stop on video track loss — losing mic mid-stream
-            // is recoverable (silence) and the trainer may still want to
-            // finish gracefully.
-            if (t.kind === 'video') stopBroadcast().catch(() => {})
-          }
+          if (statusRef.current !== 'live') return
+          // Ignore tracks intentionally stopped during camera flip — localStreamRef
+          // is updated to the new stream before the old tracks are stopped, so any
+          // track that is no longer in the active stream was replaced, not lost.
+          if (!localStreamRef.current?.getTracks().some(a => a.id === t.id)) return
+          setError(
+            t.kind === 'video'
+              ? 'Камера отключена. Эфир остановлен — переподключите устройство и начните заново.'
+              : 'Микрофон отключён. Звук пропал.'
+          )
+          if (t.kind === 'video') stopBroadcast().catch(() => {})
         })
       })
 
       // ── Always-on mixers ──────────────────────────────────────────────────
       // Cap mixed canvas at 720p — 1080p canvas captureStream eats too much
-      // CPU on phones, especially with audio mixing on top. CF-side viewers
-      // rarely benefit from >720p in a fitness stream.
+      // CPU on phones, especially with audio mixing on top. The mixer also
+      // lets us record/upload exactly what the viewer sees (flip-camera, guest
+      // PIP, swap) without rewiring MediaRecorder mid-broadcast.
       const mixW = Math.min(q.width, 1280)
       const mixH = Math.min(q.height, 720)
+      // Canvas fps when a guest is on stage: scales with quality setting.
+      // When no guest is present, canvas is throttled to 10fps (recording only;
+      // WHIP uses raw camera). This halves canvas GPU work on solo broadcasts.
+      const canvasFps = quality === '480p' ? 15 : quality === '1080p' ? 24 : 20
+      mixerFpsRef.current = canvasFps
       let mixedStream = null
       try {
-        // 20 fps mixer (was 24): visually indistinguishable for human bodies,
-        // ~17% fewer canvas draws → noticeably less CPU heat on phones and laptops.
-        // Recorded video stays smooth (MediaRecorder ingests whatever the canvas
-        // produces; viewers' eyes can't tell 20 vs 24 fps for fitness content).
         const mixer = createMixerCanvas({
-          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: 20,
+          trainerVideo: videoRef.current, width: mixW, height: mixH, fps: canvasFps,
         })
+        // Solo mode: throttle canvas to 15fps until a guest arrives.
+        // WHIP uses raw camera, so viewers are unaffected; MediaRecorder
+        // gets a lower-overhead canvas that still produces an acceptable archive.
+        // 15fps (vs 20) cuts canvas GPU work by 25% while keeping recording fluid.
+        mixer.setFps(15)
         mixerRef.current = mixer
+
         const audioMix = createAudioMixer(ls)
         audioMixerRef.current = audioMix
+        // iOS Safari creates AudioContext in `suspended` state and silently
+        // produces a silent destination track until `resume()` is awaited.
+        // We're inside the user-gesture (button click) — so this almost
+        // always succeeds; if it doesn't, the visibilitychange handler
+        // inside the mixer recovers on next foreground.
+        try {
+          if (audioMix?.audioCtx?.state === 'suspended') {
+            await audioMix.audioCtx.resume()
+          }
+        } catch (e) { console.warn('[audio] AudioContext.resume failed:', e) }
+
         const tracks = []
         const mv = mixer.stream.getVideoTracks()[0]
         if (mv) tracks.push(mv)
-        if (audioMix?.mixedTrack) tracks.push(audioMix.mixedTrack)
-        // Fallback to raw audio track if Web Audio mixer failed
-        else ls.getAudioTracks().forEach(t => tracks.push(t))
+        // Guard: if Web Audio mixer somehow produced a track with no audio
+        // (rare iOS corner case), fall back to the raw mic track so viewers
+        // can still hear the trainer.
+        const mixedAudio = audioMix?.mixedTrack
+        const mixedAudioUsable = mixedAudio && mixedAudio.readyState === 'live'
+        if (mixedAudioUsable) {
+          tracks.push(mixedAudio)
+          console.log('[audio] using mixed track from Web Audio destination')
+        } else {
+          ls.getAudioTracks().forEach(t => tracks.push(t))
+          console.warn('[audio] Web Audio mixer track not live — using raw mic')
+        }
         mixedStream = new MediaStream(tracks)
         mixedOutputRef.current = mixedStream
       } catch(e) {
         console.warn('[mixer] init failed, falling back to raw stream:', e)
       }
-      // Fallback: raw camera+mic if mixers failed (very rare on modern browsers)
+      // MediaRecorder always uses canvas stream — it records exactly what viewers
+      // see (flip-camera, guest PIP, swap) even after we optimize WHIP below.
       const outputStream = mixedStream || ls
+
+      // WHIP stream: raw camera video for full quality when broadcasting alone.
+      // Canvas is only needed when a guest PIP is visible; replaceTrack switches
+      // between the two without renegotiating with Cloudflare.
+      let whipStream = outputStream  // fallback when mixer unavailable
+      if (mixedStream) {
+        const rawVt = ls.getVideoTracks()[0]
+        if (rawVt) {
+          whipStream = new MediaStream([rawVt, ...mixedStream.getAudioTracks()])
+        }
+      }
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] })
       pcRef.current = pc
@@ -468,19 +572,10 @@ export default function BroadcastPage() {
         }
       })
 
-      // Canvas is always capped at 720p (mixW/mixH above), so cap video bitrate
-      // at 2500 Kbps regardless of selected quality — sending 4500 Kbps for a
-      // 720p canvas makes the WebRTC encoder run at max effort for no viewer benefit
-      // and heats up the device noticeably.
       const whipVideoKbps = Math.min(q.videoKbps, 2500)
-      outputStream.getTracks().forEach(t => {
-        const s = pc.addTrack(t, outputStream)
-        try {
-          const p = s.getParameters(); if (!p.encodings) p.encodings = [{}]
-          if (t.kind === 'video') { p.encodings[0].maxBitrate = whipVideoKbps * 1000; p.encodings[0].maxFramerate = q.frameRate }
-          else p.encodings[0].maxBitrate = 128000
-          s.setParameters(p).catch(() => {})
-        } catch {}
+      whipStream.getTracks().forEach(t => {
+        const s = pc.addTrack(t, whipStream)
+        if (t.kind === 'video') whipVideoSenderRef.current = s
       })
 
       try {
@@ -512,6 +607,28 @@ export default function BroadcastPage() {
       const sessionUrl = whipResp.data.session_url || ''
       if (sessionUrl) whipRef.current = sessionUrl
       await pc.setRemoteDescription({ type: 'answer', sdp: answer })
+      // Apply bitrate / degradation caps AFTER negotiation completes.
+      // setParameters() is only valid once offer/answer have been exchanged
+      // (WebRTC spec §5.2); calling it before setRemoteDescription causes
+      // silent no-ops in Chrome / Safari and may be rejected in Firefox.
+      pc.getSenders().forEach(s => {
+        if (!s.track) return
+        try {
+          const p = s.getParameters()
+          if (!p.encodings?.length) p.encodings = [{}]
+          if (s.track.kind === 'video') {
+            p.encodings[0].maxBitrate    = whipVideoKbps * 1000
+            p.encodings[0].maxFramerate  = q.frameRate
+            // Under network congestion: drop resolution, keep frame rate.
+            // Fitness video (movement, counting) needs smooth motion; blurrier
+            // 480p @ 30fps is more watchable than crisp 720p @ 10fps.
+            p.encodings[0].degradationPreference = 'maintain-framerate'
+          } else {
+            p.encodings[0].maxBitrate = 160_000
+          }
+          s.setParameters(p).catch(e => console.warn('[whip] setParameters:', e))
+        } catch {}
+      })
       try { await api.post(`/education/streams/${id}/start/`) } catch {}
       // Start browser-side recording — fallback for CF automatic recording.
       // We feed it `outputStream` (the SAME stream the WHIP sender uses), so
@@ -526,18 +643,37 @@ export default function BroadcastPage() {
         ].find(t => MediaRecorder.isTypeSupported(t)) || ''
         recorderMimeRef.current = mimeType
         if (mimeType) {
-          const mr = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 128_000 })
-          recordedChunksRef.current = []
+          const mr = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: 1_500_000, audioBitsPerSecond: 160_000 })
           // stopPromise resolves only after onstop — by then ondataavailable has already fired
           recorderStopPromise.current = new Promise(res => { mr.onstop = res })
-          mr.ondataavailable = e => { if (e.data?.size > 0) recordedChunksRef.current.push(e.data) }
-          mr.start(10_000)  // flush chunk every 10 s
+          // Reset legacy in-memory ref (still kept as the fallback path when
+          // IndexedDB is unavailable, e.g. Safari private mode).
+          recordedChunksRef.current = []
+          mr.ondataavailable = e => {
+            const blob = e?.data
+            if (!blob || blob.size === 0) return
+            // Persist each 10s chunk to IndexedDB instead of stuffing the React
+            // ref. For a 1-hour broadcast this is the difference between ~700 MB
+            // of in-memory Blobs (instant OOM on iOS) and zero RAM pressure.
+            recordAppendChunk(id, blob).catch(err => {
+              // IDB unavailable / quota exhausted → fall back to RAM. We log
+              // loudly so we notice if this happens in practice.
+              console.warn('[recorder] IDB append failed, falling back to RAM:', err)
+              recordedChunksRef.current.push(blob)
+            })
+          }
+          mr.start(5_000)  // flush chunk every 5 s — halves max data loss on crash
           mediaRecorderRef.current = mr
         }
       } catch(e) { console.warn('[recorder] MediaRecorder start failed:', e) }
       setBroadcasting(true); setStatus('live')
     } catch(e) {
       setError('Ошибка: ' + (e.message || e)); setStatus('idle')
+      // Tear down any partially-created resources so the next attempt starts clean.
+      try { mixerRef.current?.stop() } catch {}; mixerRef.current = null
+      try { audioMixerRef.current?.close() } catch {}; audioMixerRef.current = null
+      pcRef.current?.close(); pcRef.current = null
+      whipVideoSenderRef.current = null
       localStreamRef.current?.getTracks().forEach(t => t.stop())
     }
   }
@@ -561,6 +697,7 @@ export default function BroadcastPage() {
     try { audioMixerRef.current?.close() } catch {}
     audioMixerRef.current = null
     mixedOutputRef.current = null
+    whipVideoSenderRef.current = null
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     if (videoRef.current) videoRef.current.srcObject = null
@@ -591,6 +728,16 @@ export default function BroadcastPage() {
       // Swap audio source in the always-on Web Audio mixer so the new mic
       // (different gain on front vs back) is what gets sent + recorded.
       try { audioMixerRef.current?.replaceTrainer(ns) } catch {}
+      // If no guest is on stage, the WHIP sender holds the raw camera track.
+      // Update it to the new camera so viewers see the flipped feed.
+      if (!guestP2PRef.current) {
+        try {
+          const newVt = ns.getVideoTracks()[0]
+          if (newVt && whipVideoSenderRef.current) {
+            whipVideoSenderRef.current.replaceTrack(newVt).catch(e => console.warn('[flip] replaceTrack:', e))
+          }
+        } catch(e) { console.warn('[flip] replaceTrack WHIP:', e) }
+      }
       // Free old camera + mic only AFTER the new stream is wired up — stopping
       // earlier creates a black flash and a silent audio gap on iOS.
       oldLs?.getTracks().forEach(t => { try { t.stop() } catch {} })
@@ -626,6 +773,8 @@ export default function BroadcastPage() {
   // Start P2P with guest + composite into CF stream
   const startGuestStage = async (guest) => {
     if (!localStreamRef.current || !pcRef.current) return
+    if (startingGuestRef.current) return
+    startingGuestRef.current = true
     setGuestStatus('connecting')
 
     // Hidden video element for received guest stream
@@ -675,7 +824,10 @@ export default function BroadcastPage() {
       guestP2PRef.current = session
     } catch(e) {
       console.warn('[trainer] guest P2P failed:', e)
+      guestRetryRef.current += 1
       setGuestStatus('failed')
+    } finally {
+      startingGuestRef.current = false
     }
   }
 
@@ -685,6 +837,15 @@ export default function BroadcastPage() {
   const startMixer = (passedGuestStream) => {
     if (!mixerRef.current || !guestVideoElRef.current) return
     try { mixerRef.current.setGuestVideo(guestVideoElRef.current) } catch {}
+    // Guest is now visible — restore full fps so the PIP looks smooth for viewers.
+    try { mixerRef.current.setFps(mixerFpsRef.current) } catch {}
+    // Switch WHIP to canvas composite so viewers see the guest PIP
+    try {
+      const canvasVt = mixerRef.current.stream.getVideoTracks()[0]
+      if (canvasVt && whipVideoSenderRef.current) {
+        whipVideoSenderRef.current.replaceTrack(canvasVt).catch(e => console.warn('[startMixer] replaceTrack:', e))
+      }
+    } catch(e) { console.warn('[startMixer] replaceTrack canvas:', e) }
     try {
       const guestStream = passedGuestStream
         || (guestVideoElRef.current?.srcObject instanceof MediaStream
@@ -700,9 +861,19 @@ export default function BroadcastPage() {
     setGuestStatus('')
     setGuestRemoteStream(null)
     setPipSwapped(false)   // next guest starts in default layout
-    // Detach guest from mixers — trainer-only stream resumes automatically.
+    guestRetryRef.current = 0  // reset so next invited guest starts fresh
+    // Detach guest from mixers — canvas keeps drawing trainer-only.
     try { mixerRef.current?.setGuestVideo(null) } catch {}
+    // Back to solo mode: throttle canvas to 15fps (WHIP uses raw camera anyway).
+    try { mixerRef.current?.setFps(15) } catch {}
     try { audioMixerRef.current?.removeGuest() } catch {}
+    // Switch WHIP back to raw camera — no canvas overhead when broadcasting alone.
+    try {
+      const rawVt = localStreamRef.current?.getVideoTracks()[0]
+      if (rawVt && whipVideoSenderRef.current) {
+        whipVideoSenderRef.current.replaceTrack(rawVt).catch(e => console.warn('[cleanupGuest] replaceTrack:', e))
+      }
+    } catch(e) { console.warn('[cleanupGuest] replaceTrack raw:', e) }
     try { guestP2PRef.current?.close() } catch {}
     guestP2PRef.current = null
     if (guestVideoElRef.current) {
@@ -778,6 +949,39 @@ export default function BroadcastPage() {
                 <p className="text-white/60 text-[11px] font-semibold tracking-[0.18em] uppercase mb-1">Студия эфира</p>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight mb-2">{stream?.title || 'Без названия'}</h1>
                 <p className="text-sm text-white/55 mb-5">Проверьте кадр и звук перед запуском прямого эфира</p>
+
+                {/* Quality picker — defaults to 720p which is the stable sweet
+                    spot for browser WebRTC from a phone. Trainers on Wi-Fi
+                    with a good camera can opt into 1080p (4.5 Mbps). 480p is
+                    a "save the broadcast" mode for weak networks. */}
+                <div className="mb-5">
+                  <p className="text-white/55 text-[11px] uppercase tracking-wider mb-2">Качество</p>
+                  <div className="inline-flex bg-black/40 border border-white/10 rounded-2xl p-1 gap-1">
+                    {[
+                      { k: '480p',  label: '480p', hint: 'Слабая сеть' },
+                      { k: '720p',  label: '720p', hint: 'Рекомендуется' },
+                      { k: '1080p', label: '1080p', hint: 'Только Wi-Fi' },
+                    ].map(o => (
+                      <button
+                        key={o.k}
+                        type="button"
+                        onClick={() => setQuality(o.k)}
+                        aria-pressed={quality === o.k}
+                        title={o.hint}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                          quality === o.k
+                            ? 'bg-rose-500 text-white shadow shadow-rose-900/40'
+                            : 'text-white/70 hover:text-white hover:bg-white/5'
+                        }`}
+                      >{o.label}</button>
+                    ))}
+                  </div>
+                  <p className="text-white/40 text-[11px] mt-2">
+                    {quality === '1080p' && 'Может тормозить на телефоне через 10–15 минут (нагрев процессора).'}
+                    {quality === '720p'  && 'Стабильно работает на любом смартфоне.'}
+                    {quality === '480p'  && 'Минимальная нагрузка — для мобильного интернета.'}
+                  </p>
+                </div>
 
                 {error && (
                   <div className="w-full bg-rose-900/50 border border-rose-700/40 rounded-2xl px-4 py-3 text-rose-200 text-sm mb-3">{error}</div>
@@ -880,6 +1084,11 @@ export default function BroadcastPage() {
                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
               </span>
               <span className="font-mono text-sm text-white/90 shrink-0 tabular-nums drop-shadow rounded-xl bg-black/35 backdrop-blur-sm border border-white/10 px-2.5 py-1.5">{fmt(elapsed)}</span>
+              {recBytes >= 1_048_576 && (
+                <span title="Записано в браузере" className="hidden sm:block font-mono text-[11px] text-white/50 shrink-0 tabular-nums bg-black/35 backdrop-blur-sm border border-white/10 px-2 py-1.5 rounded-xl">
+                  ⏺ {Math.round(recBytes / 1_048_576)} МБ
+                </span>
+              )}
             </div>
 
             {connState && !['connected', 'completed', ''].includes(connState) && (
@@ -988,7 +1197,9 @@ export default function BroadcastPage() {
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-5 px-8"
             style={{ background: 'linear-gradient(to bottom,rgba(0,0,0,.9),rgba(0,0,0,.95))' }}>
             <div className={`w-20 h-20 rounded-full flex items-center justify-center border ${uploadError ? 'bg-rose-500/15 border-rose-500/30' : 'bg-emerald-500/15 border-emerald-500/30'}`}>
-              <CheckCircle2 size={40} className={uploadError ? 'text-rose-400' : 'text-emerald-400'} />
+              {uploadError
+                ? <AlertCircle size={40} className="text-rose-400" />
+                : <CheckCircle2 size={40} className="text-emerald-400" />}
             </div>
             <div className="text-center max-w-sm">
               <p className="text-2xl font-bold text-white">Эфир завершён</p>
@@ -996,6 +1207,16 @@ export default function BroadcastPage() {
                 <>
                   <p className="text-rose-300 text-sm font-semibold mt-2">Ошибка сохранения записи</p>
                   <p className="text-white/50 text-xs mt-1 break-words">{uploadError}</p>
+                  <button
+                    onClick={() => {
+                      setUploadError('')
+                      setRecordingPct(0)
+                      setUploadRetry(n => n + 1)
+                    }}
+                    className="mt-3 px-5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-sm font-semibold transition active:scale-95"
+                  >
+                    Повторить загрузку
+                  </button>
                 </>
               ) : recordingDone ? (
                 <p className="text-emerald-400 text-sm font-semibold mt-2">
