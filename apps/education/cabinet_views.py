@@ -240,6 +240,7 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
                 data['next_id']    = None
                 data['next_title'] = None
         except Exception:
+            logger.warning('Failed to compute lesson nav for %s', lesson.id, exc_info=True)
             data['prev_id'] = data['prev_title'] = None
             data['next_id'] = data['next_title'] = None
 

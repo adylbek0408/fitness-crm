@@ -25,22 +25,29 @@ class LessonSerializer(serializers.ModelSerializer):
 
     def get_thumbnail_url(self, obj):
         from django.conf import settings as dj_settings
+        from django.core.cache import cache
 
         stored = obj.thumbnail_url or ''
 
         if stored:
-            # Detect presigned (expiring) R2 URL — regenerate on every request
-            # so the client always gets a fresh link.
+            # Detect presigned (expiring) R2 URL — regenerate with caching.
             if 'X-Amz-Expires' in stored or 'X-Amz-Signature' in stored:
                 key = f'thumbnails/{obj.id}.jpg'
                 pub = (getattr(dj_settings, 'R2_PUBLIC_URL', '') or '').rstrip('/')
                 if pub:
                     return f'{pub}/{key}'
+                # Cache presigned URL for 6 h — avoids one boto3 call per list item per request.
+                cache_key = f'edu_thumb_{obj.id}'
+                cached = cache.get(cache_key)
+                if cached:
+                    return cached
                 try:
                     from .services import R2StorageService
-                    return R2StorageService.create_download_presigned_url(
+                    url = R2StorageService.create_download_presigned_url(
                         key=key, ttl_seconds=7 * 24 * 3600,
                     )
+                    cache.set(cache_key, url, 6 * 3600)
+                    return url
                 except Exception:
                     pass
             # Permanent URL (CF CDN, R2 public, custom domain) — return directly.

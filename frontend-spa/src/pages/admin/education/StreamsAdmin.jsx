@@ -208,6 +208,7 @@ export default function StreamsAdmin() {
     try {
       await api.post('/education/streams/', { title: form.title.trim(), description: '', groups: form.group_ids })
       setForm({ title: '', group_ids: [] }); setShowForm(false); reload()
+      setAlertModal({ title: 'Эфир создан', message: 'Скопируйте RTMP-ключ и запустите трансляцию.', variant: 'success' })
     } catch (e) {
       setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
     } finally { setCreating(false) }
@@ -216,15 +217,19 @@ export default function StreamsAdmin() {
   // End
   const performEnd = async () => {
     if (!confirmEnd) return
-    try { await api.post(`/education/streams/${confirmEnd.id}/end/`); setConfirmEnd(null); reload() }
-    catch (e) { setConfirmEnd(null); setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' }) }
+    try {
+      await api.post(`/education/streams/${confirmEnd.id}/end/`); setConfirmEnd(null); reload()
+      setAlertModal({ title: 'Эфир завершён', message: 'Запись появится в архиве после обработки Cloudflare.', variant: 'success' })
+    } catch (e) { setConfirmEnd(null); setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' }) }
   }
 
   // Single delete
   const performDelete = async () => {
     if (!confirmDelete) return
-    try { await api.delete(`/education/streams/${confirmDelete.id}/`); setConfirmDelete(null); reload() }
-    catch (e) { setConfirmDelete(null); setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' }) }
+    try {
+      await api.delete(`/education/streams/${confirmDelete.id}/`); setConfirmDelete(null); reload()
+      setAlertModal({ title: 'Эфир удалён', message: '', variant: 'success' })
+    } catch (e) { setConfirmDelete(null); setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' }) }
   }
 
   // Bulk delete — Promise.allSettled so a single failed delete doesn't
@@ -272,6 +277,7 @@ export default function StreamsAdmin() {
         })
       }
       setEditStream(null); reload()
+      setAlertModal({ title: 'Сохранено', message: '', variant: 'success' })
     } catch (e) {
       setAlertModal({ title: 'Ошибка сохранения', message: e.response?.data?.detail || e.message, variant: 'error' })
     } finally { setEditSaving(false) }
@@ -434,6 +440,17 @@ export default function StreamsAdmin() {
           <div className="bg-white rounded-2xl border border-rose-100 py-14 text-center">
             <Radio size={40} className="mx-auto text-rose-200 mb-3" />
             <p className="text-gray-500 font-medium">{streams.length === 0 ? 'Эфиров ещё нет' : 'Ничего не найдено'}</p>
+            {streams.length === 0 && (
+              <p className="text-xs text-gray-400 mt-1 mb-4">Создайте первый эфир — получите RTMP-ключ для OBS.</p>
+            )}
+            {streams.length === 0 && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 transition"
+              >
+                <Plus size={15} /> Создать первый эфир
+              </button>
+            )}
           </div>
         )}
         {filtered.map(s => (

@@ -5,19 +5,22 @@ import { CheckCircle, AlertTriangle, X, Info } from 'lucide-react'
  * Модальное окно-уведомление (замена alert()).
  *
  * Props:
- *   open      — boolean
- *   onClose   — () => void
- *   title     — string
- *   message   — string | ReactNode
- *   variant   — 'success' | 'error' | 'info' (default: 'info')
+ *   open        — boolean
+ *   onClose     — () => void
+ *   title       — string
+ *   message     — string | ReactNode
+ *   variant     — 'success' | 'error' | 'info' (default: 'info')
+ *   autoCloseMs — number | null — auto-dismiss delay (default: 2000 for success, null otherwise)
  */
 export default function AlertModal({
   open, onClose,
   title = 'Уведомление',
   message = '',
   variant = 'info',
+  autoCloseMs,
 }) {
   const btnRef = useRef(null)
+  const autoMs = autoCloseMs !== undefined ? autoCloseMs : (variant === 'success' ? 2000 : null)
 
   useEffect(() => {
     if (!open) return
@@ -28,12 +31,15 @@ export default function AlertModal({
     document.body.style.overflow = 'hidden'
     // Move focus into modal
     const t = setTimeout(() => btnRef.current?.focus(), 0)
+    // Auto-close for success
+    const autoT = autoMs ? setTimeout(onClose, autoMs) : null
     return () => {
       window.removeEventListener('keydown', h)
       document.body.style.overflow = prev
       clearTimeout(t)
+      if (autoT) clearTimeout(autoT)
     }
-  }, [open, onClose])
+  }, [open, onClose, autoMs])
 
   if (!open) return null
 

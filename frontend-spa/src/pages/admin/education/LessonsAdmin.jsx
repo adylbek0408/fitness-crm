@@ -291,6 +291,7 @@ export default function LessonsAdmin() {
       await api.delete(`/education/lessons/${confirmDelete.id}/`)
       setConfirmDelete(null)
       reload()
+      setAlertModal({ title: 'Урок удалён', message: '', variant: 'success' })
     } catch (e) {
       setConfirmDelete(null)
       setAlertModal({
@@ -321,6 +322,8 @@ export default function LessonsAdmin() {
         message: `Удалено: ${ids.length - failed} из ${ids.length}. ${failed} уроков не удалось удалить.`,
         variant: 'error',
       })
+    } else {
+      setAlertModal({ title: `Удалено ${ids.length} урок${ids.length === 1 ? '' : ids.length < 5 ? 'а' : 'ов'}`, message: '', variant: 'success' })
     }
   }
 
@@ -476,9 +479,17 @@ export default function LessonsAdmin() {
             <p className="text-gray-500 font-medium">
               {lessons.length === 0 ? 'Пока нет уроков' : 'Ничего не найдено'}
             </p>
-            <p className="text-xs text-gray-400 mt-1">
-              {lessons.length === 0 ? 'Нажмите «Новый урок» — заполните форму.' : 'Попробуйте изменить фильтр или поиск.'}
+            <p className="text-xs text-gray-400 mt-1 mb-4">
+              {lessons.length === 0 ? 'Загрузите первый видео- или аудиоурок.' : 'Попробуйте изменить фильтр или поиск.'}
             </p>
+            {lessons.length === 0 && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 transition"
+              >
+                <Plus size={15} /> Загрузить первый урок
+              </button>
+            )}
           </div>
         )}
 

@@ -44,6 +44,46 @@ from .services import CloudflareStreamService, JitsiService, R2StorageService
 logger = logging.getLogger(__name__)
 
 
+def _regrade_progress_after_duration(lesson):
+    """
+    When duration_sec is first set on a lesson (CF finished transcoding),
+    progress records that were provisionally capped at 50% should be
+    re-evaluated so students who watched the full video get marked complete.
+    """
+    from django.utils import timezone as _tz
+    from .models import LessonProgress
+
+    duration = lesson.duration_sec
+    if not duration:
+        return
+
+    # Only look at records that look like they were capped (45–50% watched,
+    # not yet completed).  Records with percent < 45 genuinely didn't watch
+    # enough — skip them.
+    candidates = LessonProgress.objects.filter(
+        lesson=lesson,
+        is_completed=False,
+        percent_watched__gte=45,
+    )
+    now = _tz.now()
+    updated = 0
+    for p in candidates:
+        if p.last_position_sec <= 0:
+            continue
+        position_pct = (p.last_position_sec / duration) * 100
+        if position_pct < 90:
+            continue
+        # Position corroborates near-completion — mark done.
+        p.is_completed = True
+        p.percent_watched = min(100, max(p.percent_watched, int(position_pct)))
+        if not p.completed_at:
+            p.completed_at = now
+        p.save(update_fields=['is_completed', 'percent_watched', 'completed_at'])
+        updated += 1
+    if updated:
+        logger.info('Regraded %d progress record(s) for lesson %s after duration set', updated, lesson.id)
+
+
 # ---------------------------------------------------------------------------
 # Lessons
 # ---------------------------------------------------------------------------
@@ -251,6 +291,8 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         lesson.published_at = timezone.now()
         update += ['is_published', 'published_at', 'updated_at']
         lesson.save(update_fields=update)
+        if duration is not None:
+            _regrade_progress_after_duration(lesson)
         return Response(LessonAdminSerializer(lesson).data)
 
     @action(detail=True, methods=['get'])
@@ -1480,6 +1522,8 @@ class CFStreamWebhookView(APIView):
                 if update:
                     update.append('updated_at')
                     lesson.save(update_fields=update)
+                    if 'duration_sec' in update:
+                        _regrade_progress_after_duration(lesson)
                 return Response({'ok': True, 'lesson_id': str(lesson.id)})
 
         logger.info('CF webhook unhandled: event=%s payload_keys=%s',
