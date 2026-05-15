@@ -218,6 +218,31 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
             'last_position_sec': progress.last_position_sec if progress else 0,
             'is_completed': progress.is_completed if progress else False,
         }
+
+        # Prev/next lesson IDs for in-player navigation — avoids client
+        # fetching page_size=200 just to compute neighbours.
+        try:
+            nav_items = list(
+                self.filter_queryset(self.get_queryset())
+                .values('id', 'title')
+            )
+            idx = next((i for i, x in enumerate(nav_items) if x['id'] == lesson.id), -1)
+            if idx > 0:
+                data['prev_id']    = str(nav_items[idx - 1]['id'])
+                data['prev_title'] = nav_items[idx - 1]['title']
+            else:
+                data['prev_id']    = None
+                data['prev_title'] = None
+            if idx != -1 and idx < len(nav_items) - 1:
+                data['next_id']    = str(nav_items[idx + 1]['id'])
+                data['next_title'] = nav_items[idx + 1]['title']
+            else:
+                data['next_id']    = None
+                data['next_title'] = None
+        except Exception:
+            data['prev_id'] = data['prev_title'] = None
+            data['next_id'] = data['next_title'] = None
+
         return Response(data)
 
     @action(detail=True, methods=['post'], url_path='progress')
@@ -274,12 +299,21 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
             lesson=lesson,
             defaults={'last_position_sec': 0, 'percent_watched': 0},
         )
+        now = _tz.now()
+        # Never let percent go backward (two-device race, seek-back, etc.)
+        new_percent = max(progress.percent_watched, percent)
+        # Once completed, stays completed — completion can't be un-rung.
+        new_completed = progress.is_completed or is_completed
+        # Record the first moment the lesson was completed.
+        if new_completed and not progress.is_completed and not progress.completed_at:
+            progress.completed_at = now
         progress.last_position_sec = position
-        progress.percent_watched   = percent
-        progress.is_completed      = is_completed
-        progress.last_watched_at   = _tz.now()
+        progress.percent_watched   = new_percent
+        progress.is_completed      = new_completed
+        progress.last_watched_at   = now
         progress.save(update_fields=[
-            'last_position_sec', 'percent_watched', 'is_completed', 'last_watched_at',
+            'last_position_sec', 'percent_watched', 'is_completed',
+            'completed_at', 'last_watched_at',
         ])
         return Response(LessonProgressSerializer(progress).data)
 
@@ -601,6 +635,10 @@ class CabinetStreamChatView(APIView):
     def get(self, request, pk):
         stream = self._stream(request, pk)
         after = request.query_params.get('after')
+        try:
+            limit = min(int(request.query_params.get('limit', 0) or 0), 200)
+        except (ValueError, TypeError):
+            limit = 0
         qs = StreamChatMessage.objects.filter(
             stream=stream, deleted_at__isnull=True,
         ).order_by('created_at')
@@ -611,6 +649,10 @@ class CabinetStreamChatView(APIView):
                 qs = qs.filter(created_at__gt=parsed)
             except (ValueError, TypeError):
                 pass
+        elif limit > 0:
+            tail = list(qs.order_by('-created_at')[:limit])
+            tail.reverse()
+            return Response(StreamChatMessageSerializer(tail, many=True).data)
         return Response(StreamChatMessageSerializer(qs, many=True).data)
 
     def post(self, request, pk):

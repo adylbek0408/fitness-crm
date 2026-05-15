@@ -28,7 +28,7 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
   // ── Poll for new messages ─────────────────────────────────────────────────
   const poll = useCallback(async () => {
     try {
-      const params = lastTsRef.current ? { after: lastTsRef.current } : {}
+      const params = lastTsRef.current ? { after: lastTsRef.current } : { limit: 100 }
       const r = await api.get(chatUrl, { params })
       const msgs = r.data || []
       if (msgs.length) {

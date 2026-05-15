@@ -15,7 +15,6 @@ export default function LessonView() {
   const [error, setError] = useState('')
   const [warning, setWarning] = useState('')
   const [loading, setLoading] = useState(true)
-  const [lessons, setLessons] = useState([])
   const videoRef = useRef(null)
   const playerShellRef = useRef(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -48,12 +47,9 @@ export default function LessonView() {
     lastSavedPercent.current = 0
     setLoading(true)
     const ctrl = new AbortController()
-    Promise.all([
-      api.get(`/cabinet/education/lessons/${id}/`, { signal: ctrl.signal }),
-      api.get('/cabinet/education/lessons/?page_size=200', { signal: ctrl.signal }).catch(() => null),
-    ]).then(([lr, allR]) => {
+    api.get(`/cabinet/education/lessons/${id}/`, { signal: ctrl.signal })
+    .then(lr => {
       setLesson(lr.data)
-      if (allR) setLessons(allR.data?.results || allR.data || [])
     }).catch(e => {
       if (e.name === 'CanceledError' || e.name === 'AbortError') return
       if (e.response?.status === 403) setError('Этот урок недоступен для вашей группы.')
@@ -107,9 +103,8 @@ export default function LessonView() {
     }).catch(() => {})
   }
 
-  const currentIdx = lessons.findIndex(l => l.id === id)
-  const prevLesson = currentIdx > 0 ? lessons[currentIdx - 1] : null
-  const nextLesson = currentIdx !== -1 && currentIdx < lessons.length - 1 ? lessons[currentIdx + 1] : null
+  const prevId = lesson?.prev_id || null
+  const nextId = lesson?.next_id || null
 
   const watermarkText = lesson?.watermark?.text || ''
   const startAt = lesson?.progress?.last_position_sec || 0
@@ -249,29 +244,29 @@ export default function LessonView() {
             </div>
 
             {/* Prev / Next navigation */}
-            {lessons.length > 1 && (
+            {(prevId || nextId) && (
               <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
-                {prevLesson ? (
+                {prevId ? (
                   <Link
-                    to={`/cabinet/lessons/${prevLesson.id}`}
+                    to={`/cabinet/lessons/${prevId}`}
                     className="flex items-center gap-2 px-3 py-2.5 sm:px-4 sm:py-3 rounded-2xl bg-white border border-rose-100 hover:border-rose-300 hover:shadow-sm transition min-w-0"
                   >
                     <ChevronLeft size={18} className="text-rose-400 shrink-0" />
                     <div className="min-w-0">
                       <p className="text-[10px] text-gray-400 uppercase tracking-wider">Предыдущий</p>
-                      <p className="text-sm font-medium text-gray-800 truncate">{prevLesson.title}</p>
+                      <p className="text-sm font-medium text-gray-800 truncate">{lesson?.prev_title}</p>
                     </div>
                   </Link>
                 ) : <div />}
 
-                {nextLesson ? (
+                {nextId ? (
                   <Link
-                    to={`/cabinet/lessons/${nextLesson.id}`}
+                    to={`/cabinet/lessons/${nextId}`}
                     className="flex items-center gap-2 px-3 py-2.5 sm:px-4 sm:py-3 rounded-2xl bg-white border border-rose-100 hover:border-rose-300 hover:shadow-sm transition min-w-0 text-right justify-end"
                   >
                     <div className="min-w-0">
                       <p className="text-[10px] text-gray-400 uppercase tracking-wider">Следующий</p>
-                      <p className="text-sm font-medium text-gray-800 truncate">{nextLesson.title}</p>
+                      <p className="text-sm font-medium text-gray-800 truncate">{lesson?.next_title}</p>
                     </div>
                     <ChevronRight size={18} className="text-rose-400 shrink-0" />
                   </Link>

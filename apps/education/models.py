@@ -95,6 +95,7 @@ class LessonProgress(UUIDTimestampedModel):
     last_position_sec = models.PositiveIntegerField(default=0)
     percent_watched = models.PositiveSmallIntegerField(default=0)
     is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
     last_watched_at = models.DateTimeField(auto_now=True)
 
     class Meta:

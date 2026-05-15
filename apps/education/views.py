@@ -621,6 +621,10 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         stream = self.get_object()
         if request.method == 'GET':
             after = request.query_params.get('after')
+            try:
+                limit = min(int(request.query_params.get('limit', 0) or 0), 200)
+            except (ValueError, TypeError):
+                limit = 0
             qs = StreamChatMessage.objects.filter(
                 stream=stream, deleted_at__isnull=True,
             ).order_by('created_at')
@@ -632,6 +636,10 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                     qs = qs.filter(created_at__gt=parsed)
                 except (ValueError, TypeError):
                     pass
+            elif limit > 0:
+                tail = list(qs.order_by('-created_at')[:limit])
+                tail.reverse()
+                return Response(StreamChatMessageSerializer(tail, many=True).data)
             return Response(StreamChatMessageSerializer(qs, many=True).data)
 
         text = (request.data.get('text') or '').strip()
