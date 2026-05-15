@@ -45,11 +45,12 @@ export default function LessonView() {
     if (!localStorage.getItem('cabinet_access_token')) {
       nav('/cabinet'); return
     }
+    lastSavedPercent.current = 0
     setLoading(true)
     const ctrl = new AbortController()
     Promise.all([
       api.get(`/cabinet/education/lessons/${id}/`, { signal: ctrl.signal }),
-      api.get('/cabinet/education/lessons/', { signal: ctrl.signal }).catch(() => null),
+      api.get('/cabinet/education/lessons/?page_size=200', { signal: ctrl.signal }).catch(() => null),
     ]).then(([lr, allR]) => {
       setLesson(lr.data)
       if (allR) setLessons(allR.data?.results || allR.data || [])

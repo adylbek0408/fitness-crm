@@ -3,7 +3,7 @@ import {
   Radio, Copy, Square, Plus, Check, Search,
   Users, MessageCircle, ExternalLink, AlertCircle, Trash2,
   Eye, X, BookMarked, Clock, Pencil, CheckSquare,
-  Square as SquareIcon, Play,
+  Square as SquareIcon, Play, Archive,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ru } from 'date-fns/locale'
@@ -808,6 +808,12 @@ function StreamCard({ stream: s, selectMode, selected, onToggleSelect, onEnd, on
               <button onClick={onPreviewRecording} title="Просмотреть запись"
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-semibold hover:bg-violet-100 transition active:scale-95">
                 <Eye size={12} /> Запись
+              </button>
+            )}
+            {isArchived && !hasRecording && !showRecProgress && (
+              <button onClick={onManualArchive} title="Получить запись из Cloudflare вручную"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold hover:bg-amber-100 transition active:scale-95">
+                <Archive size={12} /> Архив
               </button>
             )}
 
