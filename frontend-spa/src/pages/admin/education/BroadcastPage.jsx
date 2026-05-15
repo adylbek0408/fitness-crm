@@ -533,7 +533,6 @@ export default function BroadcastPage() {
         const mixedAudioUsable = mixedAudio && mixedAudio.readyState === 'live'
         if (mixedAudioUsable) {
           tracks.push(mixedAudio)
-          console.log('[audio] using mixed track from Web Audio destination')
         } else {
           ls.getAudioTracks().forEach(t => tracks.push(t))
           console.warn('[audio] Web Audio mixer track not live — using raw mic')
@@ -566,7 +565,6 @@ export default function BroadcastPage() {
       // frames into a hole. Surface it loud so the trainer notices.
       pc.addEventListener('connectionstatechange', () => {
         const s = pc.connectionState
-        console.log('[whip] pc state:', s)
         if ((s === 'failed' || s === 'disconnected') && statusRef.current === 'live') {
           setError('Связь с Cloudflare прервана. Завершите эфир и начните заново.')
         }

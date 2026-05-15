@@ -18,6 +18,9 @@ export default function ConsultationRoom() {
   const [loading, setLoading] = useState(false)
   const [ended, setEnded] = useState(false)    // trainer stopped the session
 
+  const [elapsed, setElapsed] = useState(0)   // seconds since conference joined
+  const timerRef = useRef(null)
+
   const containerRef = useRef(null)
   const apiRef = useRef(null)
   const pollRef = useRef(null)
@@ -118,6 +121,7 @@ export default function ConsultationRoom() {
       })
 
       apiRef.current.addEventListener('readyToClose', () => {
+        clearInterval(timerRef.current)
         try { apiRef.current.dispose() } catch {}
         apiRef.current = null
       })
@@ -147,26 +151,20 @@ export default function ConsultationRoom() {
       // we hide every moderator-only affordance regardless of what Jitsi thinks.
       apiRef.current.addEventListener('videoConferenceJoined', () => {
         lockDownToParticipantUI()
-        // Re-apply after 1s — Jitsi sometimes reapplies its own defaults
-        // shortly after join. Belt-and-suspenders.
         setTimeout(lockDownToParticipantUI, 1000)
         setTimeout(lockDownToParticipantUI, 3000)
+        // Start call timer
+        setElapsed(0)
+        clearInterval(timerRef.current)
+        timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
       })
 
       // If the server STILL marks us as moderator (Prosody mod_token_affiliation
       // not loaded), the role change event fires AFTER join. Re-strip the UI.
       // The student can still talk to the trainer — but the moderator-only
       // buttons stay hidden no matter what Jitsi grants.
-      apiRef.current.addEventListener('participantRoleChanged', (event) => {
-        try {
-          // event = {id, role: 'moderator'|'participant'}
-          // eslint-disable-next-line no-console
-          console.log('[Jitsi] role change:', event)
-          // Re-apply lockdown on EVERY role change. If somehow we got moderator,
-          // overwriteConfig hides the UI again. If a remote was promoted, we
-          // still hide our local kick/mute buttons.
-          lockDownToParticipantUI()
-        } catch {}
+      apiRef.current.addEventListener('participantRoleChanged', () => {
+        try { lockDownToParticipantUI() } catch {}
       })
     }
 
@@ -183,6 +181,7 @@ export default function ConsultationRoom() {
     }
 
     return () => {
+      clearInterval(timerRef.current)
       if (apiRef.current) {
         try { apiRef.current.dispose() } catch {}
         apiRef.current = null
@@ -236,8 +235,15 @@ export default function ConsultationRoom() {
 
   // ── Active room ─────────────────────────────────────────────────────────
   if (info) {
+    const mm = String(Math.floor(elapsed / 60)).padStart(2, '0')
+    const ss = String(elapsed % 60).padStart(2, '0')
     return (
       <div style={{ height: '100dvh', background: '#000' }} className="flex flex-col relative">
+        {elapsed > 0 && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-3 py-1 rounded-full bg-black/50 text-white text-xs font-mono tabular-nums pointer-events-none select-none">
+            {mm}:{ss}
+          </div>
+        )}
         <div ref={containerRef} style={{ flex: 1, width: '100%', minHeight: 0 }} />
         {error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-white p-6 sm:p-8 text-center gap-4">

@@ -333,7 +333,6 @@ export async function startTrainerP2P({
   // re-binds the latest stream to its <video> element.
   const remoteStream = new MediaStream()
   pc.addEventListener('track', (e) => {
-    console.log('[trainer P2P] ontrack:', e.track?.kind, 'streams:', e.streams?.length)
     if (e.streams && e.streams[0]) {
       e.streams[0].getTracks().forEach(t => {
         if (!remoteStream.getTracks().some(rt => rt.id === t.id)) remoteStream.addTrack(t)
@@ -359,7 +358,6 @@ export async function startTrainerP2P({
   let iceFailTimer = null
   pc.addEventListener('iceconnectionstatechange', () => {
     const state = pc.iceConnectionState
-    console.log('[trainer P2P] ice:', state)
     if (state === 'connected' || state === 'completed') {
       clearTimeout(iceFailTimer); iceFailTimer = null
       onConnected?.()
@@ -440,7 +438,6 @@ export async function startGuestP2P({
   // Same Safari-iOS robustness as the trainer side: handle empty streams[].
   const remoteStream = new MediaStream()
   pc.addEventListener('track', (e) => {
-    console.log('[guest P2P] ontrack:', e.track?.kind, 'streams:', e.streams?.length)
     if (e.streams && e.streams[0]) {
       e.streams[0].getTracks().forEach(t => {
         if (!remoteStream.getTracks().some(rt => rt.id === t.id)) remoteStream.addTrack(t)
@@ -458,7 +455,6 @@ export async function startGuestP2P({
   let iceFailTimer = null
   pc.addEventListener('iceconnectionstatechange', () => {
     const state = pc.iceConnectionState
-    console.log('[guest P2P] ice:', state)
     if (state === 'connected' || state === 'completed') {
       clearTimeout(iceFailTimer); iceFailTimer = null
       onConnected?.()

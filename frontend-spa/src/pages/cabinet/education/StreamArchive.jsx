@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { ChevronLeft, Radio, Clock, CheckCircle2, Play } from 'lucide-react'
+import { ChevronLeft, Radio, Clock, CheckCircle2, Play, Search } from 'lucide-react'
 import api from '../../../api/axios'
 import LessonThumb from '../../../components/education/LessonThumb'
 import { pickList } from '../../../utils/format'
@@ -17,6 +17,7 @@ export default function StreamArchive() {
   const [lessons, setLessons] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
   const nav = useNavigate()
 
   useEffect(() => {
@@ -29,6 +30,11 @@ export default function StreamArchive() {
       .catch(e => setError(e.response?.data?.detail || 'Ошибка загрузки'))
       .finally(() => setLoading(false))
   }, [nav])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return q ? lessons.filter(l => l.title?.toLowerCase().includes(q)) : lessons
+  }, [lessons, query])
 
   const completed = lessons.filter(l => l.progress?.is_completed).length
   const totalMins = Math.round(lessons.reduce((s, l) => s + (l.duration_sec || 0), 0) / 60)
@@ -54,6 +60,20 @@ export default function StreamArchive() {
             <span className="text-[11px] text-gray-400 px-1.5 py-0.5 rounded bg-rose-50 shrink-0">{lessons.length}</span>
           )}
         </div>
+        {!loading && lessons.length > 0 && (
+          <div className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 pb-3">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                type="search"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Поиск по названию…"
+                className="w-full pl-8 pr-3 py-2 text-[13px] rounded-xl border border-rose-100 bg-rose-50/40 focus:outline-none focus:ring-2 focus:ring-rose-200"
+              />
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 py-4">
@@ -83,9 +103,15 @@ export default function StreamArchive() {
           </div>
         )}
 
-        {!loading && lessons.length > 0 && (
+        {!loading && lessons.length > 0 && filtered.length === 0 && (
+          <div className="text-center py-16">
+            <p className="text-[14px] text-gray-500">Ничего не найдено по запросу «{query}»</p>
+          </div>
+        )}
+
+        {!loading && filtered.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {lessons.map(l => {
+            {filtered.map(l => {
               const pct = l.progress?.percent || 0
               const done = l.progress?.is_completed
 

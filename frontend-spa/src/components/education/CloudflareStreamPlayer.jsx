@@ -62,8 +62,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     // Only fall back to native HLS when hls.js is NOT supported (Safari, iOS).
     const canNative = !Hls.isSupported() && !!v.canPlayType('application/vnd.apple.mpegurl')
 
-    console.log('[player] init hlsSrc:', hlsSrc, 'canNative:', canNative, 'hlsSupported:', Hls.isSupported(), 'live:', live)
-
     setLoading(true)
     setHardError(false)
     setNeedsTap(false)
@@ -74,7 +72,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
 
     const onCanPlay = () => {
       if (cleanedUp) return
-      console.log('[player] canplay — readyState:', v.readyState)
       setLoading(false)
       // If data arrived but we've never played (stream came online while
       // spinner was showing), nudge the browser to autoplay.
@@ -90,8 +87,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     }
     const onPlaying = () => {
       if (cleanedUp) return
-      console.log('[player] playing ✓ muted:', v.muted, 'volume:', v.volume,
-        'audioTracks:', v.srcObject?.getAudioTracks?.()?.length ?? '(via HLS)')
       hasPlayed = true
       // CRITICAL: cancel any pending retry timer.
       // Without this the timer fires v.load() mid-playback and kills the stream.
@@ -118,7 +113,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     const onPause = () => {
       if (cleanedUp || hasPlayed) return
       if (v.readyState >= 2) {
-        console.log('[player] paused before first play — showing tap overlay')
         setNeedsTap(true)
         setLoading(false)
       }
@@ -207,7 +201,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
 
             if (cleanedUp || hasPlayed) { pc.close(); whepRef.current = null; return }
 
-            console.log('[player] WHEP attempting connect to:', whepUrl)
             const resp = await fetch(whepUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/sdp' },
@@ -238,14 +231,11 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             let resolveTimer = null
             pc.ontrack = e => {
               clearTimeout(trackTimeout)
-              const kind = e.track?.kind
-              console.log(`[player] WHEP ontrack kind=${kind}`)
               sharedStream.addTrack(e.track)
               clearTimeout(resolveTimer)
               resolveTimer = setTimeout(() => trackResolve(sharedStream), 100)
             }
             pc.oniceconnectionstatechange = () => {
-              console.log('[player] WHEP ICE:', pc.iceConnectionState)
               if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
                 clearTimeout(trackTimeout)
                 trackReject(new Error(`WHEP ICE ${pc.iceConnectionState}`))
@@ -253,14 +243,12 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             }
 
             const sdp = await resp.text()
-            console.log('[player] WHEP answer len:', sdp.length, 'first80:', sdp.slice(0, 80).replace(/\r?\n/g, '|'))
             await pc.setRemoteDescription({ type: 'answer', sdp })
 
             const remoteStream = await trackPromise
 
             if (cleanedUp || hasPlayed) { pc.close(); whepRef.current = null; return }
 
-            console.log('[player] WHEP track received — taking over from HLS')
             // WHEP won — cancel HLS and start WebRTC playback
             clearTimeout(retryTimer); retryTimer = null
             try { hlsRef.current?.destroy() } catch {}
@@ -302,7 +290,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             const livePc = pc
             livePc.oniceconnectionstatechange = () => {
               const state = livePc.iceConnectionState
-              console.log('[player] WHEP ICE (live):', state)
               if ((state === 'failed' || state === 'disconnected') && !cleanedUp) {
                 console.warn('[player] WHEP dropped mid-stream — reconnecting in 2s')
                 try { livePc.close() } catch {}
@@ -382,10 +369,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       // If readyState is 0 (stream not started yet) we just clear the spinner.
       const tapPrompt = setTimeout(() => {
         if (!cleanedUp && !hasPlayed && v.paused) {
-          if (v.readyState >= 2) {
-            console.warn('[player] 4 s passed, data ready, still paused — showing tap overlay')
-            setNeedsTap(true)
-          }
+          if (v.readyState >= 2) setNeedsTap(true)
           setLoading(false)
         }
       }, 4000)
@@ -463,7 +447,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
 
         h.on(Hls.Events.MANIFEST_PARSED, () => {
           netFatalCount = 0   // reset on success
-          console.log('[player] hls.js manifest parsed — readyState:', v.readyState)
         })
 
         h.on(Hls.Events.ERROR, (_evt, data) => {
@@ -476,7 +459,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             // For VOD: give up after 3 consecutive fatal network errors.
             if (live || netFatalCount <= 3) {
               const delay = Math.min(3000 * netFatalCount, 15000)
-              console.log(`[player] hls.js destroying + recreating in ${delay}ms`)
               retryTimer = setTimeout(() => {
                 if (cleanedUp || hasPlayed) return
                 try { h.destroy() } catch {}
@@ -581,9 +563,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
           onClick={() => {
             const v = videoRef.current
             if (!v) return
-            console.log('[player] tap — readyState:', v.readyState,
-              'error:', v.error?.code ?? null, 'srcObject:', !!v.srcObject)
-
             // Pre-unlock iOS audio session: playing a silent <audio> in this
             // gesture handler activates the audio context for the entire page,
             // so that the async WHEP v.play() call later can also succeed
@@ -603,7 +582,6 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             setLoading(true)
             v.play()
               .then(() => {
-                console.log('[player] tap-play succeeded muted:', v.muted)
                 setNeedsTap(false)
                 setLoading(false)
                 setAudioMuted(v.muted || v.volume === 0)

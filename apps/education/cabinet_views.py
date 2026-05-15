@@ -72,6 +72,7 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = LessonSerializer
     authentication_classes = [CabinetJWTAuthentication]
     permission_classes = [IsCabinetClient]
+    pagination_class = None
 
     def get_queryset(self):
         client = self.request.user.client
@@ -80,10 +81,8 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
 
         client_tags = list(getattr(client.group, 'online_subscription_tags', None) or [])
         q = Q(groups__id=client.group_id)
-        if client_tags:
-            q |= Q(subscription_tags__overlap=client_tags) if False else Q()
-            # JSONField overlap not portable across DBs; do a python-side fallback
-            # below for tags. Keep direct group filter as the primary path.
+        # JSONField overlap is not portable across all DB backends; tag matching
+        # is handled by the Python-side fallback below.
         qs = Lesson.objects.filter(
             is_published=True, deleted_at__isnull=True,
         ).filter(q).prefetch_related('groups').distinct()
