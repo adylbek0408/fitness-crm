@@ -1,0 +1,22 @@
+/*
+ * CloudflareStreamPlayer — styles for the live / archived HLS + WHEP player.
+ *
+ * Key goal: prevent the browser's NATIVE video fullscreen button from being
+ * usable. controlsList="nofullscreen" is ignored by iOS Safari, so we must
+ * hide the button via the ::-webkit-media-controls-* pseudo-elements.
+ *
+ * Why this matters: the native fullscreen only fullscreens the <video>
+ * element itself, bypassing the parent shell div that contains the watermark.
+ * Students would see a clean, unprotected stream in fullscreen.
+ * Our custom Maximize button fullscreens the entire shell (video + watermark).
+ */
+
+.cf-player video::-webkit-media-controls-fullscreen-button {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* macOS Safari shows a fullscreen button inside the controls panel too */
+.cf-player video::-webkit-media-controls-panel .fullscreen-button {
+  display: none !important;
+}

@@ -320,17 +320,16 @@ export default function StreamLive() {
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
         return
       }
-      // Fullscreen всегда на shell-обёртке (плеер + watermark). Если
-      // фуллскринить только <video>, водяной знак (sibling) пропадает —
-      // это рушит защиту от записи экрана.
+      // Always fullscreen the shell div (video + watermark together).
+      // Never fall back to video.webkitEnterFullscreen() — that path
+      // fullscreens only the <video> element and the watermark disappears.
+      // On iOS < 16.4 where div fullscreen isn't supported, the call throws
+      // and we do nothing: the native fullscreen button is hidden via CSS
+      // (.cf-player video::-webkit-media-controls-fullscreen-button),
+      // so students can't accidentally trigger watermark-free fullscreen.
       const node = playerShellRef.current
-      if (node?.requestFullscreen)        { await node.requestFullscreen();       return }
-      if (node?.webkitRequestFullscreen)  { node.webkitRequestFullscreen();       return }
-      // Последний фоллбек для старого iOS Safari (≤15), где
-      // requestFullscreen на <div> не поддерживается. Тогда уходим в
-      // нативный iOS-плеер — watermark там не показать.
-      const p = playerRef.current
-      if (p?.requestFullscreen) await p.requestFullscreen()
+      if (node?.requestFullscreen)       { await node.requestFullscreen();      return }
+      if (node?.webkitRequestFullscreen) { node.webkitRequestFullscreen();      return }
     } catch {}
   }
 
@@ -359,15 +358,16 @@ export default function StreamLive() {
                className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto"
                style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
             {!showStageVideo && (
-              <>
-                <CloudflareStreamPlayer
-                  ref={playerRef}
-                  uid={stream.cf_playback_id}
-                  subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK}
-                  live
-                />
-                <Watermark text={watermarkText} />
-              </>
+              // Watermark is rendered INSIDE CloudflareStreamPlayer via
+              // watermarkText prop — this keeps it in the same DOM subtree
+              // as the video for any fullscreen path (shell or native).
+              <CloudflareStreamPlayer
+                ref={playerRef}
+                uid={stream.cf_playback_id}
+                subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK}
+                live
+                watermarkText={watermarkText}
+              />
             )}
             {showStageVideo && (
               <>
@@ -388,8 +388,8 @@ export default function StreamLive() {
                       : 'absolute inset-0 w-full h-full object-cover bg-black'
                   }
                 />
-                {/* Same watermark over the P2P feed — otherwise a guest going
-                    on-stage could record cleanly. */}
+                {/* Watermark over P2P feed — stays here as a direct sibling
+                    of the stage <video>; no CF player involved on this path. */}
                 <Watermark text={watermarkText} />
               </>
             )}

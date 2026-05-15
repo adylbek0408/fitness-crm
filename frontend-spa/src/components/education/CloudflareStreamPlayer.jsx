@@ -1,11 +1,27 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle, useState } from 'react'
 import Hls from 'hls.js'
+import Watermark from './Watermark'
+import './CloudflareStreamPlayer.css'
+
+// Unlock iOS audio context inside a user-gesture handler.
+// iOS Safari blocks unmuted <video> play if the audio session was never
+// activated. Playing a silent <audio> element in the same gesture
+// pre-activates the session so that subsequent async play() calls succeed.
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+function unlockAudio() {
+  try {
+    const sil = document.createElement('audio')
+    sil.src = SILENT_WAV
+    sil.play().catch(() => {})
+  } catch {}
+}
 
 const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
   uid,
   subdomain,
   live = true,
   className = 'w-full h-full bg-black',
+  watermarkText = '',
   onError,
 }, externalRef) {
   const videoRef = useRef(null)
@@ -506,7 +522,7 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
   if (!uid || !subdomain) return null
 
   return (
-    <div className="relative w-full h-full">
+    <div className="cf-player relative w-full h-full">
       <video
         ref={videoRef}
         className={className}
@@ -515,9 +531,15 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         // Hide native controls while our "tap to start" overlay is active —
         // otherwise iOS shows a grey play button that visually competes.
         controls={!needsTap}
+        // nofullscreen is ignored by iOS Safari; the CSS in
+        // CloudflareStreamPlayer.css hides the button via pseudo-element.
         controlsList="nodownload noremoteplayback nofullscreen"
         disablePictureInPicture={false}
       />
+
+      {/* Watermark must be INSIDE this component so it survives any
+          fullscreen path — shell-level fullscreen captures this whole div. */}
+      <Watermark text={watermarkText} />
 
       {loading && !hardError && !needsTap && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -536,6 +558,12 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             if (!v) return
             console.log('[player] tap — readyState:', v.readyState,
               'error:', v.error?.code ?? null, 'srcObject:', !!v.srcObject)
+
+            // Pre-unlock iOS audio session: playing a silent <audio> in this
+            // gesture handler activates the audio context for the entire page,
+            // so that the async WHEP v.play() call later can also succeed
+            // without being blocked by iOS autoplay policy.
+            unlockAudio()
 
             // CRITICAL iOS rule: call v.play() FIRST (synchronously, in the gesture
             // handler) — this unlocks the media element even if it fails.
@@ -588,18 +616,21 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
       )}
 
       {/* ── Unmute affordance ────────────────────────────────────────────
-          Some browsers (especially Safari and Chrome with autoplay policy)
-          start the video element muted to allow autoplay. The student then
-          watches a silent broadcast and assumes the trainer's mic is broken.
-          This pill makes the issue explicit + one-tap fixable. It sits at
-          z-50 so it floats above watermark, native controls, and the
-          tap-to-start overlay. */}
+          Browsers (especially iOS Safari) start the video muted to satisfy
+          autoplay policy. Without this affordance the student hears nothing
+          and assumes the trainer's mic is broken.
+          Positioned at the bottom center (above native controls) so it's
+          impossible to miss. z-50 floats above watermark and the top bar. */}
       {audioMuted && !needsTap && !hardError && (
         <button
           type="button"
           onClick={() => {
             const v = videoRef.current
             if (!v) return
+            // Pre-unlock iOS audio session before unmuting the video.
+            // Without this, setting v.muted = false may have no effect on
+            // iOS if the audio context was never activated by a gesture.
+            unlockAudio()
             try {
               v.muted = false
               if (v.volume === 0) v.volume = 1
@@ -608,10 +639,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
               setAudioMuted(v.muted || v.volume === 0)
             }
           }}
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-2xl active:scale-95 transition"
+          className="absolute bottom-14 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold shadow-2xl active:scale-95 transition animate-pulse"
         >
-          {/* volume-x icon — no extra import needed */}
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
             <line x1="23" y1="9" x2="17" y2="15" />
             <line x1="17" y1="9" x2="23" y2="15" />
