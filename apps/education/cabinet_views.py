@@ -103,7 +103,7 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
                 ).distinct()
 
         ltype = self.request.query_params.get('type')
-        if ltype in ('video', 'audio'):
+        if ltype in ('video', 'audio', 'text'):
             qs = qs.filter(lesson_type=ltype)
 
         # Sprint 3.6 / 9.x — keep stream archives out of the regular lesson list.

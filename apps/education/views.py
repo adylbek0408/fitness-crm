@@ -119,6 +119,58 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         instance.is_published = False
         instance.save(update_fields=['deleted_at', 'is_published', 'updated_at'])
 
+    @action(detail=False, methods=['post'], url_path='create-text')
+    def create_text(self, request):
+        """Create and immediately publish a text lesson.
+
+        Body: { "title": str, "content": str, "description": str?,
+                "groups": [uuid], "subscription_tags": [str] }
+        """
+        from django.db import transaction as _txn
+        from django.utils import timezone as tz
+
+        title = (request.data.get('title') or '').strip()
+        if not title:
+            return Response({'detail': 'title is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with _txn.atomic():
+            lesson = Lesson.objects.create(
+                title=title,
+                description=(request.data.get('description') or '').strip(),
+                lesson_type='text',
+                content=(request.data.get('content') or '').strip(),
+                is_published=True,
+                published_at=tz.now(),
+                created_by=request.user if request.user.is_authenticated else None,
+            )
+            groups = request.data.get('groups') or []
+            if groups:
+                lesson.groups.set(groups)
+
+        return Response(LessonAdminSerializer(lesson).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['patch'], url_path='update-text')
+    def update_text(self, request, pk=None):
+        """Update a text lesson's title, content, description, groups."""
+        lesson = self._get_any_lesson(pk)
+        if not lesson:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if lesson.lesson_type != 'text':
+            return Response({'detail': 'Only text lessons can be updated here.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if 'title' in request.data:
+            lesson.title = (request.data['title'] or '').strip() or lesson.title
+        if 'description' in request.data:
+            lesson.description = (request.data['description'] or '').strip()
+        if 'content' in request.data:
+            lesson.content = (request.data['content'] or '').strip()
+        lesson.save(update_fields=['title', 'description', 'content', 'updated_at'])
+
+        if 'groups' in request.data:
+            lesson.groups.set(request.data['groups'] or [])
+
+        return Response(LessonAdminSerializer(lesson).data)
+
     @action(detail=False, methods=['post'], url_path='upload-init')
     def upload_init(self, request):
         """Initiate an upload.

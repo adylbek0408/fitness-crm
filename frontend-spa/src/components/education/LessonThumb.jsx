@@ -10,7 +10,7 @@
  * Used in: LessonsList (cabinet), LessonsAdmin, StreamArchive.
  */
 import { useState, useEffect } from 'react'
-import { Headphones, Play } from 'lucide-react'
+import { Headphones, Play, BookOpen } from 'lucide-react'
 
 const GRADIENTS = [
   ['#fda4af', '#be185d'],   // rose
@@ -41,7 +41,7 @@ export default function LessonThumb({
   const showImage = src && !failed
   const [c1, c2] = pickGradient(title || 'lesson')
   const initial = (title || 'У').trim().charAt(0).toUpperCase()
-  const Icon = lessonType === 'audio' ? Headphones : Play
+  const Icon = lessonType === 'audio' ? Headphones : lessonType === 'text' ? BookOpen : Play
 
   if (showImage) {
     return (

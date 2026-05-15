@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import {
-  Play, Headphones, Clock, ChevronLeft, ChevronRight, CheckCircle2, Search,
+  Play, Headphones, BookOpen, Clock, ChevronLeft, ChevronRight, CheckCircle2, Search,
 } from 'lucide-react'
 import api from '../../../api/axios'
 import LessonThumb from '../../../components/education/LessonThumb'
@@ -21,6 +21,7 @@ const TABS = [
   { key: 'all',   label: 'Все' },
   { key: 'video', label: 'Видео' },
   { key: 'audio', label: 'Аудио' },
+  { key: 'text',  label: 'Текст' },
 ]
 
 export default function LessonsList() {
@@ -107,7 +108,7 @@ export default function LessonsList() {
         )}
 
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="rounded-2xl bg-white border border-rose-100 h-40 animate-pulse" />
             ))}
@@ -123,52 +124,83 @@ export default function LessonsList() {
 
         {!loading && filtered.length > 0 && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
               {pageItems.map(l => (
                 <Link
                   key={l.id}
                   to={`/cabinet/lessons/${l.id}`}
                   className="group rounded-2xl bg-white border border-rose-100 overflow-hidden shadow-sm active:scale-[0.99] hover:shadow-md transition"
                 >
-                  <div className="aspect-video relative">
-                    <LessonThumb
-                      src={l.lesson_type === 'audio' ? '' : (l.thumbnail_url || '')}
-                      title={l.title}
-                      lessonType={l.lesson_type}
-                    />
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-medium bg-black/60 text-white backdrop-blur">
-                      {l.lesson_type === 'audio' ? 'Аудио' : 'Видео'}
-                    </div>
-                    {!!l.duration_sec && (
-                      <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[10.5px] bg-black/60 text-white">
-                        <Clock size={11} className="inline mr-1" />
-                        {formatDuration(l.duration_sec)}
+                  {l.lesson_type === 'text' ? (
+                    /* Text lesson card */
+                    <>
+                      <div className="aspect-video relative flex items-center justify-center"
+                           style={{ background: 'linear-gradient(135deg, #fda4af, #be185d)' }}>
+                        <BookOpen size={32} className="text-white/80" />
+                        <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-medium bg-black/40 text-white">
+                          Текст
+                        </div>
+                        {l.progress?.is_completed && (
+                          <div className="absolute top-2 right-2 text-emerald-300">
+                            <CheckCircle2 size={18} fill="white" />
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {l.progress?.is_completed && (
-                      <div className="absolute top-2 right-2 text-emerald-400">
-                        <CheckCircle2 size={20} fill="white" />
+                      <div className="p-2.5 sm:p-3.5">
+                        <h3 className="font-semibold text-[12px] sm:text-[14px] text-gray-900 line-clamp-2 leading-snug">
+                          {l.title}
+                        </h3>
+                        {l.description && (
+                          <p className="text-[11px] sm:text-[12px] text-gray-500 line-clamp-2 mt-1">
+                            {l.description}
+                          </p>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="p-3.5">
-                    <h3 className="font-semibold text-[14px] text-gray-900 line-clamp-2 leading-snug">
-                      {l.title}
-                    </h3>
-                    {l.description && (
-                      <p className="text-[12px] text-gray-500 line-clamp-2 mt-1">
-                        {l.description}
-                      </p>
-                    )}
-                    {(l.progress?.percent || 0) > 0 && (
-                      <div className="mt-2.5 h-1 bg-rose-50 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-rose-400 to-pink-500"
-                          style={{ width: `${l.progress.percent}%` }}
+                    </>
+                  ) : (
+                    /* Video / Audio card */
+                    <>
+                      <div className="aspect-video relative">
+                        <LessonThumb
+                          src={l.lesson_type === 'audio' ? '' : (l.thumbnail_url || '')}
+                          title={l.title}
+                          lessonType={l.lesson_type}
                         />
+                        <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-medium bg-black/60 text-white backdrop-blur">
+                          {l.lesson_type === 'audio' ? 'Аудио' : 'Видео'}
+                        </div>
+                        {!!l.duration_sec && (
+                          <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[10.5px] bg-black/60 text-white">
+                            <Clock size={11} className="inline mr-1" />
+                            {formatDuration(l.duration_sec)}
+                          </div>
+                        )}
+                        {l.progress?.is_completed && (
+                          <div className="absolute top-2 right-2 text-emerald-400">
+                            <CheckCircle2 size={20} fill="white" />
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                      <div className="p-2.5 sm:p-3.5">
+                        <h3 className="font-semibold text-[12px] sm:text-[14px] text-gray-900 line-clamp-2 leading-snug">
+                          {l.title}
+                        </h3>
+                        {l.description && (
+                          <p className="text-[11px] sm:text-[12px] text-gray-500 line-clamp-2 mt-1">
+                            {l.description}
+                          </p>
+                        )}
+                        {(l.progress?.percent || 0) > 0 && (
+                          <div className="mt-2 h-1 bg-rose-50 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-rose-400 to-pink-500"
+                              style={{ width: `${l.progress.percent}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </Link>
               ))}
             </div>

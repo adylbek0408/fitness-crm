@@ -26,6 +26,7 @@ class Lesson(UUIDTimestampedModel):
     LESSON_TYPE_CHOICES = [
         ('video', 'Video'),
         ('audio', 'Audio'),
+        ('text',  'Text'),
     ]
 
     title = models.CharField(max_length=255)
@@ -35,6 +36,9 @@ class Lesson(UUIDTimestampedModel):
     # Cloudflare Stream UID for video; or R2 object key for audio.
     stream_uid = models.CharField(max_length=64, blank=True, db_index=True)
     r2_key = models.CharField(max_length=512, blank=True)
+
+    # Rich text content for text-type lessons.
+    content = models.TextField(blank=True)
 
     duration_sec = models.PositiveIntegerField(default=0)
     thumbnail_url = models.TextField(blank=True)

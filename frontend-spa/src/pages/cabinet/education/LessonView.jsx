@@ -159,7 +159,13 @@ export default function LessonView() {
 
         {lesson && (
           <>
-            {lesson.lesson_type === 'video' ? (
+            {lesson.lesson_type === 'text' ? (
+              <div className="bg-white rounded-2xl border border-rose-100 p-5 sm:p-8 shadow-sm">
+                <div className="text-gray-800 whitespace-pre-wrap leading-relaxed text-[14px] sm:text-[15px]">
+                  {lesson.content || <span className="text-gray-400 italic">Текст урока отсутствует.</span>}
+                </div>
+              </div>
+            ) : lesson.lesson_type === 'video' ? (
               <div
                 ref={playerShellRef}
                 data-protected-root
@@ -204,7 +210,9 @@ export default function LessonView() {
               >
                 {lesson.playback_url
                   ? <AudioPlayer src={lesson.playback_url} startAt={startAt} onTimeUpdate={handleProgress} />
-                  : <div className="p-6 rounded-2xl bg-white border border-rose-100 text-gray-500">Аудио недоступно.</div>}
+                  : <div className="p-6 rounded-2xl bg-white border border-rose-100 text-gray-500">
+                      {lesson.lesson_type === 'audio' ? 'Аудио недоступно.' : null}
+                    </div>}
                 {lesson.playback_url && (
                   <button
                     type="button"

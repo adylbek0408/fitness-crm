@@ -24,6 +24,7 @@ const Managers       = lazy(() => import('./pages/admin/Managers'))
 const Trash          = lazy(() => import('./pages/admin/Trash'))
 // Education (heaviest bundles — biggest win from code splitting)
 const LessonsAdmin       = lazy(() => import('./pages/admin/education/LessonsAdmin'))
+const TextLessonsAdmin   = lazy(() => import('./pages/admin/education/TextLessonsAdmin'))
 const StreamsAdmin       = lazy(() => import('./pages/admin/education/StreamsAdmin'))
 const BroadcastPage      = lazy(() => import('./pages/admin/education/BroadcastPage'))
 const ConsultationsAdmin = lazy(() => import('./pages/admin/education/ConsultationsAdmin'))
@@ -93,6 +94,7 @@ export default function App() {
                 <Route path="managers" element={<Managers />} />
                 <Route path="trash" element={<Trash />} />
                 <Route path="education/lessons" element={<LessonsAdmin />} />
+                <Route path="education/text-lessons" element={<TextLessonsAdmin />} />
                 <Route path="education/streams" element={<StreamsAdmin />} />
                 <Route path="education/broadcast/:id" element={<BroadcastPage />} />
                 <Route path="education/consultations" element={<ConsultationsAdmin />} />

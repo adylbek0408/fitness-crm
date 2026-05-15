@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Layers2, UserCircle, Users,
   BarChart2, UserCog, LogOut, Trash2,
-  Play, Radio, Video, BarChart3, Menu, X,
+  Play, Radio, Video, BarChart3, Menu, X, BookOpen,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -15,8 +15,9 @@ const links = [
   { to: '/admin/statistics', icon: BarChart2,        label: 'Статистика' },
   { to: '/admin/managers',   icon: UserCog,          label: 'Менеджеры'  },
   { divider: 'Обучение' },
-  { to: '/admin/education/lessons',       icon: Play,    label: 'Уроки'         },
-  { to: '/admin/education/streams',       icon: Radio,   label: 'Эфиры'         },
+  { to: '/admin/education/lessons',       icon: Play,     label: 'Видео-уроки'      },
+  { to: '/admin/education/text-lessons',  icon: BookOpen, label: 'Текстовые уроки'  },
+  { to: '/admin/education/streams',       icon: Radio,    label: 'Эфиры'            },
   { to: '/admin/education/consultations', icon: Video,   label: 'Консультации'  },
   { to: '/admin/education/stats',         icon: BarChart3, label: 'Аналитика'   },
   { divider: '' },
