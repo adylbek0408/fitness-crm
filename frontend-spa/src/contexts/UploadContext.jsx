@@ -136,11 +136,14 @@ export function UploadProvider({ children }) {
       }
 
       if (upload.kind === 'cf-direct') {
-        await new Promise((resolve, reject) => {
+        // CF Stream TUS upload URLs expire in ~30 min. If HEAD returns 400,
+        // tus-js-client throws "unable to resume upload". We detect that,
+        // ask the backend for a fresh URL, and retry once.
+        const runTusUpload = (uploadUrl) => new Promise((resolve, reject) => {
           const tusUpload = new tus.Upload(file, {
-            uploadUrl: upload.url,
+            uploadUrl,
             chunkSize: 50 * 1024 * 1024,
-            retryDelays: [0, 1000, 3000, 5000, 10000],
+            retryDelays: [0, 1000, 3000],
             storeFingerprintForResuming: false,
             removeFingerprintOnSuccess:  true,
             onProgress: (loaded, total) => {
@@ -149,12 +152,28 @@ export function UploadProvider({ children }) {
             onSuccess: resolve,
             onError:   reject,
           })
-          // Capture abort handle so cancelUpload can stop the transfer mid-flight.
           controlsRef.current[id] = {
             abort: () => { try { tusUpload.abort(true) } catch {} },
           }
           tusUpload.start()
         })
+
+        try {
+          await runTusUpload(upload.url)
+        } catch (tusErr) {
+          const msg = tusErr?.message || ''
+          // 400 on HEAD = expired upload session — get a fresh URL from backend
+          if (msg.includes('response code: 400') || msg.includes('unable to resume')) {
+            console.warn('[upload] TUS session expired, refreshing upload URL…')
+            update(id, { stage: 'refreshing', progress: 10 })
+            const refreshed = await api.post(
+              `/education/lessons/${lesson.id}/refresh-upload-url/`
+            )
+            await runTusUpload(refreshed.data.upload.url)
+          } else {
+            throw tusErr
+          }
+        }
       } else if (upload.kind === 'r2-presigned-put') {
         await xhrPut(upload.url, file, upload.content_type, onUploadProgress, (xhr) => {
           controlsRef.current[id] = { abort: () => { try { xhr.abort() } catch {} } }
