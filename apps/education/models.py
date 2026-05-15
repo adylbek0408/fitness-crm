@@ -37,7 +37,7 @@ class Lesson(UUIDTimestampedModel):
     r2_key = models.CharField(max_length=512, blank=True)
 
     duration_sec = models.PositiveIntegerField(default=0)
-    thumbnail_url = models.URLField(blank=True)
+    thumbnail_url = models.TextField(blank=True)
 
     # Access control:
     # 1) explicit groups (M2M to existing apps.groups.Group)
