@@ -169,7 +169,7 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
 
         try:
             if lesson_type == 'video':
-                max_dur = int(request.data.get('max_duration_sec') or 14400)
+                max_dur = int(request.data.get('max_duration_sec') or 3600)
                 file_ext = (request.data.get('file_ext') or 'mp4').lstrip('.').lower()
                 if file_ext not in ALLOWED_VIDEO_EXTS:
                     file_ext = 'mp4'
@@ -501,7 +501,7 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        max_dur = int(request.data.get('max_duration_sec') or 14400)
+        max_dur = int(request.data.get('max_duration_sec') or 3600)
         try:
             payload = CloudflareStreamService.create_direct_upload_url(
                 max_duration_sec=max_dur, name=lesson.title,
