@@ -481,6 +481,52 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         # PATCH /metadata/ { thumbnail_url } only after the PUT returns 200.
         return Response({'upload_url': upload_url, 'thumbnail_url': thumbnail_url})
 
+    @action(detail=True, methods=['post'], url_path='refresh-upload-url')
+    def refresh_upload_url(self, request, pk=None):
+        """Return a fresh Cloudflare Stream direct-upload URL for an existing lesson.
+
+        Use this when the original TUS upload URL has expired (CF Stream TUS
+        sessions expire after ~30 minutes, causing a 400 on HEAD/PATCH).
+        A new CF Stream video UID is created and the lesson record is updated.
+
+        Response: { lesson_id, upload: { kind, url, video_uid } }
+        """
+        lesson = self._get_any_lesson(pk)
+        if not lesson:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if lesson.lesson_type != 'video':
+            return Response(
+                {'detail': 'refresh-upload-url is only available for video lessons.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        max_dur = int(request.data.get('max_duration_sec') or 14400)
+        try:
+            payload = CloudflareStreamService.create_direct_upload_url(
+                max_duration_sec=max_dur, name=lesson.title,
+            )
+        except ImproperlyConfigured as e:
+            return Response(
+                {'detail': f'CF Stream not configured: {e}'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as e:
+            logger.exception('refresh_upload_url: CF Stream call failed')
+            return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        lesson.stream_uid = payload['video_uid']
+        lesson.save(update_fields=['stream_uid', 'updated_at'])
+
+        return Response({
+            'lesson_id': str(lesson.id),
+            'upload': {
+                'kind': 'cf-direct',
+                'url': payload['upload_url'],
+                'video_uid': payload['video_uid'],
+            },
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'])
     def trash(self, request):
         """List soft-deleted lessons (most-recent 500)."""
