@@ -282,14 +282,7 @@ export default function LessonView() {
                     </div>
                     <ChevronRight size={18} className="text-rose-400 shrink-0" />
                   </Link>
-                ) : (
-                  <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4 sm:py-3 rounded-2xl bg-rose-50 border border-rose-100 min-w-0 text-right justify-end">
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-rose-400 uppercase tracking-wider">Все уроки</p>
-                      <p className="text-sm font-medium text-rose-600">Так держать! 🎉</p>
-                    </div>
-                  </div>
-                )}
+                ) : <div />}
               </div>
             )}
           </>

@@ -26,7 +26,7 @@ def create_cabinet_tokens(client):
     payload_access = {
         'client_id': str(client.id),
         'type': CABINET_TOKEN_TYPE,
-        'exp': now + timedelta(hours=12),
+        'exp': now + timedelta(days=30),
         'iat': now,
     }
     payload_refresh = {

@@ -112,14 +112,13 @@ export default function VodPlayer({
       className="vod-player w-full h-full"
     >
       <MediaProvider />
-      {/* Watermark inside MediaPlayer so Plyr's own fullscreen button
-          keeps it visible — fullscreen captures the MediaPlayer element,
-          not just the underlying <video>. */}
-      <Watermark text={watermarkText} />
       <PlyrLayout
         icons={plyrLayoutIcons}
         displayDuration
       />
+      {/* Watermark rendered AFTER PlyrLayout so it sits on top of all
+          player UI in every stacking context including fullscreen. */}
+      <Watermark text={watermarkText} />
     </MediaPlayer>
   )
 }

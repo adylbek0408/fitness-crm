@@ -44,7 +44,7 @@ export default function Watermark({ text }) {
         // Heavy multi-layer shadow: stays readable on both bright and dark
         // backgrounds. Light shadow on top, dark shadow underneath.
         textShadow: '0 0 4px rgba(0,0,0,0.85), 0 1px 3px rgba(0,0,0,0.7), 0 0 1px rgba(0,0,0,0.9)',
-        zIndex: 32,
+        zIndex: 2147483647,
         whiteSpace: 'nowrap',
         letterSpacing: '0.3px',
       }}

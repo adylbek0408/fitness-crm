@@ -1,25 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
-import { Play, Pause } from 'lucide-react'
+import { Play, Pause, Loader2 } from 'lucide-react'
 
 /**
- * Audio player that downloads the file via fetch → Blob URL so the source
- * URL is hidden from DevTools network panel beyond the initial fetch.
+ * Custom audio player — no native <audio controls> visible.
+ * Fetches audio as blob so the source URL is hidden from DevTools.
  */
 export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
-  const audioRef = useRef(null)
-  const [blobUrl, setBlobUrl] = useState('')
-  const [playing, setPlaying] = useState(false)
-  const [error, setError] = useState('')
+  const audioRef   = useRef(null)
+  const [blobUrl,  setBlobUrl]  = useState('')
+  const [playing,  setPlaying]  = useState(false)
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
+  const [current,  setCurrent]  = useState(0)
+  const [duration, setDuration] = useState(0)
 
+  // Fetch audio as blob (hides R2 URL from network tab)
   useEffect(() => {
     if (!src) return
-    setError('')
-    // AbortController so re-mounting / src change really cancels the in-flight
-    // fetch instead of letting it race and call setBlobUrl on an unmounted
-    // component. The old `aborted` flag still let the promise chain run to
-    // completion, which kept the browser holding the response.
+    setLoading(true); setError('')
     const ac = new AbortController()
-    let revoked = ''
+    let created = ''
     fetch(src, { signal: ac.signal })
       .then(r => {
         if (!r.ok) throw new Error('audio_fetch_failed')
@@ -28,90 +28,126 @@ export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
       .then(blob => {
         if (ac.signal.aborted) return
         const url = URL.createObjectURL(blob)
-        revoked = url
+        created = url
         setBlobUrl(url)
+        setLoading(false)
       })
       .catch(e => {
         if (e.name === 'AbortError') return
-        setError(String(e.message || e))
+        setError('Не удалось загрузить аудио.')
+        setLoading(false)
       })
     return () => {
       ac.abort()
-      if (revoked) URL.revokeObjectURL(revoked)
+      if (created) URL.revokeObjectURL(created)
     }
   }, [src])
 
+  // Sync playing state
   useEffect(() => {
     const a = audioRef.current
     if (!a) return
-    const onPlay = () => setPlaying(true)
+    const onPlay  = () => setPlaying(true)
     const onPause = () => setPlaying(false)
-    a.addEventListener('play', onPlay)
+    const onEnded = () => setPlaying(false)
+    a.addEventListener('play',  onPlay)
     a.addEventListener('pause', onPause)
+    a.addEventListener('ended', onEnded)
     return () => {
-      a.removeEventListener('play', onPlay)
+      a.removeEventListener('play',  onPlay)
       a.removeEventListener('pause', onPause)
+      a.removeEventListener('ended', onEnded)
     }
   }, [blobUrl])
 
-  useEffect(() => {
-    const a = audioRef.current
-    if (!a || !blobUrl) return
-    const onLoaded = () => {
-      if (startAt > 0) try { a.currentTime = startAt } catch {}
-    }
-    a.addEventListener('loadedmetadata', onLoaded)
-    return () => a.removeEventListener('loadedmetadata', onLoaded)
-  }, [blobUrl, startAt])
-
+  // Track time
   useEffect(() => {
     const a = audioRef.current
     if (!a) return
-    let last = 0
-    const onTime = () => {
-      const now = Date.now()
-      if (now - last < 1000) return
-      last = now
-      const duration = a.duration || 0
-      const position = a.currentTime || 0
-      const percent = duration > 0
-        ? Math.min(100, Math.round((position / duration) * 100))
-        : 0
-      onTimeUpdate?.({ position, duration, percent })
+    const onMeta = () => {
+      setDuration(a.duration || 0)
+      if (startAt > 0) try { a.currentTime = startAt } catch {}
     }
-    a.addEventListener('timeupdate', onTime)
-    return () => a.removeEventListener('timeupdate', onTime)
-  }, [onTimeUpdate])
+    const onTime = () => {
+      setCurrent(a.currentTime)
+      const dur = a.duration || 0
+      const pos = a.currentTime
+      const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0
+      onTimeUpdate?.({ position: pos, duration: dur, percent: pct })
+    }
+    a.addEventListener('loadedmetadata', onMeta)
+    a.addEventListener('timeupdate',     onTime)
+    return () => {
+      a.removeEventListener('loadedmetadata', onMeta)
+      a.removeEventListener('timeupdate',     onTime)
+    }
+  }, [blobUrl, startAt, onTimeUpdate])
 
   const toggle = () => {
     const a = audioRef.current
-    if (!a) return
+    if (!a || !blobUrl) return
     if (a.paused) a.play().catch(() => {})
     else a.pause()
   }
 
+  const seek = (e) => {
+    const a = audioRef.current
+    if (!a || !duration) return
+    const rect  = e.currentTarget.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    a.currentTime = ratio * duration
+  }
+
+  const fmt = (s) => {
+    const sec = Math.floor(s || 0)
+    return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+  }
+
+  const pct = duration > 0 ? (current / duration) * 100 : 0
+
   return (
-    <div className="rounded-2xl border border-rose-100 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-rose-100 bg-white p-4 shadow-sm">
+      {/* Hidden audio — no native controls */}
+      <audio
+        ref={audioRef}
+        src={blobUrl}
+        onContextMenu={e => e.preventDefault()}
+      />
+
       {error && (
-        <div className="text-sm text-rose-600 mb-3">Не удалось загрузить аудио: {error}</div>
+        <p className="text-[13px] text-rose-600 mb-3">{error}</p>
       )}
-      <div className="flex items-center gap-4">
+
+      <div className="flex items-center gap-3">
+        {/* Play / Pause button */}
         <button
           onClick={toggle}
-          className="w-14 h-14 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-md hover:bg-rose-600 transition"
           disabled={!blobUrl}
+          className="w-12 h-12 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-md hover:bg-rose-600 active:scale-95 transition disabled:opacity-50 shrink-0"
         >
-          {playing ? <Pause size={22} /> : <Play size={22} className="ml-0.5" />}
+          {loading
+            ? <Loader2 size={20} className="animate-spin" />
+            : playing
+              ? <Pause size={20} />
+              : <Play  size={20} className="ml-0.5" />}
         </button>
-        <div className="flex-1">
-          <audio
-            ref={audioRef}
-            src={blobUrl}
-            controls
-            controlsList="nodownload"
-            onContextMenu={e => e.preventDefault()}
-            className="w-full"
-          />
+
+        <div className="flex-1 min-w-0">
+          {/* Progress bar — clickable/seekable */}
+          <div
+            className="h-2 bg-rose-100 rounded-full overflow-hidden cursor-pointer"
+            onClick={seek}
+          >
+            <div
+              className="h-full bg-rose-400 rounded-full transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          {/* Time */}
+          <div className="flex justify-between mt-1">
+            <span className="text-[10px] text-gray-400 tabular-nums">{fmt(current)}</span>
+            <span className="text-[10px] text-gray-400 tabular-nums">{fmt(duration)}</span>
+          </div>
         </div>
       </div>
     </div>

@@ -231,48 +231,53 @@ export default function TextLessonsAdmin() {
         )}
 
         {!loading && pageItems.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="flex flex-col gap-2">
             {pageItems.map(l => {
               const lessonGroups = (l.groups || [])
                 .map(gid => groupMap[typeof gid === 'object' ? gid.id : gid])
                 .filter(Boolean)
               return (
-                <div key={l.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
-                  <div className="h-20 flex items-center justify-center"
-                       style={{ background: 'linear-gradient(135deg, #fda4af, #be185d)' }}>
-                    <BookOpen size={32} className="text-white/80" />
+                <div key={l.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm flex items-start gap-4 p-4 hover:shadow-md transition-shadow">
+                  {/* Icon */}
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                       style={{ background: 'linear-gradient(135deg,#fda4af,#be185d)' }}>
+                    <BookOpen size={20} className="text-white" />
                   </div>
-                  <div className="p-4 flex-1 flex flex-col gap-1.5">
-                    <h3 className="font-semibold text-sm text-gray-900 line-clamp-2 leading-snug">{l.title}</h3>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-[14px] text-gray-900 leading-snug truncate">{l.title}</h3>
                     {l.content && (
-                      <p className="text-[11px] text-gray-500 line-clamp-3 leading-relaxed">{l.content}</p>
+                      <p className="text-[12px] text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{l.content}</p>
                     )}
-                    <div className="flex flex-wrap gap-1 mt-auto pt-2">
-                      {lessonGroups.slice(0, 3).map(g => (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {lessonGroups.length === 0 && (
+                        <span className="text-[11px] text-amber-500 font-medium">⚠ Нет групп</span>
+                      )}
+                      {lessonGroups.slice(0, 4).map(g => (
                         <span key={g.id} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-50 text-rose-600 border border-rose-100">
-                          Группа {g.number}
+                          {g.number}
                         </span>
                       ))}
-                      {lessonGroups.length > 3 && (
+                      {lessonGroups.length > 4 && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500">
-                          +{lessonGroups.length - 3}
+                          +{lessonGroups.length - 4}
                         </span>
-                      )}
-                      {lessonGroups.length === 0 && (
-                        <span className="text-[10px] text-amber-500">⚠ Нет групп</span>
                       )}
                     </div>
                   </div>
-                  <div className="px-4 pb-4 flex gap-2">
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => setModal({ type: 'edit', lesson: l })}
-                      className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 transition"
                     >
                       <Pencil size={12} /> Изменить
                     </button>
                     <button
                       onClick={() => setModal({ type: 'delete', lesson: l })}
-                      className="p-1.5 rounded-lg border border-gray-200 text-rose-400 hover:bg-rose-50 transition"
+                      className="p-1.5 rounded-xl border border-gray-200 text-rose-400 hover:bg-rose-50 transition"
                     >
                       <Trash2 size={14} />
                     </button>
