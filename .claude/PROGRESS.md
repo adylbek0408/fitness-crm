@@ -160,6 +160,30 @@
        `canUseNewClientFlow` в admin и mobile теперь требует наличие оплаты (`hasPayment`)
        для frozen-клиентов.
 
+## Спринт 12 — CRM bugfixes batch 2 (2026-05-16)
+- [x] **12.1** Fix Calendar import crash на mobile ClientDetail (MobileReservationPanel)
+- [x] **12.2** История чеков → История платежей; показываем ВСЕ транзакции (с/без чека + дата-время)
+       в admin и mobile ClientDetail
+- [x] **12.3** Поле `notes` на модели Client (migration 0023); отображается/редактируется
+       в admin ClientDetail (EditInfoPanel + инфо-карточка), mobile ClientDetail,
+       и форме регистрации ClientRegister (шаг 0)
+- [x] **12.4** Сохранение фильтров в sessionStorage в admin Clients.jsx
+       (search, status, format, group, page и т.д. — восстанавливаются при возврате)
+- [x] **12.5** Все 6 статусов (new/trial/active/frozen/completed/expelled) в STATUS_OPTIONS
+       (admin Clients.jsx + mobile ClientDetail.jsx) и STATUS_CONFIG (admin ClientDetail.jsx);
+       убран special-case static badge для new/trial в StatusDropdown
+- [x] **12.6** Блокировка рассрочников без полной оплаты от уроков/эфиров/архивов:
+       helper `_client_has_lesson_access()` в education/cabinet_views.py;
+       `has_lesson_access` поле в `/api/cabinet/me/`;
+       StreamLive.jsx показывает экран "payment_required"
+- [x] **12.7** Вторая группа: поле `second_group` FK на Client (migration 0024);
+       уроки и эфиры доступны из обеих групп; helper `_client_group_ids()`;
+       обновлён LessonAccessService; UI в admin EditInfoPanel + инфо-карточка
+- [x] **12.8** Один сеанс ЛК: поле `session_key` на ClientAccount (migration 0025);
+       ротируется при каждом входе в `create_cabinet_tokens()`;
+       JWT содержит session_key; `CabinetJWTAuthentication.authenticate()` отклоняет
+       токены с устаревшим session_key
+
 ---
 
 ## Решения по ходу
