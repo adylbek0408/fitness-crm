@@ -45,7 +45,7 @@ export default function FeedPostAudio({ lesson }) {
   // ── Ready: AudioPlayer ────────────────────────────────────────────────────
   if (phase === 'ready') {
     return (
-      <div className="mx-3 mb-2 rounded-xl overflow-hidden">
+      <div className="mx-3.5 mb-2 rounded-xl overflow-hidden">
         <AudioPlayer src={playbackUrl} startAt={startAt} onTimeUpdate={handleProgress} />
       </div>
     )
@@ -54,7 +54,7 @@ export default function FeedPostAudio({ lesson }) {
   // ── Error ─────────────────────────────────────────────────────────────────
   if (phase === 'error') {
     return (
-      <div className="mx-3 mb-2 p-3 rounded-xl bg-amber-50 text-amber-700 text-[13px] text-center">
+      <div className="mx-3.5 mb-2 p-3 rounded-xl bg-amber-50 text-amber-700 text-[13px] text-center">
         Не удалось загрузить аудио.{' '}
         <button className="underline font-medium" onClick={() => setPhase('idle')}>Повторить</button>
       </div>
@@ -63,7 +63,7 @@ export default function FeedPostAudio({ lesson }) {
 
   // ── Idle / Loading: TG voice-message style ────────────────────────────────
   return (
-    <div className="flex items-center gap-2.5 px-3 pb-3 pt-1">
+    <div className="flex items-center gap-2.5 px-3.5 pb-3 pt-2">
       {/* Play / Spinner button */}
       <button
         onClick={handlePlay}

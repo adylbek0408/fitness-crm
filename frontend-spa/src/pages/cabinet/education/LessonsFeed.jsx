@@ -227,21 +227,31 @@ export default function LessonsFeed() {
           </div>
         )}
 
-        {/* Skeleton */}
+        {/* Skeleton — mirrors bubble shape with SVG tail */}
         {loading && (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-end gap-1.5 pl-1">
-                <div className="w-2 h-2 rounded-full bg-white/60 mb-1.5 shrink-0" />
+              <div key={i} className="flex items-end pl-3">
                 <div
-                  className="bg-white animate-pulse p-4 space-y-2.5 shadow-sm"
-                  style={{ maxWidth: '75%', minWidth: '160px', borderRadius: '4px 16px 16px 16px' }}
+                  className="relative"
+                  style={{ maxWidth: '72%', minWidth: '160px', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.10))' }}
                 >
-                  <div className="h-2 bg-gray-100 rounded w-1/4" />
-                  <div className="h-4 bg-gray-100 rounded w-3/4" />
-                  <div className="h-3 bg-gray-100 rounded w-full" />
-                  <div className="h-3 bg-gray-100 rounded w-2/3" />
-                  <div className="h-2 bg-gray-100 rounded w-1/4 ml-auto" />
+                  <svg aria-hidden="true"
+                    style={{ position: 'absolute', bottom: 0, left: -9, display: 'block' }}
+                    width="10" height="16" viewBox="0 0 10 16" fill="white"
+                  >
+                    <path d="M10 0 L10 16 L0 16 Z" />
+                  </svg>
+                  <div
+                    className="bg-white animate-pulse p-4 space-y-2.5 relative z-10"
+                    style={{ borderRadius: '4px 16px 16px 16px' }}
+                  >
+                    <div className="h-2 bg-gray-100 rounded w-1/4" />
+                    <div className="h-4 bg-gray-100 rounded w-3/4" />
+                    <div className="h-3 bg-gray-100 rounded w-full" />
+                    <div className="h-3 bg-gray-100 rounded w-2/3" />
+                    <div className="h-2 bg-gray-100 rounded w-1/4 ml-auto" />
+                  </div>
                 </div>
               </div>
             ))}

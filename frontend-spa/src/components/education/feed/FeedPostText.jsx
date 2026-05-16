@@ -33,7 +33,7 @@ export default function FeedPostText({ lesson }) {
   if (!text) return null
 
   return (
-    <div className="px-3 pb-1">
+    <div className="px-3.5 pb-1">
       <p
         className="text-[13.5px] text-gray-800 leading-relaxed whitespace-pre-wrap"
         style={{ wordBreak: 'break-word' }}
@@ -44,7 +44,7 @@ export default function FeedPostText({ lesson }) {
         <button
           ref={btnRef}
           onClick={toggle}
-          className="mt-1.5 flex items-center gap-0.5 text-[12px] font-semibold py-1 transition"
+          className="mt-1.5 flex items-center gap-0.5 text-[12px] font-semibold py-1 transition active:opacity-70"
           style={{ color: '#e11d48' }}
         >
           {expanded
