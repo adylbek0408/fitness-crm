@@ -105,7 +105,7 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
             deleted_at__isnull=True, source_streams__isnull=True,
         ).exclude(stream_uid__in=Subquery(_rec_uids))
         ltype = self.request.query_params.get('type')
-        if ltype in ('video', 'audio'):
+        if ltype in ('video', 'audio', 'text'):
             qs = qs.filter(lesson_type=ltype)
         search = self.request.query_params.get('search')
         if search:

@@ -269,23 +269,29 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         #   - position cannot exceed duration (with a small grace).
         # If duration_sec is 0 (CF still transcoding, audio without
         # metadata) we cap progress at 50% provisionally — see below.
-        duration = lesson.duration_sec or 0
-        if duration > 0:
-            position = min(position, duration + 5)
-            position_pct = (position / duration) * 100
-            is_completed = (percent >= 95) and (position_pct >= 90)
-            # Recompute percent from position so a client can't claim
-            # progress beyond what the position would support.
-            percent = min(percent, int(position_pct + 5))
+        # Text lessons have no playback duration — opening the lesson IS reading it.
+        if lesson.lesson_type == 'text':
+            percent = 100
+            position = 0
+            is_completed = True
         else:
-            # No duration yet (CF still transcoding, or audio without metadata).
-            # We CAN'T trust the client's percent flag — they could POST
-            # {percent:100} the moment the lesson appears and be marked
-            # "completed" without watching. Record progress up to 50% as a
-            # provisional value; once `duration_sec` is filled in by the
-            # webhook, the next genuine progress beat will correctly grade it.
-            percent = min(percent, 50)
-            is_completed = False
+            duration = lesson.duration_sec or 0
+            if duration > 0:
+                position = min(position, duration + 5)
+                position_pct = (position / duration) * 100
+                is_completed = (percent >= 95) and (position_pct >= 90)
+                # Recompute percent from position so a client can't claim
+                # progress beyond what the position would support.
+                percent = min(percent, int(position_pct + 5))
+            else:
+                # No duration yet (CF still transcoding, or audio without metadata).
+                # We CAN'T trust the client's percent flag — they could POST
+                # {percent:100} the moment the lesson appears and be marked
+                # "completed" without watching. Record progress up to 50% as a
+                # provisional value; once `duration_sec` is filled in by the
+                # webhook, the next genuine progress beat will correctly grade it.
+                percent = min(percent, 50)
+                is_completed = False
 
         # last_watched_at is auto_now in the model — ensure update_or_create
         # actually bumps it even when nothing else changed.

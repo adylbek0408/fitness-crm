@@ -32,9 +32,11 @@ export default function CabinetNav() {
   // Check for new lessons once on mount (lightweight: only first item)
   useEffect(() => {
     if (!localStorage.getItem('cabinet_access_token')) return
+    let mounted = true
     const seenAt = parseInt(localStorage.getItem(LS_KEY) || '0', 10)
     api.get('/cabinet/education/lessons/?page_size=1')
       .then(r => {
+        if (!mounted) return
         const items = Array.isArray(r.data) ? r.data : (r.data?.results || [])
         if (items.length > 0) {
           const newestAt = new Date(items[0].published_at || items[0].created_at).getTime()
@@ -42,6 +44,7 @@ export default function CabinetNav() {
         }
       })
       .catch(() => {})
+    return () => { mounted = false }
   }, [])
 
   return (

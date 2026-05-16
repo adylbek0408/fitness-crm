@@ -21,6 +21,7 @@ function LessonModal({ lesson, groups, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!title.trim()) { setErr('Введите название'); return }
+    if (selGroups.length === 0) { setErr('Выберите хотя бы одну группу — иначе ученики не увидят урок'); return }
     setSaving(true); setErr('')
     try {
       const payload = {
@@ -151,10 +152,10 @@ export default function TextLessonsAdmin() {
     setLoading(true)
     try {
       const [lr, gr] = await Promise.all([
-        api.get('/education/lessons/?page_size=500'),
+        api.get('/education/lessons/?page_size=500&type=text'),
         api.get('/groups/?page_size=200&training_format=online'),
       ])
-      setLessons(pickList(lr.data).filter(l => l.lesson_type === 'text'))
+      setLessons(pickList(lr.data))
       setGroups(pickList(gr.data))
     } catch {}
     finally { setLoading(false) }

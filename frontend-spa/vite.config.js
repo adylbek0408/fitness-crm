@@ -9,6 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['vite.svg'],
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         // ── КРИТИЧНО: исключаем backend-роуты из navigation fallback.
         // Без этого SW при клике на https://host/media/receipts/...jpeg
         // считает это SPA-переходом, подставляет index.html → React не знает

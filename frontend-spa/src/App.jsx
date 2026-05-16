@@ -36,7 +36,7 @@ const ClientList         = lazy(() => import('./pages/mobile/ClientList'))
 const MobileClientDetail = lazy(() => import('./pages/mobile/ClientDetail'))
 // Cabinet
 const CabinetProfile = lazy(() => import('./pages/cabinet/CabinetProfile'))
-const LessonsList    = lazy(() => import('./pages/cabinet/education/LessonsList'))
+const LessonsFeed    = lazy(() => import('./pages/cabinet/education/LessonsFeed'))
 const LessonView     = lazy(() => import('./pages/cabinet/education/LessonView'))
 const StreamLive     = lazy(() => import('./pages/cabinet/education/StreamLive'))
 const StreamArchive  = lazy(() => import('./pages/cabinet/education/StreamArchive'))
@@ -73,7 +73,7 @@ export default function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/cabinet" element={<CabinetLogin />} />
               <Route path="/cabinet/profile" element={<CabinetProfile />} />
-              <Route path="/cabinet/lessons" element={<LessonsList />} />
+              <Route path="/cabinet/lessons" element={<LessonsFeed />} />
               <Route path="/cabinet/lessons/:id" element={<LessonView />} />
               <Route path="/cabinet/stream" element={<StreamLive />} />
               <Route path="/cabinet/archive" element={<StreamArchive />} />

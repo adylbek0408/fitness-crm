@@ -50,6 +50,10 @@ export default function LessonView() {
     api.get(`/cabinet/education/lessons/${id}/`, { signal: ctrl.signal })
     .then(lr => {
       setLesson(lr.data)
+      // Text lessons: opening the lesson = reading it → mark complete immediately
+      if (lr.data.lesson_type === 'text') {
+        api.post(`/cabinet/education/lessons/${id}/progress/`, { position: 0, percent: 100 }).catch(() => {})
+      }
     }).catch(e => {
       if (e.name === 'CanceledError' || e.name === 'AbortError') return
       if (e.response?.status === 403) setError('Этот урок недоступен для вашей группы.')

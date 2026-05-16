@@ -32,6 +32,7 @@ export default function VodPlayer({
   onReady,
   live = false,
   watermarkText = '',
+  load = 'visible',
 }) {
   const playerRef   = useRef(null)
   const seekedRef   = useRef(false)
@@ -102,7 +103,7 @@ export default function VodPlayer({
       poster={poster}
       autoPlay={autoPlay}
       playsInline
-      load="visible"
+      load={load}
       streamType={live ? 'live' : 'on-demand'}
       onProviderChange={handleProviderChange}
       onTimeUpdate={handleTimeUpdate}
