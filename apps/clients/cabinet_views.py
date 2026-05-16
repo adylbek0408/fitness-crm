@@ -96,7 +96,7 @@ class CabinetMeView(APIView):
 
     def get(self, request):
         account = request.user  # ClientAccount from CabinetJWTAuthentication
-        client = Client.objects.select_related('group').get(pk=account.client_id)
+        client = Client.objects.select_related('group', 'second_group').get(pk=account.client_id)
         # Полный номер — свой кабинет, клиент видит свой номер
         phone = (client.phone or '').strip() or '—'
 
@@ -126,6 +126,18 @@ class CabinetMeView(APIView):
             plan = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
             has_lesson_access = bool(plan and plan.is_closed)
 
+        second_group = None
+        if client.second_group_id:
+            g2 = client.second_group
+            second_group = {
+                'number': g2.number,
+                'status': g2.status,
+                'group_type': g2.group_type,
+                'schedule': g2.schedule or '',
+                'start_date': str(g2.start_date) if g2.start_date else '',
+                'trainer': g2.trainer.full_name if g2.trainer_id else '',
+            }
+
         return Response({
             'first_name': client.first_name,
             'last_name': client.last_name,
@@ -136,6 +148,7 @@ class CabinetMeView(APIView):
             'registered_at': str(client.registered_at) if client.registered_at else None,
             'status': client.status,
             'current_group': current_group,
+            'second_group': second_group,
             'completed_flows': completed_flows,
             'has_lesson_access': has_lesson_access,
         })

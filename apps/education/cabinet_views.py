@@ -493,6 +493,8 @@ class CabinetStreamHeartbeatView(APIView):
 
     def post(self, request, pk):
         client = request.user.client
+        if not _client_has_lesson_access(client):
+            return Response({'detail': 'Оплата не завершена.'}, status=status.HTTP_403_FORBIDDEN)
         # Always validate stream is still live — an existing viewer row must
         # not keep incrementing heartbeats after the stream ends.
         try:
@@ -505,9 +507,10 @@ class CabinetStreamHeartbeatView(APIView):
         ).first()
         if not viewer:
             # No active viewer — try to revive an inactive one or create afresh.
+            group_ids = _client_group_ids(client)
             if stream.groups.exists() and (
-                not client.group_id
-                or not stream.groups.filter(id=client.group_id).exists()
+                not group_ids
+                or not stream.groups.filter(id__in=group_ids).exists()
             ):
                 return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
             StreamViewer.objects.update_or_create(
@@ -531,6 +534,8 @@ class CabinetStreamViewersView(APIView):
 
     def get(self, request, pk):
         client = request.user.client
+        if not _client_has_lesson_access(client):
+            return Response({'detail': 'Оплата не завершена.'}, status=status.HTTP_403_FORBIDDEN)
         try:
             stream = LiveStream.objects.get(pk=pk, deleted_at__isnull=True)
         except LiveStream.DoesNotExist:
@@ -677,8 +682,12 @@ class CabinetStreamChatView(APIView):
 
     def _stream(self, request, pk):
         from django.shortcuts import get_object_or_404
+        from rest_framework.exceptions import PermissionDenied
+        client = request.user.client
+        if not _client_has_lesson_access(client):
+            raise PermissionDenied('Оплата не завершена.')
         stream = get_object_or_404(LiveStream, pk=pk, deleted_at__isnull=True)
-        _ensure_stream_group_access(stream, request.user.client)
+        _ensure_stream_group_access(stream, client)
         return stream
 
     def get(self, request, pk):

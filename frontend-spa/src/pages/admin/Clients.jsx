@@ -446,6 +446,7 @@ export default function Clients() {
   const totalPages     = Math.ceil(count / 25)
   const loadAbortRef   = useRef(null)
   const loadGenRef     = useRef(0)
+  const filtersMountedRef = useRef(false)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -528,6 +529,12 @@ export default function Clients() {
       trainerFilter, onlineTagFilter, fromTelegram, showAdvanced])
 
   useEffect(() => {
+    if (!filtersMountedRef.current) {
+      // First render: filters are restored from sessionStorage — don't reset page,
+      // just trigger an initial load via the page effect below.
+      filtersMountedRef.current = true
+      return
+    }
     setPage(1); load(1)
   }, [debouncedSearch, status, format, group, groupType, isRepeat, isTrial, paymentStatus,
       registeredFrom, registeredTo, registeredBy, trainerFilter, onlineTagFilter, fromTelegram])
