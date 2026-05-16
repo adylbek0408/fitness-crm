@@ -36,7 +36,7 @@ export default function FeedPost({ lesson }) {
           </h3>
           <div className="flex items-center gap-2 mt-0.5">
             <span className={`text-[10px] font-medium ${meta.text}`}>{meta.label}</span>
-            {lesson.duration_sec && (
+            {lesson.duration_sec > 0 && (
               <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
                 <Clock size={9} /> {formatDuration(lesson.duration_sec)}
               </span>
