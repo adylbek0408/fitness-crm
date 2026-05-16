@@ -482,9 +482,12 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const [loadingId, setLoadingId] = useState(null)
   const [err, setErr] = useState('')
 
+  const hasPayment = !!(client.full_payment || client.installment_plan)
+
+  // Frozen без оплаты (после возврата) — только через Повторная запись.
   const canUseNewClientFlow =
     !client.is_trial &&
-    (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat))
+    (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat && hasPayment))
     && !client.group
 
   if (!canUseNewClientFlow) return null
@@ -812,6 +815,199 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
   )
 }
 
+// ── Бронь следующей группы ────────────────────────────────────────────────────
+function MobileReservationPanel({ client, clientId, onSuccess }) {
+  const [open,          setOpen]          = useState(false)
+  const [groups,        setGroups]        = useState([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState(null)
+  const [payType,       setPayType]       = useState('full')
+  const [payAmount,     setPayAmount]     = useState('')
+  const [totalCost,     setTotalCost]     = useState('')
+  const [deadline,      setDeadline]      = useState('')
+  const [bonusPercent,  setBonusPercent]  = useState(String(client.bonus_percent ?? 10))
+  const [saving,        setSaving]        = useState(false)
+  const [cancelling,    setCancelling]    = useState(false)
+  const [err,           setErr]           = useState('')
+
+  const res = client.active_reservation
+
+  if (client.status !== 'active' || !client.group) return null
+
+  const loadGroups = async () => {
+    setGroupsLoading(true)
+    try {
+      const r  = await api.get('/groups/', { params: { page_size: 200, status: 'recruitment' } })
+      const r2 = await api.get('/groups/', { params: { page_size: 200, status: 'active' } })
+      const all = [...(r.data.results || []), ...(r2.data.results || [])]
+        .filter(g => g.id !== client.group?.id)
+      const seen = new Set()
+      setGroups(all.filter(g => { if (seen.has(g.id)) return false; seen.add(g.id); return true }))
+    } catch { setGroups([]) }
+    finally { setGroupsLoading(false) }
+  }
+
+  const handleOpen = () => {
+    setOpen(v => !v); setErr(''); setSelectedGroup(null)
+    setPayAmount(''); setTotalCost(''); setDeadline('')
+    setBonusPercent(String(client.bonus_percent ?? 10)); setPayType('full')
+    if (!open) loadGroups()
+  }
+
+  const handleSave = async () => {
+    if (!selectedGroup) { setErr('Выберите группу'); return }
+    if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) { setErr('Укажите сумму'); return }
+    if (payType === 'installment' && (!totalCost || !deadline)) { setErr('Укажите стоимость и дедлайн'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.post(`/clients/${clientId}/reserve-group/`, {
+        group_id:       selectedGroup.id,
+        payment_type:   payType,
+        payment_amount: payType === 'full' ? payAmount : undefined,
+        total_cost:     payType === 'installment' ? totalCost : undefined,
+        deadline:       payType === 'installment' ? deadline : undefined,
+        bonus_percent:  Number(bonusPercent) || 10,
+      })
+      setOpen(false); onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setSaving(false) }
+  }
+
+  const handleCancel = async () => {
+    setCancelling(true); setErr('')
+    try {
+      await api.delete(`/clients/${clientId}/cancel-reservation/`)
+      onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setCancelling(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+      <button type="button" onClick={res ? undefined : handleOpen}
+        className="w-full flex items-center justify-between p-4 touch-manipulation"
+        style={{ cursor: res ? 'default' : 'pointer' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+               style={{ background: '#f3e8ff' }}>
+            <Calendar size={18} style={{ color: '#7c3aed' }} />
+          </div>
+          <div className="text-left">
+            <p className="font-semibold text-gray-800 text-sm">Бронь следующей группы</p>
+            <p className="text-xs text-gray-400">
+              {res ? `Забронировано: Группа #${res.reserved_group_number}` : 'Предзапись с оплатой'}
+            </p>
+          </div>
+        </div>
+        {!res && <ChevronRight size={18} className={`text-gray-400 transition ${open ? 'rotate-90' : ''}`} />}
+      </button>
+
+      {res && (
+        <div className="px-4 pb-4 border-t border-gray-100 space-y-3 pt-3">
+          <div className="p-3 rounded-xl text-sm" style={{ background: '#f3e8ff', border: '1px solid #d8b4fe' }}>
+            <p className="font-semibold" style={{ color: '#6d28d9' }}>Группа #{res.reserved_group_number}</p>
+            <p className="text-xs mt-0.5" style={{ color: '#7c3aed' }}>
+              {res.payment_type === 'full' ? `Полная оплата — ${res.payment_amount} сом` : `Рассрочка — ${res.total_cost} сом`}
+            </p>
+            <p className="text-xs mt-1 text-gray-400">При закрытии текущей группы — авто-зачисление.</p>
+          </div>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <button type="button" onClick={handleCancel} disabled={cancelling}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold border touch-manipulation disabled:opacity-60"
+            style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+            {cancelling ? <span className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" /> : 'Отменить бронь'}
+          </button>
+        </div>
+      )}
+
+      {!res && open && (
+        <div className="px-4 pb-5 border-t border-gray-100 space-y-4 pt-4">
+          {groupsLoading ? (
+            <div className="flex justify-center py-4">
+              <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#7c3aed' }} />
+            </div>
+          ) : groups.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-3">Нет доступных групп</p>
+          ) : (
+            <div className="space-y-2 max-h-52 overflow-y-auto">
+              {groups.map(g => (
+                <button key={g.id} type="button" onClick={() => setSelectedGroup(selectedGroup?.id === g.id ? null : g)}
+                  className="w-full text-left p-3 rounded-xl border-2 transition touch-manipulation"
+                  style={selectedGroup?.id === g.id
+                    ? { background: '#f3e8ff', borderColor: '#7c3aed' }
+                    : { background: '#fafafa', borderColor: '#e5e7eb' }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm text-gray-800">Группа #{g.number}
+                        <span className="ml-2 text-xs font-normal text-gray-400">{GROUP_TYPE_LABEL[g.group_type] || g.group_type}</span>
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">{g.trainer?.full_name || '—'}</p>
+                    </div>
+                    {selectedGroup?.id === g.id && <Check size={15} style={{ color: '#7c3aed' }} className="shrink-0" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {selectedGroup && (
+            <>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Тип оплаты</p>
+                <div className="flex gap-2">
+                  {[{ v: 'full', l: 'Полная' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+                    <button key={v} type="button" onClick={() => setPayType(v)}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
+                      style={payType === v
+                        ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                        : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {payType === 'full' ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Сумма курса</p>
+                  <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                    value={payAmount} onChange={e => setPayAmount(e.target.value)} className="crm-mobile-input w-full" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Рассрочка</p>
+                  <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+                    value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-mobile-input w-full" />
+                  <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className="crm-mobile-input w-full" />
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Бонус (%)</p>
+                <input type="number" min={0} max={100} step={1} value={bonusPercent}
+                  onChange={e => setBonusPercent(e.target.value)} className="crm-mobile-input w-full" />
+              </div>
+            </>
+          )}
+          {err && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+                 style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+              <AlertTriangle size={13} /> {err}
+            </div>
+          )}
+          {selectedGroup && (
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+              style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+              Забронировать группу #{selectedGroup.number}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── История групп ─────────────────────────────────────────────────────────────
 function MobileStreamsHistory({ client, clientId }) {
   const [open, setOpen] = useState(false)
@@ -1069,11 +1265,15 @@ export default function MobileClientDetail() {
     { value: 'expelled',  label: 'Отчислен',  dot: 'bg-red-500' },
   ]
 
+  const STATUS_ALL_LABELS = {
+    active: 'Активный', frozen: 'Заморозка', completed: 'Завершил',
+    expelled: 'Отчислен', new: 'Новый', trial: 'Пробный',
+  }
+
   const changeStatus = async (newStatus) => {
     if (newStatus === client.status) { setStatusMenuOpen(false); return }
-    const labels = { active: 'Активный', frozen: 'Заморозка', completed: 'Завершил', expelled: 'Отчислен' }
     setStatusMenuOpen(false)
-    setStatusConfirm({ newStatus, label: labels[newStatus] || newStatus })
+    setStatusConfirm({ newStatus, label: STATUS_ALL_LABELS[newStatus] || newStatus })
   }
 
   const resetCabinetPassword = async () => {
@@ -1126,11 +1326,13 @@ export default function MobileClientDetail() {
 
   const allReceipts = []
   if (client.payment_type === 'full' && full?.receipt)
-    allReceipts.push({ id: full.id, date: full.paid_at, amount: full.amount, label: 'Полная оплата', receipt: full.receipt })
+    allReceipts.push({ id: full.id, date: full.created_at || full.paid_at, amount: full.amount, label: 'Полная оплата', receipt: full.receipt })
   if (client.payment_type === 'installment' && plan?.payments?.length)
-    plan.payments.forEach((p, i) => allReceipts.push({
-      id: p.id, date: p.paid_at, amount: p.amount, label: `Платёж ${i + 1}`, receipt: p.receipt || null
-    }))
+    plan.payments.forEach((p, i) => {
+      if (p.receipt) allReceipts.push({
+        id: p.id, date: p.created_at || p.paid_at, amount: p.amount, label: `Платёж ${i + 1}`, receipt: p.receipt,
+      })
+    })
 
   return (
     <MobileLayout>
@@ -1159,34 +1361,29 @@ export default function MobileClientDetail() {
               <h2 className="text-xl font-bold text-gray-800">{client.full_name}</h2>
               <p className="text-sm text-gray-500 mt-1">{client.phone}</p>
               <div className="relative mt-2" style={{ zIndex: 10 }}>
-                {(client.status === 'new' || client.status === 'trial') ? (
-                  <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border ${STATUS_BADGE[client.status] || 'border-gray-200'}`}>
-                    {client.status === 'trial' && <FlaskConical size={10} />}
-                    {STATUS_LABEL[client.status]}
-                  </span>
-                ) : (
-                  <>
-                    <button type="button" onClick={() => setStatusMenuOpen(o => !o)} disabled={statusLoading}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
-                      {statusLoading
-                        ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        : STATUS_LABEL[client.status]}
-                      <ChevronDown size={11} />
-                    </button>
-                    {statusMenuOpen && (
-                      <div className="absolute left-0 top-9 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
-                        {STATUS_OPTIONS.map(opt => (
-                          <button key={opt.value} type="button" onClick={() => changeStatus(opt.value)}
-                            className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition ${
-                              opt.value === client.status ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
-                            }`}>
-                            <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </>
+                <button type="button" onClick={() => setStatusMenuOpen(o => !o)} disabled={statusLoading}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
+                  {statusLoading
+                    ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    : <>
+                        {client.status === 'trial' && <FlaskConical size={10} />}
+                        {STATUS_LABEL[client.status]}
+                      </>
+                  }
+                  <ChevronDown size={11} />
+                </button>
+                {statusMenuOpen && (
+                  <div className="absolute left-0 top-9 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
+                    {STATUS_OPTIONS.map(opt => (
+                      <button key={opt.value} type="button" onClick={() => changeStatus(opt.value)}
+                        className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition ${
+                          opt.value === client.status ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
+                        }`}>
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
               <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
@@ -1347,6 +1544,9 @@ export default function MobileClientDetail() {
         {/* Добавить в группу */}
         <MobileNewClientAddPanel client={client} clientId={id} onSuccess={load} />
 
+        {/* Бронь следующей группы */}
+        <MobileReservationPanel client={client} clientId={id} onSuccess={load} />
+
         {/* История групп */}
         <MobileStreamsHistory client={client} clientId={id} />
 
@@ -1401,7 +1601,7 @@ export default function MobileClientDetail() {
               setStatusLoading(true); setStatusConfirm(null)
               try {
                 await api.post(`/clients/${id}/change_status/`, { status: statusConfirm.newStatus })
-                setClient(c => ({ ...c, status: statusConfirm.newStatus }))
+                await load()
               } catch { } finally { setStatusLoading(false) }
             }}
             onClose={() => setStatusConfirm(null)}

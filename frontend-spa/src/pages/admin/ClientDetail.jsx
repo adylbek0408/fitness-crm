@@ -190,25 +190,27 @@ function StreamsInfoRow({ client, clientId }) {
   )
 }
 
-// ── Редактирование: ФИО, телефон, группа ─────────────────────────────────────
+// ── Редактирование: ФИО, телефон, тип, группа ────────────────────────────────
 function EditInfoPanel({ client, clientId, onSuccess }) {
-  const [open,       setOpen]       = useState(false)
-  const [firstName,  setFirstName]  = useState(client.first_name)
-  const [lastName,   setLastName]   = useState(client.last_name)
-  const [phone,      setPhone]      = useState(client.phone)
+  const [open,         setOpen]         = useState(false)
+  const [firstName,    setFirstName]    = useState(client.first_name)
+  const [lastName,     setLastName]     = useState(client.last_name)
+  const [phone,        setPhone]        = useState(client.phone)
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
-  const [groupId,    setGroupId]    = useState(client.group?.id || '')
-  const [groups,     setGroups]     = useState([])
-  const [gLoading,   setGLoading]   = useState(false)
-  const [saving,     setSaving]     = useState(false)
-  const [err,        setErr]        = useState('')
-  const [ok,         setOk]         = useState('')
+  const [isTrial,      setIsTrial]      = useState(client.is_trial || false)
+  const [groupId,      setGroupId]      = useState(client.group?.id || '')
+  const [groups,       setGroups]       = useState([])
+  const [gLoading,     setGLoading]     = useState(false)
+  const [saving,       setSaving]       = useState(false)
+  const [err,          setErr]          = useState('')
+  const [ok,           setOk]           = useState('')
 
   const handleOpen = async () => {
     setFirstName(client.first_name)
     setLastName(client.last_name)
     setPhone(client.phone)
     setTelegramLink(client.telegram_link || '')
+    setIsTrial(client.is_trial || false)
     setGroupId(client.group?.id || '')
     setErr(''); setOk('')
     if (!open) {
@@ -232,13 +234,15 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
     }
     setSaving(true); setErr(''); setOk('')
     try {
-      await api.patch(`/clients/${clientId}/edit-info/`, {
-        first_name: firstName.trim(),
-        last_name:  lastName.trim(),
-        phone:      phone.trim(),
+      const body = {
+        first_name:    firstName.trim(),
+        last_name:     lastName.trim(),
+        phone:         phone.trim(),
         telegram_link: (telegramLink || '').trim(),
-        group_id:   groupId || null,
-      })
+        is_trial:      isTrial,
+      }
+      if (!isTrial) body.group_id = groupId || null
+      await api.patch(`/clients/${clientId}/edit-info/`, body)
       setOk('Изменения сохранены!')
       setOpen(false)
       onSuccess()
@@ -264,7 +268,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
           {open ? <><X size={12} /> Скрыть</> : <><Pencil size={12} /> Изменить</>}
         </button>
       </div>
-      <p className="text-xs text-slate-400 mb-3">ФИО, телефон, группа — исправить ошибку ввода</p>
+      <p className="text-xs text-slate-400 mb-3">ФИО, телефон, тип клиента, группа — исправить ошибку ввода</p>
 
       {ok && !open && (
         <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-2">
@@ -300,10 +304,52 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
               <p className="text-xs text-slate-400 mt-1">Если заполнено — клиент отмечается в фильтрах как «Из Telegram»</p>
             </div>
           )}
-          {/* Для пробных клиентов не показываем смену группы */}
-          {!client.is_trial && (
+
+          {/* ── Тип клиента: Обычный / Пробный ── */}
+          <div>
+            <label className="crm-label">Тип клиента</label>
+            <div className="flex gap-2 mt-1">
+              <button type="button" onClick={() => setIsTrial(false)}
+                className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition text-sm font-medium ${
+                  !isTrial ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-500'
+                }`}>
+                Обычный
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                  !isTrial ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300 bg-white'
+                }`}>
+                  {!isTrial && <Check size={9} className="text-white" strokeWidth={3} />}
+                </div>
+              </button>
+              <button type="button" onClick={() => setIsTrial(true)}
+                className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition text-sm font-medium ${
+                  isTrial ? 'bg-orange-50 border-orange-400 text-orange-700' : 'bg-white border-slate-200 text-slate-500'
+                }`}>
+                <span className="flex items-center gap-1.5">
+                  <FlaskConical size={13} />Пробный
+                </span>
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                  isTrial ? 'border-orange-500 bg-orange-500' : 'border-slate-300 bg-white'
+                }`}>
+                  {isTrial && <Check size={9} className="text-white" strokeWidth={3} />}
+                </div>
+              </button>
+            </div>
+            {client.is_trial && !isTrial && (
+              <p className="text-xs mt-1.5 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700">
+                ✓ Статус изменится с «Пробный» на «Новый». Пробный платёж будет удалён — после сохранения введите новую оплату.
+              </p>
+            )}
+            {!client.is_trial && isTrial && (
+              <p className="text-xs mt-1.5 px-3 py-2 rounded-xl bg-orange-50 border border-orange-200 text-orange-700">
+                ⚗️ Клиент будет помечен как пробный. Добавление в группу станет недоступным.
+              </p>
+            )}
+          </div>
+
+          {/* Группа — только для НЕ пробных */}
+          {!isTrial && (
             <div>
-              <label className="crm-label">Группа ({'оставить пустым — без группы'})</label>
+              <label className="crm-label">Группа (оставить пустым — без группы)</label>
               {gLoading ? (
                 <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
                   <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
@@ -585,10 +631,12 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
 
-  // Пробных клиентов НЕ добавляем в группу
+  const hasPayment = !!(client.full_payment || client.installment_plan)
+
+  // Пробных клиентов НЕ добавляем. Frozen без оплаты (возврат) — только через Повторная запись.
   const canUseNewClientFlow =
     !client.is_trial &&
-    (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat))
+    (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat && hasPayment))
     && !client.group
 
   if (!canUseNewClientFlow) return null
@@ -729,6 +777,198 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
           )}
           {err && <p className="text-sm text-red-600">{err}</p>}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Бронь следующей группы ────────────────────────────────────────────────────
+function ReservationPanel({ client, clientId, onSuccess }) {
+  const [open,          setOpen]          = useState(false)
+  const [groups,        setGroups]        = useState([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState(null)
+  const [payType,       setPayType]       = useState('full')
+  const [payAmount,     setPayAmount]     = useState('')
+  const [totalCost,     setTotalCost]     = useState('')
+  const [deadline,      setDeadline]      = useState('')
+  const [bonusPercent,  setBonusPercent]  = useState(String(client.bonus_percent ?? 10))
+  const [saving,        setSaving]        = useState(false)
+  const [cancelling,    setCancelling]    = useState(false)
+  const [err,           setErr]           = useState('')
+
+  const res = client.active_reservation
+
+  if (client.status !== 'active' || !client.group) return null
+
+  const loadGroups = async () => {
+    setGroupsLoading(true)
+    try {
+      const r  = await api.get('/groups/', { params: { page_size: 200, status: 'recruitment' } })
+      const r2 = await api.get('/groups/', { params: { page_size: 200, status: 'active' } })
+      const all  = [...(r.data.results || []), ...(r2.data.results || [])]
+      const seen = new Set()
+      const filtered = all
+        .filter(g => { if (seen.has(g.id)) return false; seen.add(g.id); return true })
+        .filter(g => g.id !== client.group?.id)
+      setGroups(filtered)
+    } catch { setGroups([]) }
+    finally { setGroupsLoading(false) }
+  }
+
+  const handleOpen = () => {
+    setOpen(v => !v); setErr('')
+    setSelectedGroup(null); setPayAmount(''); setTotalCost(''); setDeadline('')
+    setBonusPercent(String(client.bonus_percent ?? 10)); setPayType('full')
+    if (!open) loadGroups()
+  }
+
+  const handleSave = async () => {
+    if (!selectedGroup) { setErr('Выберите группу'); return }
+    if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) { setErr('Укажите сумму оплаты'); return }
+    if (payType === 'installment' && (!totalCost || !deadline)) { setErr('Укажите стоимость и дедлайн'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.post(`/clients/${clientId}/reserve-group/`, {
+        group_id:       selectedGroup.id,
+        payment_type:   payType,
+        payment_amount: payType === 'full' ? payAmount : undefined,
+        total_cost:     payType === 'installment' ? totalCost : undefined,
+        deadline:       payType === 'installment' ? deadline : undefined,
+        bonus_percent:  Number(bonusPercent) || 10,
+      })
+      setOpen(false); onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setSaving(false) }
+  }
+
+  const handleCancel = async () => {
+    setCancelling(true); setErr('')
+    try {
+      await api.delete(`/clients/${clientId}/cancel-reservation/`)
+      onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setCancelling(false) }
+  }
+
+  return (
+    <div className="crm-card p-5 mb-5">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+          <Calendar size={15} className="text-purple-600" />
+        </div>
+        <h3 className="font-bold text-slate-800">Бронь следующей группы</h3>
+      </div>
+
+      {res ? (
+        <div className="space-y-3">
+          <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-sm">
+            <p className="font-semibold text-purple-800 mb-1">Забронировано:</p>
+            <p className="text-purple-700">
+              Группа #{res.reserved_group_number}
+              {' · '}{res.payment_type === 'full' ? `Полная — ${res.payment_amount} сом` : `Рассрочка — ${res.total_cost} сом`}
+            </p>
+            <p className="text-xs text-purple-500 mt-1">
+              При закрытии текущей группы клиент автоматически запишется в эту группу.
+            </p>
+          </div>
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          <button type="button" onClick={handleCancel} disabled={cancelling}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 transition disabled:opacity-60">
+            {cancelling ? <span className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" /> : <XCircle size={14} />}
+            Отменить бронь
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="text-xs text-slate-400 mb-3">
+            Предзапись в следующую группу с оплатой. При закрытии текущей группы — авто-зачисление.
+          </p>
+          <button type="button" onClick={handleOpen}
+            className="crm-btn-secondary w-full justify-center gap-2">
+            <Calendar size={14} />{open ? 'Скрыть' : 'Забронировать следующую группу'}
+          </button>
+          {open && (
+            <div className="mt-4 space-y-4 pt-4 border-t border-slate-100">
+              <div>
+                <p className="text-xs text-slate-400 font-medium mb-2">Шаг 1 — Выберите группу</p>
+                {groupsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <span className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : groups.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-3 bg-slate-50 rounded-xl">Нет доступных групп</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {groups.map(g => (
+                      <div key={g.id} onClick={() => setSelectedGroup(selectedGroup?.id === g.id ? null : g)}
+                        className={`cursor-pointer p-3 rounded-xl border-2 transition-all text-sm ${
+                          selectedGroup?.id === g.id ? 'bg-purple-50 border-purple-400' : 'bg-white border-slate-200 hover:border-purple-200'
+                        }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-semibold text-slate-800">Группа #{g.number}</span>
+                            <span className="ml-2 text-xs text-slate-400">{GROUP_TYPE_LABEL[g.group_type] || g.group_type}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                              g.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                            }`}>{g.status === 'active' ? 'Активный' : 'Набор'}</span>
+                            {selectedGroup?.id === g.id && <Check size={14} className="text-purple-600" />}
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-0.5">{g.trainer?.full_name || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {selectedGroup && (
+                <>
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium mb-2">Шаг 2 — Тип оплаты</p>
+                    <div className="flex gap-2">
+                      {[{ v: 'full', l: 'Полная оплата' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+                        <button key={v} type="button" onClick={() => setPayType(v)}
+                          className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition-all ${
+                            payType === v ? 'bg-purple-50 border-purple-400 text-purple-700' : 'bg-white border-slate-200 text-slate-600'
+                          }`}>{l}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {payType === 'full' ? (
+                    <div>
+                      <p className="text-xs text-slate-400 font-medium mb-2">Шаг 3 — Сумма курса</p>
+                      <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                        value={payAmount} onChange={e => setPayAmount(e.target.value)} className="crm-input w-full" />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-slate-400 font-medium mb-2">Шаг 3 — Рассрочка</p>
+                      <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+                        value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-input w-full" />
+                      <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className="crm-input w-full" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium mb-2">Шаг 4 — Бонус (%)</p>
+                    <input type="number" min={0} max={100} step={1} value={bonusPercent}
+                      onChange={e => setBonusPercent(e.target.value)} className="crm-input w-full" />
+                  </div>
+                  {err && <p className="text-sm text-red-600">{err}</p>}
+                  <button type="button" onClick={handleSave} disabled={saving}
+                    className="crm-btn-primary w-full justify-center disabled:opacity-60">
+                    {saving ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Check size={14} />}
+                    Забронировать группу #{selectedGroup.number}
+                  </button>
+                </>
+              )}
+              {!selectedGroup && err && <p className="text-sm text-red-600">{err}</p>}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -1585,47 +1825,43 @@ export default function ClientDetail() {
       {/* ── Изменить статус ── */}
       <div className="crm-card p-5 mb-5">
         <h3 className="font-bold text-slate-800 mb-1">Изменить статус</h3>
-        {(client.status === 'new' || client.status === 'trial') ? (
-          <p className="text-sm text-slate-600">
+        {(client.status === 'new' || client.status === 'trial') && (
+          <p className="text-xs text-slate-400 mb-3">
             {client.is_trial
-              ? 'Клиент помечен как «Пробный». Добавление в группу недоступно. Статус изменится вручную после пробного занятия.'
-              : 'Статус «Новый» сменится на «Активный» после добавления клиента в группу. Вручную выставить «Активный» без группы нельзя.'
-            }
+              ? 'Пробный клиент — добавление в группу недоступно. При необходимости смените статус вручную.'
+              : 'Статус «Новый» обычно меняется автоматически при добавлении в группу. При необходимости можно сменить вручную.'}
           </p>
-        ) : (
-          <>
-            <p className="text-xs text-slate-400 mb-4">Нажмите на нужный статус чтобы применить</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {STATUS_CONFIG.map(s => {
-                const isActive = client.status === s.value
-                return (
-                  <button key={s.value} type="button"
-                    onClick={() => !isActive && changeStatus(s.value)}
-                    disabled={isActive || statusLoading}
-                    className={`
-                  relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border-2 text-sm
-                  font-medium transition-all duration-150 text-center
-                  ${isActive
-                    ? `${s.activeBg} ${s.activeText} shadow-sm`
-                    : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 cursor-pointer'
-                  }
-                  ${statusLoading ? 'opacity-50 cursor-not-allowed' : ''}
-                `}
-                  >
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isActive ? 'bg-white/60' : 'bg-slate-100'}`}>
-                      <s.Icon size={18} className={isActive ? s.iconColor : 'text-slate-400'} />
-                    </div>
-                    <span className="font-semibold leading-tight">{s.label}</span>
-                    <span className="text-xs opacity-60 font-normal leading-tight">{s.desc}</span>
-                    {isActive && (
-                      <span className="absolute top-2 right-2 text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 opacity-80">✓</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </>
         )}
+        <p className="text-xs text-slate-400 mb-4">Нажмите на нужный статус чтобы применить</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {STATUS_CONFIG.map(s => {
+            const isActive = client.status === s.value
+            return (
+              <button key={s.value} type="button"
+                onClick={() => !isActive && changeStatus(s.value)}
+                disabled={isActive || statusLoading}
+                className={`
+                relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border-2 text-sm
+                font-medium transition-all duration-150 text-center
+                ${isActive
+                  ? `${s.activeBg} ${s.activeText} shadow-sm`
+                  : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 cursor-pointer'
+                }
+                ${statusLoading ? 'opacity-50 cursor-not-allowed' : ''}
+              `}
+              >
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isActive ? 'bg-white/60' : 'bg-slate-100'}`}>
+                  <s.Icon size={18} className={isActive ? s.iconColor : 'text-slate-400'} />
+                </div>
+                <span className="font-semibold leading-tight">{s.label}</span>
+                <span className="text-xs opacity-60 font-normal leading-tight">{s.desc}</span>
+                {isActive && (
+                  <span className="absolute top-2 right-2 text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 opacity-80">✓</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* ── Возврат средств ── */}
@@ -1671,6 +1907,9 @@ export default function ClientDetail() {
           }
         }}
       />
+
+      {/* ── Бронь следующей группы (только для активных в группе) ── */}
+      <ReservationPanel client={client} clientId={id} onSuccess={load} />
 
       {/* ── Повторный клиент (пробных пропускаем) ── */}
       <RepeatClientPanel client={client} clientId={id} onSuccess={load} />
