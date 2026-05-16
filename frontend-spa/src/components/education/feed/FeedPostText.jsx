@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import api from '../../../api/axios'
 
 const COLLAPSE_CHARS = 400
 
@@ -8,15 +9,30 @@ export default function FeedPostText({ lesson }) {
   const isLong = text.length > COLLAPSE_CHARS
   const [expanded, setExpanded] = useState(!isLong)
   const expandedRef = useRef(null)
+  const markedRef = useRef(false)
+
+  const markComplete = () => {
+    if (markedRef.current) return
+    markedRef.current = true
+    api.post(`/cabinet/education/lessons/${lesson.id}/progress/`, { position: 0, percent: 100 }).catch(() => {})
+  }
+
+  // Short texts are fully visible immediately → mark complete on mount
+  useEffect(() => {
+    if (!isLong) markComplete()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const toggle = () => {
     setExpanded(e => {
       const next = !e
-      // Scroll expanded content into view so user sees new text appear
-      if (next && expandedRef.current) {
-        setTimeout(() => {
-          expandedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-        }, 50)
+      if (next) {
+        markComplete()
+        if (expandedRef.current) {
+          setTimeout(() => {
+            expandedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+          }, 50)
+        }
       }
       return next
     })

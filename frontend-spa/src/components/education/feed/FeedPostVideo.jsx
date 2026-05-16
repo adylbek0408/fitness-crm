@@ -38,6 +38,17 @@ export default function FeedPostVideo({ lesson }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [isCssFull])
 
+  const lastSavedPercent = useRef(0)
+
+  const handleProgress = ({ position, percent }) => {
+    if (Math.abs(percent - lastSavedPercent.current) < 1) return
+    lastSavedPercent.current = percent
+    api.post(`/cabinet/education/lessons/${lesson.id}/progress/`, {
+      position: Math.floor(position),
+      percent,
+    }).catch(() => {})
+  }
+
   const handlePlay = async () => {
     // useRef guard prevents double-tap from firing two concurrent fetches
     // (state check alone is unreliable before React commits the update)
@@ -126,6 +137,7 @@ export default function FeedPostVideo({ lesson }) {
           poster={lesson.thumbnail_url || ''}
           startAt={lesson.progress?.last_position_sec || 0}
           watermarkText={watermarkText}
+          onTimeUpdate={handleProgress}
           load="play"
           autoPlay
         />

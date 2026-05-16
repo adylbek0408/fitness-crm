@@ -10,6 +10,16 @@ export default function FeedPostAudio({ lesson }) {
   // Prevents double-tap from firing two concurrent API calls
   const loadingRef = useRef(false)
   const abortRef = useRef(null)
+  const lastSavedPercent = useRef(0)
+
+  const handleProgress = ({ position, percent }) => {
+    if (Math.abs(percent - lastSavedPercent.current) < 1) return
+    lastSavedPercent.current = percent
+    api.post(`/cabinet/education/lessons/${lesson.id}/progress/`, {
+      position: Math.floor(position),
+      percent,
+    }).catch(() => {})
+  }
 
   // Clean up in-flight request on unmount
   useEffect(() => () => { abortRef.current?.abort() }, [])
@@ -37,7 +47,7 @@ export default function FeedPostAudio({ lesson }) {
   if (phase === 'ready') {
     return (
       <div className="px-4 pb-4">
-        <AudioPlayer src={playbackUrl} startAt={startAt} />
+        <AudioPlayer src={playbackUrl} startAt={startAt} onTimeUpdate={handleProgress} />
       </div>
     )
   }
