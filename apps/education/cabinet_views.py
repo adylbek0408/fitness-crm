@@ -45,6 +45,31 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
+def _client_has_lesson_access(client):
+    """Return True if the client is allowed to access lessons/streams.
+
+    Installment clients who have not fully paid are blocked until their
+    plan is fully closed (remaining <= 0).  Full-payment and
+    non-installment clients always pass.
+    """
+    if client.payment_type != 'installment':
+        return True
+    plan = client.installment_plans.order_by('-created_at').first()
+    if plan is None:
+        return False
+    return plan.is_closed
+
+
+def _client_group_ids(client):
+    """Return a list of group IDs this client belongs to (1 or 2 groups)."""
+    ids = []
+    if client.group_id:
+        ids.append(client.group_id)
+    if client.second_group_id:
+        ids.append(client.second_group_id)
+    return ids
+
+
 def _ensure_stream_group_access(stream, client):
     """Raise Http404 if this client cannot interact with this stream.
 
@@ -59,7 +84,8 @@ def _ensure_stream_group_access(stream, client):
     """
     from django.http import Http404
     if stream.groups.exists():
-        if not client.group_id or not stream.groups.filter(id=client.group_id).exists():
+        group_ids = _client_group_ids(client)
+        if not group_ids or not stream.groups.filter(id__in=group_ids).exists():
             raise Http404('No stream access for your group.')
 
 
@@ -76,11 +102,18 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         client = self.request.user.client
-        if not client.group_id:
+        group_ids = _client_group_ids(client)
+        if not group_ids:
+            return Lesson.objects.none()
+        if not _client_has_lesson_access(client):
             return Lesson.objects.none()
 
         client_tags = list(getattr(client.group, 'online_subscription_tags', None) or [])
-        q = Q(groups__id=client.group_id)
+        if client.second_group_id:
+            client_tags = list(set(client_tags) | set(
+                getattr(client.second_group, 'online_subscription_tags', None) or []
+            ))
+        q = Q(groups__id__in=group_ids)
         # JSONField overlap is not portable across all DB backends; tag matching
         # is handled by the Python-side fallback below.
         qs = Lesson.objects.filter(
@@ -137,7 +170,7 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         # turn legitimate deep links into 404s. Re-run access checks on the
         # un-filtered base queryset.
         client = self.request.user.client
-        if not client.group_id:
+        if not _client_group_ids(client) or not _client_has_lesson_access(client):
             from django.http import Http404
             raise Http404
         from rest_framework.generics import get_object_or_404
@@ -352,6 +385,10 @@ class CabinetStreamView(APIView):
 
     def get(self, request):
         client = request.user.client
+
+        if not _client_has_lesson_access(client):
+            return Response({'stream': None, 'reason': 'payment_required'})
+
         stream_id = request.query_params.get('id')
 
         if stream_id:
@@ -361,19 +398,21 @@ class CabinetStreamView(APIView):
             except LiveStream.DoesNotExist:
                 return Response({'stream': None, 'reason': 'not_found'})
             # Access check: stream must belong to client's group OR have no groups assigned
+            group_ids = _client_group_ids(client)
             if stream.groups.exists() and (
-                not client.group_id
-                or not stream.groups.filter(id=client.group_id).exists()
+                not group_ids
+                or not stream.groups.filter(id__in=group_ids).exists()
             ):
                 return Response({'stream': None, 'reason': 'forbidden'})
         else:
             # Auto-detect: find a live stream for this student.
             stream = None
             base_qs = LiveStream.objects.filter(status='live', deleted_at__isnull=True)
+            group_ids = _client_group_ids(client)
 
-            # Priority 1: stream assigned to the student's specific group
-            if client.group_id:
-                stream = base_qs.filter(groups__id=client.group_id).order_by('-started_at').first()
+            # Priority 1: stream assigned to one of the student's groups
+            if group_ids:
+                stream = base_qs.filter(groups__id__in=group_ids).order_by('-started_at').first()
 
             # Priority 2: stream with no groups assigned (available to everyone)
             if not stream:
@@ -405,15 +444,18 @@ class CabinetStreamJoinView(APIView):
 
     def post(self, request, pk):
         client = request.user.client
+        if not _client_has_lesson_access(client):
+            return Response({'detail': 'Оплата не завершена.'}, status=status.HTTP_403_FORBIDDEN)
         try:
             stream = LiveStream.objects.get(pk=pk, status='live', deleted_at__isnull=True)
         except LiveStream.DoesNotExist:
             return Response({'detail': 'Stream not active.'},
                             status=status.HTTP_404_NOT_FOUND)
-        # Access: stream must belong to student's group OR have no groups (open stream)
+        # Access: stream must belong to one of student's groups OR have no groups (open stream)
+        group_ids = _client_group_ids(client)
         if stream.groups.exists() and (
-            not client.group_id
-            or not stream.groups.filter(id=client.group_id).exists()
+            not group_ids
+            or not stream.groups.filter(id__in=group_ids).exists()
         ):
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -494,10 +536,11 @@ class CabinetStreamViewersView(APIView):
         except LiveStream.DoesNotExist:
             return Response({'detail': 'Not found.'},
                             status=status.HTTP_404_NOT_FOUND)
-        # Access: stream must belong to student's group OR have no groups (open stream)
+        # Access: stream must belong to one of student's groups OR have no groups (open stream)
+        group_ids = _client_group_ids(client)
         if stream.groups.exists() and (
-            not client.group_id
-            or not stream.groups.filter(id=client.group_id).exists()
+            not group_ids
+            or not stream.groups.filter(id__in=group_ids).exists()
         ):
             return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
 

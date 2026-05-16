@@ -98,7 +98,7 @@ export default function StreamLive() {
             setStreamEnded(true)
           }
           setStream(null)
-          if (!s && streamId && (reason === 'forbidden' || reason === 'not_found')) {
+          if (!s && (reason === 'payment_required' || (streamId && (reason === 'forbidden' || reason === 'not_found')))) {
             setAccessDenied(reason)
           }
           return
@@ -616,10 +616,18 @@ export default function StreamLive() {
         )}
         {!stream && !streamEnded && !error && accessDenied && (
           <EmptyState icon={AlertTriangle} iconBg="#fef3c7" iconColor="#f59e0b"
-            title={accessDenied === 'not_found' ? 'Эфир не найден' : 'Нет доступа к эфиру'}
-            text={accessDenied === 'not_found'
-              ? 'Ссылка устарела или была удалена. Попросите тренера прислать новую.'
-              : 'Этот эфир открыт другой группе. Свяжитесь с тренером для уточнения.'} />
+            title={
+              accessDenied === 'not_found' ? 'Эфир не найден'
+              : accessDenied === 'payment_required' ? 'Доступ закрыт'
+              : 'Нет доступа к эфиру'
+            }
+            text={
+              accessDenied === 'not_found'
+                ? 'Ссылка устарела или была удалена. Попросите тренера прислать новую.'
+                : accessDenied === 'payment_required'
+                ? 'Доступ к эфирам и урокам открывается после полной оплаты рассрочки.'
+                : 'Этот эфир открыт другой группе. Свяжитесь с тренером для уточнения.'
+            } />
         )}
         {!stream && !streamEnded && !error && !accessDenied && (
           <EmptyState icon={Radio} iconBg="#fce7f3" iconColor="#ec4899"

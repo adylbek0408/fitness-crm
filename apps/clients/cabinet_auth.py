@@ -1,7 +1,14 @@
 """
-Cabinet JWT: tokens with payload { client_id, type: 'cabinet', exp, iat }.
+Cabinet JWT: tokens with payload { client_id, type: 'cabinet', session_key, exp, iat }.
 Used for client personal cabinet auth (separate from staff JWT).
+
+Session enforcement: each new login generates a fresh session_key that is stored in
+ClientAccount and embedded in the JWT. On every request, we compare the token's
+session_key to the stored one — a mismatch means a newer login has happened and the
+old token is rejected. This ensures that only one active session exists at a time.
 """
+import secrets
+
 import jwt
 from django.conf import settings
 from rest_framework import authentication, exceptions
@@ -13,19 +20,25 @@ CABINET_TOKEN_TYPE = 'cabinet'
 
 
 def create_cabinet_tokens(client):
-    """Return dict with access_token and refresh_token for the client."""
+    """Return dict with access_token and refresh_token for the client.
+
+    Rotates the session_key in ClientAccount so all older tokens become
+    invalid immediately.
+    """
     from datetime import timedelta, timezone as dt_tz
     from datetime import datetime as _dt
     from django.conf import settings as django_settings
-    # `datetime.utcnow()` is deprecated in Python 3.12+ and produces naive
-    # datetimes; PyJWT will treat them as UTC but the deprecation noise
-    # pollutes logs and could break in Python 3.13. Use timezone-aware UTC
-    # datetimes — JWT exp/iat are seconds-since-epoch so this is safe to
-    # roll forward without invalidating any existing token.
+
     now = _dt.now(dt_tz.utc)
+    new_session_key = secrets.token_urlsafe(32)
+
+    # Rotate session key — invalidates all existing tokens for this client
+    ClientAccount.objects.filter(client_id=client.id).update(session_key=new_session_key)
+
     payload_access = {
         'client_id': str(client.id),
         'type': CABINET_TOKEN_TYPE,
+        'session_key': new_session_key,
         'exp': now + timedelta(days=30),
         'iat': now,
     }
@@ -33,6 +46,7 @@ def create_cabinet_tokens(client):
         'client_id': str(client.id),
         'type': CABINET_TOKEN_TYPE,
         'token_type': 'refresh',
+        'session_key': new_session_key,
         'exp': now + timedelta(days=30),
         'iat': now,
     }
@@ -44,7 +58,7 @@ def create_cabinet_tokens(client):
 
 
 class CabinetJWTAuthentication(authentication.BaseAuthentication):
-    """Expects Bearer token with cabinet JWT; sets request.client and request.client_account."""
+    """Expects Bearer token with cabinet JWT; sets request.user to the ClientAccount."""
     keyword = 'Bearer'
 
     def authenticate(self, request):
@@ -71,11 +85,17 @@ class CabinetJWTAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed('Invalid token.')
         try:
             # Reject soft-deleted clients — even with a still-valid JWT they
-            # must lose access the moment an admin deletes them. Without this
-            # filter a deleted client could keep watching lessons / posting
-            # in chat until their token expires hours/days later.
+            # must lose access the moment an admin deletes them.
             client = Client.objects.get(id=client_id, deleted_at__isnull=True)
             account = client.cabinet_account
         except (Client.DoesNotExist, ClientAccount.DoesNotExist):
             raise exceptions.AuthenticationFailed('Client not found.')
+
+        # Session enforcement: reject tokens whose session_key no longer matches
+        # (means a newer login has rotated it on another device).
+        token_session = payload.get('session_key', '')
+        stored_session = account.session_key or ''
+        if token_session and stored_session and token_session != stored_session:
+            raise exceptions.AuthenticationFailed('Session expired. Please log in again.')
+
         return (account, token)

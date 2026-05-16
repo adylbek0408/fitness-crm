@@ -78,6 +78,7 @@ export default function ClientRegister() {
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [form, setForm] = useState({
     first_name: '', last_name: '', phone: '',
+    notes: '',
     is_trial: false,
     training_format: '', group_type: '', group_id: '',
     telegram_link: '',
@@ -164,6 +165,7 @@ export default function ClientRegister() {
     const bonusPct = Math.round(Number(String(form.bonus_percent).replace(',', '.')))
     const body = {
       first_name: form.first_name, last_name: form.last_name, phone: form.phone,
+      notes: (form.notes || '').trim(),
       telegram_link: form.training_format === 'online' ? (form.telegram_link || '').trim() : '',
       training_format: form.training_format,
       group_type: form.training_format === 'online' ? '' : form.group_type,
@@ -272,6 +274,13 @@ export default function ClientRegister() {
                 onChange={e => set('phone', e.target.value)}
                 className="crm-mobile-input pl-11" />
             </div>
+            <textarea
+              placeholder="Заметка о клиенте (необязательно)"
+              value={form.notes}
+              onChange={e => set('notes', e.target.value)}
+              rows={2}
+              className="crm-mobile-input resize-none"
+            />
           </div>
 
           {/* ── Пробный клиент ── */}

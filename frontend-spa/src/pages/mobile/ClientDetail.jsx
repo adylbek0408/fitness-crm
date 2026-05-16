@@ -7,7 +7,7 @@ import {
   Globe, Dumbbell, CreditCard, CheckCircle, Clock, Receipt,
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp, ChevronRight,
   RotateCcw, Gift, Check, Layers, X, UserPlus, Percent,
-  Pencil, Ban, AlertTriangle, Send, FlaskConical
+  Pencil, Ban, AlertTriangle, Send, FlaskConical, Calendar
 } from 'lucide-react'
 import {
   STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
@@ -41,6 +41,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const [lastName, setLastName] = useState(client.last_name)
   const [phone, setPhone] = useState(client.phone)
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
+  const [notes, setNotes] = useState(client.notes || '')
   const [isTrial, setIsTrial] = useState(client.is_trial || false)
   const [groupId, setGroupId] = useState(client.group?.id || '')
   const [groups, setGroups] = useState([])
@@ -51,7 +52,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const handleOpen = async () => {
     setFirstName(client.first_name); setLastName(client.last_name)
     setPhone(client.phone); setTelegramLink(client.telegram_link || '')
-    setIsTrial(client.is_trial || false)
+    setNotes(client.notes || ''); setIsTrial(client.is_trial || false)
     setGroupId(client.group?.id || ''); setErr('')
     if (!open) {
       setGLoading(true)
@@ -76,6 +77,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
         last_name: lastName.trim(),
         phone: phone.trim(),
         telegram_link: (telegramLink || '').trim(),
+        notes: (notes || '').trim(),
         is_trial: isTrial,
       }
       // Группу передаём только если клиент не пробный
@@ -127,6 +129,12 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
             <p className="text-xs font-semibold text-gray-500 mb-1">Телефон</p>
             <input value={phone} onChange={e => setPhone(e.target.value)}
               className="crm-mobile-input w-full" placeholder="+996..." type="tel" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1">Заметка (необяз.)</p>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)}
+              className="crm-mobile-input w-full resize-none" rows={2}
+              placeholder="Пометки для сотрудников..." />
           </div>
           {client.training_format === 'online' && (
             <div>
@@ -1259,6 +1267,8 @@ export default function MobileClientDetail() {
   useEffect(() => setNewPassword(null), [id])
 
   const STATUS_OPTIONS = [
+    { value: 'new',       label: 'Новый',     dot: 'bg-violet-500' },
+    { value: 'trial',     label: 'Пробный',   dot: 'bg-orange-500' },
     { value: 'active',    label: 'Активный',  dot: 'bg-emerald-500' },
     { value: 'frozen',    label: 'Заморозка', dot: 'bg-blue-500' },
     { value: 'completed', label: 'Завершил',  dot: 'bg-slate-400' },
@@ -1325,12 +1335,12 @@ export default function MobileClientDetail() {
   const justCreatedCreds = location.state?.cabinet
 
   const allReceipts = []
-  if (client.payment_type === 'full' && full?.receipt)
-    allReceipts.push({ id: full.id, date: full.created_at || full.paid_at, amount: full.amount, label: 'Полная оплата', receipt: full.receipt })
+  if (client.payment_type === 'full' && full)
+    allReceipts.push({ id: full.id, date: full.created_at || full.paid_at, amount: full.amount, label: 'Полная оплата', receipt: full.receipt || null })
   if (client.payment_type === 'installment' && plan?.payments?.length)
     plan.payments.forEach((p, i) => {
-      if (p.receipt) allReceipts.push({
-        id: p.id, date: p.created_at || p.paid_at, amount: p.amount, label: `Платёж ${i + 1}`, receipt: p.receipt,
+      allReceipts.push({
+        id: p.id, date: p.created_at || p.paid_at, amount: p.amount, label: `Платёж ${i + 1}`, receipt: p.receipt || null,
       })
     })
 
@@ -1444,6 +1454,14 @@ export default function MobileClientDetail() {
           </div>
         </div>
 
+        {/* Заметка */}
+        {client.notes && (
+          <div className="bg-amber-50 rounded-2xl p-4 shadow-sm border border-amber-100">
+            <p className="text-xs font-semibold text-amber-700 mb-1 uppercase tracking-wide">Заметка</p>
+            <p className="text-sm text-amber-900 whitespace-pre-wrap">{client.notes}</p>
+          </div>
+        )}
+
         {/* Оплата */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border">
           <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
@@ -1553,10 +1571,10 @@ export default function MobileClientDetail() {
         {/* История статусов */}
         <MobileStatusHistory clientId={id} />
 
-        {/* Чеки */}
+        {/* История платежей */}
         {allReceipts.length > 0 && (
           <div className="bg-white rounded-2xl p-5 shadow-sm border">
-            <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2"><Receipt size={18} /> История чеков</h3>
+            <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2"><Receipt size={18} /> История платежей</h3>
             <div className="space-y-2">
               {allReceipts.map((r, i) => (
                 <div key={`receipt-${r.id}-${i}`}

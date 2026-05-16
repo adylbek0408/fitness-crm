@@ -197,8 +197,10 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
   const [lastName,     setLastName]     = useState(client.last_name)
   const [phone,        setPhone]        = useState(client.phone)
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
+  const [notes,        setNotes]        = useState(client.notes || '')
   const [isTrial,      setIsTrial]      = useState(client.is_trial || false)
   const [groupId,      setGroupId]      = useState(client.group?.id || '')
+  const [secondGroupId,setSecondGroupId]= useState(client.second_group?.id || '')
   const [groups,       setGroups]       = useState([])
   const [gLoading,     setGLoading]     = useState(false)
   const [saving,       setSaving]       = useState(false)
@@ -210,8 +212,10 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
     setLastName(client.last_name)
     setPhone(client.phone)
     setTelegramLink(client.telegram_link || '')
+    setNotes(client.notes || '')
     setIsTrial(client.is_trial || false)
     setGroupId(client.group?.id || '')
+    setSecondGroupId(client.second_group?.id || '')
     setErr(''); setOk('')
     if (!open) {
       setGLoading(true)
@@ -239,9 +243,13 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
         last_name:     lastName.trim(),
         phone:         phone.trim(),
         telegram_link: (telegramLink || '').trim(),
+        notes:         (notes || '').trim(),
         is_trial:      isTrial,
       }
-      if (!isTrial) body.group_id = groupId || null
+      if (!isTrial) {
+        body.group_id = groupId || null
+        body.second_group_id = secondGroupId || null
+      }
       await api.patch(`/clients/${clientId}/edit-info/`, body)
       setOk('Изменения сохранены!')
       setOpen(false)
@@ -304,6 +312,12 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
               <p className="text-xs text-slate-400 mt-1">Если заполнено — клиент отмечается в фильтрах как «Из Telegram»</p>
             </div>
           )}
+          <div>
+            <label className="crm-label">Заметка о клиенте (необязательно)</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)}
+              className="crm-input w-full resize-none" rows={3}
+              placeholder="Любые пометки для сотрудников..." />
+          </div>
 
           {/* ── Тип клиента: Обычный / Пробный ── */}
           <div>
@@ -348,28 +362,52 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
 
           {/* Группа — только для НЕ пробных */}
           {!isTrial && (
-            <div>
-              <label className="crm-label">Группа (оставить пустым — без группы)</label>
-              {gLoading ? (
-                <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
-                  <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                  Загрузка...
-                </div>
-              ) : (
-                <AppSelect value={groupId} onChange={e => setGroupId(e.target.value)}
-                  className="w-full">
-                  <option value="">— Без группы —</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>
-                      Группа #{g.number}
-                      {g.group_type ? ` (${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
-                      {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
-                      {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
-                    </option>
-                  ))}
-                </AppSelect>
-              )}
-            </div>
+            <>
+              <div>
+                <label className="crm-label">Основная группа (оставить пустым — без группы)</label>
+                {gLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                    <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                    Загрузка...
+                  </div>
+                ) : (
+                  <AppSelect value={groupId} onChange={e => setGroupId(e.target.value)}
+                    className="w-full">
+                    <option value="">— Без группы —</option>
+                    {groups.map(g => (
+                      <option key={g.id} value={g.id}>
+                        Группа #{g.number}
+                        {g.group_type ? ` (${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
+                        {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
+                        {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
+                      </option>
+                    ))}
+                  </AppSelect>
+                )}
+              </div>
+              <div>
+                <label className="crm-label">Вторая группа (параллельное обучение, необязательно)</label>
+                {gLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                    <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                    Загрузка...
+                  </div>
+                ) : (
+                  <AppSelect value={secondGroupId} onChange={e => setSecondGroupId(e.target.value)}
+                    className="w-full">
+                    <option value="">— Без второй группы —</option>
+                    {groups.map(g => (
+                      <option key={g.id} value={g.id}>
+                        Группа #{g.number}
+                        {g.group_type ? ` (${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
+                        {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
+                        {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
+                      </option>
+                    ))}
+                  </AppSelect>
+                )}
+              </div>
+            </>
           )}
           {err && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
@@ -1274,6 +1312,26 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
 // ── Конфигурация статусов ──────────────────────────────────────────────────────
 const STATUS_CONFIG = [
   {
+    value:     'new',
+    label:     'Новый',
+    desc:      'Ещё не записан',
+    Icon:      UserPlus,
+    activeBg:  'bg-violet-50 border-violet-300',
+    activeText:'text-violet-700',
+    iconColor: 'text-violet-500',
+    dot:       'bg-violet-500',
+  },
+  {
+    value:     'trial',
+    label:     'Пробный',
+    desc:      'Пробное занятие',
+    Icon:      FlaskConical,
+    activeBg:  'bg-orange-50 border-orange-300',
+    activeText:'text-orange-700',
+    iconColor: 'text-orange-500',
+    dot:       'bg-orange-500',
+  },
+  {
     value:     'active',
     label:     'Активный',
     desc:      'Обучается',
@@ -1466,16 +1524,13 @@ export default function ClientDetail() {
     : (plan ? Number(plan.total_paid) : 0)
 
   const allReceipts = []
-  if (client.payment_type === 'full' && full?.receipt)
-    // Prefer created_at (exact upload datetime) over paid_at (which on
-    // installments is just a date) so 3–4 receipts uploaded the same day
-    // can be told apart by minute.
+  if (client.payment_type === 'full' && full)
     allReceipts.push({
       id: full.id,
       date: full.created_at || full.paid_at,
       amount: full.amount,
       label: 'Полная оплата',
-      receipt: full.receipt,
+      receipt: full.receipt || null,
     })
   if (client.payment_type === 'installment' && plan?.payments?.length)
     plan.payments.forEach((p, i) => allReceipts.push({
@@ -1636,6 +1691,10 @@ export default function ClientDetail() {
             />
             <InfoRow icon={Layers} label="Тип группы" value={GROUP_TYPE_LABEL[client.group_type]} />
             <StreamsInfoRow client={client} clientId={id} />
+            {client.second_group && (
+              <InfoRow icon={Layers} label="Вторая группа"
+                value={`#${client.second_group.number}${client.second_group.group_type ? ` (${GROUP_TYPE_LABEL[client.second_group.group_type] || client.second_group.group_type})` : ''}`} />
+            )}
             <InfoRow icon={UserCircle} label="Тренер" value={client.trainer?.full_name} />
             <InfoRow icon={Calendar} label="Дата регистрации" value={client.registered_at} />
             <InfoRow icon={Gift} label="Бонусный баланс" value={fmtMoney(client.bonus_balance ?? 0)} color={Number(client.bonus_balance) < 0 ? 'text-red-600' : 'text-amber-600'} />
@@ -1656,6 +1715,17 @@ export default function ClientDetail() {
               <span className="text-sm text-slate-500 flex-1">Зарегистрировал</span>
               <span className="text-sm font-semibold text-indigo-600">{client.registered_by_name || '—'}</span>
             </div>
+            {client.notes && (
+              <div className="flex items-start gap-3 py-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertCircle size={14} className="text-amber-500" />
+                </div>
+                <div className="flex-1">
+                  <span className="text-sm text-slate-500">Заметка</span>
+                  <p className="text-sm text-slate-700 mt-0.5 whitespace-pre-wrap">{client.notes}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1766,14 +1836,14 @@ export default function ClientDetail() {
         </div>
       </div>
 
-      {/* ── История чеков ── */}
+      {/* ── История платежей ── */}
       {allReceipts.length > 0 && (
         <div className="crm-card p-5 mb-5">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
               <Receipt size={15} className="text-slate-500" />
             </div>
-            <h3 className="font-bold text-slate-800">История чеков</h3>
+            <h3 className="font-bold text-slate-800">История платежей</h3>
           </div>
           <div className="space-y-2">
             {allReceipts.map((r, i) => (

@@ -16,6 +16,10 @@ class ClientAccount(models.Model):
     password = models.CharField(max_length=128)
     password_plain = models.CharField(max_length=100, blank=True, default='',
         help_text="Plain password for admin visibility")
+    session_key = models.CharField(
+        max_length=64, blank=True, default='',
+        help_text='Rotating key embedded in JWT; new login rotates it to invalidate all old tokens',
+    )
 
     def set_password(self, raw_password):
         from django.contrib.auth.hashers import make_password
@@ -59,6 +63,11 @@ class Client(UUIDTimestampedModel):
         'groups.Group', on_delete=models.PROTECT,
         related_name='clients', null=True, blank=True
     )
+    second_group = models.ForeignKey(
+        'groups.Group', on_delete=models.SET_NULL,
+        related_name='second_group_clients', null=True, blank=True,
+        help_text='Вторая группа (параллельное обучение)',
+    )
     trainer = models.ForeignKey(
         'trainers.Trainer', on_delete=models.PROTECT,
         related_name='clients', null=True, blank=True
@@ -78,6 +87,11 @@ class Client(UUIDTimestampedModel):
         help_text='Процент бонуса с оплаты (0–100), задаётся при регистрации',
     )
     payment_type  = models.CharField(max_length=15, choices=PAYMENT_TYPE_CHOICES)
+
+    notes = models.TextField(
+        blank=True, default='',
+        help_text='Заметка о клиенте (видна только сотрудникам)',
+    )
 
     registered_at = models.DateField(default=date.today)
     registered_by = models.ForeignKey(

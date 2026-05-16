@@ -46,11 +46,16 @@ class LessonAccessService:
         if not lesson.is_published or lesson.deleted_at:
             return False
 
-        if client.group_id and lesson.groups.filter(id=client.group_id).exists():
+        group_ids = [gid for gid in [client.group_id, getattr(client, 'second_group_id', None)] if gid]
+        if group_ids and lesson.groups.filter(id__in=group_ids).exists():
             return True
 
-        if client.group and getattr(client.group, 'online_subscription_tags', None):
-            client_tags = set(client.group.online_subscription_tags or [])
+        client_tags = set()
+        if client.group:
+            client_tags |= set(getattr(client.group, 'online_subscription_tags', None) or [])
+        if getattr(client, 'second_group', None):
+            client_tags |= set(getattr(client.second_group, 'online_subscription_tags', None) or [])
+        if client_tags:
             lesson_tags = set(lesson.subscription_tags or [])
             if client_tags & lesson_tags:
                 return True

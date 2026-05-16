@@ -221,6 +221,19 @@ class ClientViewSet(viewsets.ModelViewSet):
             else:
                 data['group'] = None
 
+        # Нормализуем second_group_id → second_group
+        if 'second_group_id' in data:
+            sgid = data.pop('second_group_id')
+            if sgid:
+                from apps.groups.models import Group as GroupModel
+                try:
+                    GroupModel.objects.get(id=sgid)
+                    data['second_group'] = sgid
+                except GroupModel.DoesNotExist:
+                    return Response({'detail': 'Вторая группа не найдена'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                data['second_group'] = None
+
         # Обрабатываем is_trial — если снимается флаг, статус trial → new
         is_trial_raw = data.get('is_trial')
         if is_trial_raw is not None:
@@ -253,7 +266,7 @@ class ClientViewSet(viewsets.ModelViewSet):
                 data.pop('group', None)
                 data.pop('trainer', None)
 
-        allowed = {'first_name', 'last_name', 'phone', 'group', 'trainer', 'telegram_link'}
+        allowed = {'first_name', 'last_name', 'phone', 'group', 'second_group', 'trainer', 'telegram_link', 'notes'}
         filtered = {k: v for k, v in data.items() if k in allowed}
 
         if filtered:

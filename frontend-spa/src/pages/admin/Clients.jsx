@@ -17,6 +17,8 @@ import AppSelect from '../../components/ui/AppSelect'
 // STATUS DROPDOWN
 // ─────────────────────────────────────────────────────────────────────────────
 const STATUS_OPTIONS = [
+  { value: 'new',       label: 'Новый',     dot: 'bg-violet-500'  },
+  { value: 'trial',     label: 'Пробный',   dot: 'bg-orange-500'  },
   { value: 'active',    label: 'Активный',  dot: 'bg-emerald-500' },
   { value: 'frozen',    label: 'Заморозка', dot: 'bg-blue-500'    },
   { value: 'completed', label: 'Завершил',  dot: 'bg-slate-400'   },
@@ -37,16 +39,6 @@ function StatusDropdown({ clientId, currentStatus, onChanged }) {
   useEffect(() => {
     if (error) { const t = setTimeout(() => setError(''), 3000); return () => clearTimeout(t) }
   }, [error])
-
-  // Статусы new и trial — только отображение, без смены
-  if (currentStatus === 'new' || currentStatus === 'trial') {
-    return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[currentStatus] || 'bg-slate-100 text-slate-600'}`}>
-        {currentStatus === 'trial' && <FlaskConical size={10} />}
-        {STATUS_LABEL[currentStatus] || currentStatus}
-      </span>
-    )
-  }
 
   const changeStatus = async (newStatus) => {
     if (newStatus === currentStatus) { setOpen(false); return }
@@ -413,34 +405,44 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
+const FILTER_KEY = 'admin_clients_filters'
+
+function loadSavedFilters() {
+  try {
+    const raw = sessionStorage.getItem(FILTER_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
 export default function Clients() {
   const { user } = useOutletContext()
   const [clients,      setClients]      = useState([])
   const [groups,       setGroups]       = useState([])
   const [count,        setCount]        = useState(0)
-  const [page,         setPage]         = useState(1)
-  const [search,       setSearch]       = useState('')
-  const [status,       setStatus]       = useState('')
-  const [format,       setFormat]       = useState('')
-  const [group,        setGroup]        = useState('')
-  const [groupType,    setGroupType]    = useState('')
-  const [isRepeat,     setIsRepeat]     = useState(false)
-  const [isTrial,      setIsTrial]      = useState(false)
-  const [paymentStatus,setPaymentStatus]= useState('')
-  const [registeredFrom,setRegisteredFrom]= useState('')
-  const [registeredTo,  setRegisteredTo]  = useState('')
-  const [registeredBy,  setRegisteredBy]  = useState('')
-  const [trainerFilter, setTrainerFilter] = useState('')
-  const [fromTelegram,  setFromTelegram]  = useState('')
+  const _saved = loadSavedFilters()
+  const [page,         setPage]         = useState(_saved.page         ?? 1)
+  const [search,       setSearch]       = useState(_saved.search       ?? '')
+  const [status,       setStatus]       = useState(_saved.status       ?? '')
+  const [format,       setFormat]       = useState(_saved.format       ?? '')
+  const [group,        setGroup]        = useState(_saved.group        ?? '')
+  const [groupType,    setGroupType]    = useState(_saved.groupType    ?? '')
+  const [isRepeat,     setIsRepeat]     = useState(_saved.isRepeat     ?? false)
+  const [isTrial,      setIsTrial]      = useState(_saved.isTrial      ?? false)
+  const [paymentStatus,setPaymentStatus]= useState(_saved.paymentStatus?? '')
+  const [registeredFrom,setRegisteredFrom]= useState(_saved.registeredFrom ?? '')
+  const [registeredTo,  setRegisteredTo]  = useState(_saved.registeredTo   ?? '')
+  const [registeredBy,  setRegisteredBy]  = useState(_saved.registeredBy   ?? '')
+  const [trainerFilter, setTrainerFilter] = useState(_saved.trainerFilter   ?? '')
+  const [fromTelegram,  setFromTelegram]  = useState(_saved.fromTelegram   ?? '')
   const [managersList,  setManagersList]  = useState([])
   const [trainersList,  setTrainersList]  = useState([])
   const [onlineTags,    setOnlineTags]    = useState([])
-  const [onlineTagFilter,setOnlineTagFilter]= useState('')
+  const [onlineTagFilter,setOnlineTagFilter]= useState(_saved.onlineTagFilter ?? '')
   const [summary,      setSummary]      = useState(null)
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(_saved.showAdvanced  ?? false)
   const [loading,      setLoading]      = useState(false)
   const [pdfLoading,   setPdfLoading]   = useState(false)
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState(_saved.search  ?? '')
   const totalPages     = Math.ceil(count / 25)
   const loadAbortRef   = useRef(null)
   const loadGenRef     = useRef(0)
@@ -513,6 +515,19 @@ export default function Clients() {
   }, [])
 
   useEffect(() => {
+    try {
+      sessionStorage.setItem(FILTER_KEY, JSON.stringify({
+        page, search, status, format, group, groupType,
+        isRepeat, isTrial, paymentStatus,
+        registeredFrom, registeredTo, registeredBy,
+        trainerFilter, onlineTagFilter, fromTelegram, showAdvanced,
+      }))
+    } catch { /* quota exceeded — ignore */ }
+  }, [page, search, status, format, group, groupType, isRepeat, isTrial,
+      paymentStatus, registeredFrom, registeredTo, registeredBy,
+      trainerFilter, onlineTagFilter, fromTelegram, showAdvanced])
+
+  useEffect(() => {
     setPage(1); load(1)
   }, [debouncedSearch, status, format, group, groupType, isRepeat, isTrial, paymentStatus,
       registeredFrom, registeredTo, registeredBy, trainerFilter, onlineTagFilter, fromTelegram])
@@ -521,6 +536,7 @@ export default function Clients() {
   useEffect(() => () => { loadAbortRef.current?.abort() }, [])
 
   const resetFilters = () => {
+    sessionStorage.removeItem(FILTER_KEY)
     setSearch(''); setDebouncedSearch(''); setStatus(''); setFormat(''); setGroup('')
     setGroupType(''); setIsRepeat(false); setIsTrial(false); setPaymentStatus('')
     setRegisteredFrom(''); setRegisteredTo(''); setRegisteredBy('')

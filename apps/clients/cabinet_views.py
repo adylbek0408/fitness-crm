@@ -119,6 +119,13 @@ class CabinetMeView(APIView):
             for h in ClientGroupHistory.objects.filter(client=client).order_by('-ended_at')
         ]
 
+        # Installment payment access check
+        has_lesson_access = True
+        if client.payment_type == 'installment':
+            from apps.payments.models import InstallmentPlan
+            plan = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
+            has_lesson_access = bool(plan and plan.is_closed)
+
         return Response({
             'first_name': client.first_name,
             'last_name': client.last_name,
@@ -130,4 +137,5 @@ class CabinetMeView(APIView):
             'status': client.status,
             'current_group': current_group,
             'completed_flows': completed_flows,
+            'has_lesson_access': has_lesson_access,
         })
