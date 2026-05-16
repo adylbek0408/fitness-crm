@@ -91,11 +91,16 @@ class CabinetJWTAuthentication(authentication.BaseAuthentication):
         except (Client.DoesNotExist, ClientAccount.DoesNotExist):
             raise exceptions.AuthenticationFailed('Client not found.')
 
-        # Session enforcement: reject tokens whose session_key no longer matches
-        # (means a newer login has rotated it on another device).
-        token_session = payload.get('session_key', '')
+        # Session enforcement: once the account has a stored session_key (set on
+        # first login after the migration), the token MUST carry the matching key.
+        # Accounts that have never logged in post-migration have session_key = ''
+        # and are exempt until their first new login — this preserves backwards
+        # compatibility for existing tokens while still enforcing single-session
+        # behaviour for everyone who logs in going forward.
         stored_session = account.session_key or ''
-        if token_session and stored_session and token_session != stored_session:
-            raise exceptions.AuthenticationFailed('Session expired. Please log in again.')
+        if stored_session:
+            token_session = payload.get('session_key', '')
+            if token_session != stored_session:
+                raise exceptions.AuthenticationFailed('Session expired. Please log in again.')
 
         return (account, token)
