@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import api from '../../../api/axios'
 
-const COLLAPSE_CHARS = 400
+const COLLAPSE_CHARS = 350
 
 export default function FeedPostText({ lesson }) {
-  const text = lesson.content || ''
+  const text   = lesson.content || ''
   const isLong = text.length > COLLAPSE_CHARS
   const [expanded, setExpanded] = useState(!isLong)
-  const expandedRef = useRef(null)
+  const btnRef   = useRef(null)
   const markedRef = useRef(false)
 
   const markComplete = () => {
@@ -17,44 +17,39 @@ export default function FeedPostText({ lesson }) {
     api.post(`/cabinet/education/lessons/${lesson.id}/progress/`, { position: 0, percent: 100 }).catch(() => {})
   }
 
-  // Short texts are fully visible immediately → mark complete on mount
-  useEffect(() => {
-    if (!isLong) markComplete()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  useEffect(() => { if (!isLong) markComplete() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = () => {
-    setExpanded(e => {
-      const next = !e
+    setExpanded(prev => {
+      const next = !prev
       if (next) {
         markComplete()
-        if (expandedRef.current) {
-          setTimeout(() => {
-            expandedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-          }, 50)
-        }
+        setTimeout(() => btnRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50)
       }
       return next
     })
   }
 
+  if (!text) return null
+
   return (
-    <div className="px-4 pb-4">
-      <div
-        className="text-[14px] text-gray-800 leading-relaxed whitespace-pre-wrap"
+    <div className="px-3 pb-1">
+      <p
+        className="text-[13.5px] text-gray-800 leading-relaxed whitespace-pre-wrap"
         style={{ wordBreak: 'break-word' }}
       >
-        {expanded ? text : text.slice(0, COLLAPSE_CHARS) + (isLong ? '…' : '')}
-      </div>
+        {expanded ? text : text.slice(0, COLLAPSE_CHARS) + '…'}
+      </p>
       {isLong && (
         <button
-          ref={expandedRef}
+          ref={btnRef}
           onClick={toggle}
-          className="mt-2 flex items-center gap-1 text-[13px] font-medium text-rose-500 hover:text-rose-700 transition py-1"
+          className="mt-1.5 flex items-center gap-0.5 text-[12px] font-semibold py-1 transition"
+          style={{ color: '#e11d48' }}
         >
           {expanded
-            ? <><ChevronUp size={15} /> Свернуть</>
-            : <><ChevronDown size={15} /> Читать полностью</>}
+            ? <><ChevronUp size={13} /> Свернуть</>
+            : <><ChevronDown size={13} /> Читать полностью</>}
         </button>
       )}
     </div>

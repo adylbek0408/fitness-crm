@@ -1,87 +1,94 @@
 import { Link } from 'react-router-dom'
-import { BookOpen, Headphones, Play, CheckCircle2, ExternalLink, Clock } from 'lucide-react'
+import { CheckCircle2, ExternalLink } from 'lucide-react'
 import FeedPostText from './FeedPostText'
 import FeedPostAudio from './FeedPostAudio'
 import FeedPostVideo from './FeedPostVideo'
 
-function formatDuration(sec) {
-  if (!sec) return null
-  const m = Math.floor(sec / 60)
-  const s = Math.floor(sec % 60)
-  return `${m}:${String(s).padStart(2, '0')}`
+const TYPE_COLOR = {
+  video: '#0ea5e9',
+  audio: '#f59e0b',
+  text:  '#e11d48',
+}
+const TYPE_LABEL = { video: 'Видео', audio: 'Аудио', text: 'Текст' }
+
+function formatTime(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
 
-const TYPE_META = {
-  video: { label: 'Видео',  Icon: Play,       bg: 'bg-sky-50',   text: 'text-sky-600',   border: 'border-sky-100'  },
-  audio: { label: 'Аудио',  Icon: Headphones, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' },
-  text:  { label: 'Текст',  Icon: BookOpen,   bg: 'bg-rose-50',  text: 'text-rose-600',  border: 'border-rose-100'  },
-}
-
-export default function FeedPost({ lesson }) {
-  const meta = TYPE_META[lesson.lesson_type] || TYPE_META.text
-  const { Icon } = meta
-  const progress = lesson.progress?.percent || 0
+export default function ChatBubble({ lesson }) {
+  const color    = TYPE_COLOR[lesson.lesson_type] || TYPE_COLOR.text
+  const label    = TYPE_LABEL[lesson.lesson_type] || 'Урок'
   const completed = lesson.progress?.is_completed
+  const progress  = lesson.progress?.percent || 0
+  const time      = formatTime(lesson.published_at || lesson.created_at)
 
   return (
-    <article className="bg-white border-b border-gray-100 last:border-0">
-      {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${meta.bg} ${meta.border} border`}>
-          <Icon size={16} className={meta.text} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-[14px] font-semibold text-gray-900 line-clamp-2 leading-snug">
-            {lesson.title}
-          </h3>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className={`text-[10px] font-medium ${meta.text}`}>{meta.label}</span>
-            {lesson.duration_sec > 0 && (
-              <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                <Clock size={9} /> {formatDuration(lesson.duration_sec)}
-              </span>
-            )}
-            {completed && (
-              <span className="text-[10px] text-emerald-500 flex items-center gap-0.5">
-                <CheckCircle2 size={10} /> Просмотрено
-              </span>
+    <div className="flex items-end gap-1 mb-1 pl-1">
+      {/* Tiny dot — hint of the bubble "origin" without complex tail geometry */}
+      <div
+        className="w-2 h-2 rounded-full shrink-0 mb-1.5"
+        style={{ background: 'rgba(255,255,255,0.75)' }}
+      />
+
+      {/* Bubble */}
+      <div
+        className="bg-white overflow-hidden"
+        style={{
+          maxWidth: '88%',
+          minWidth: '180px',
+          borderRadius: '4px 16px 16px 16px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        }}
+      >
+        {/* ── Header ── */}
+        <div className="flex items-start gap-2 px-3 pt-2.5 pb-1.5">
+          <div className="flex-1 min-w-0">
+            <span
+              className="text-[10px] font-bold uppercase tracking-wider"
+              style={{ color }}
+            >
+              {label}
+            </span>
+            <h3 className="text-[14px] font-semibold text-gray-900 leading-snug mt-0.5">
+              {lesson.title}
+            </h3>
+            {lesson.description && (
+              <p className="text-[12px] text-gray-500 leading-snug mt-0.5 line-clamp-2">
+                {lesson.description}
+              </p>
             )}
           </div>
+          <Link
+            to={`/cabinet/lessons/${lesson.id}`}
+            className="shrink-0 mt-0.5 p-1.5 rounded-lg text-gray-300 hover:text-rose-500 hover:bg-rose-50 transition"
+            aria-label="Открыть урок"
+          >
+            <ExternalLink size={14} />
+          </Link>
         </div>
-        <Link
-          to={`/cabinet/lessons/${lesson.id}`}
-          className="shrink-0 p-3 rounded-xl text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition"
-          aria-label="Открыть урок"
-        >
-          <ExternalLink size={15} />
-        </Link>
+
+        {/* ── Content ── */}
+        {lesson.lesson_type === 'video' && <FeedPostVideo lesson={lesson} />}
+        {lesson.lesson_type === 'audio' && <FeedPostAudio lesson={lesson} />}
+        {lesson.lesson_type === 'text'  && <FeedPostText  lesson={lesson} />}
+
+        {/* ── Footer: progress + timestamp + done-check ── */}
+        <div className="flex items-center gap-2 px-3 pb-2 pt-0.5">
+          {progress > 0 && !completed && (
+            <div className="flex-1 h-0.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{ width: `${progress}%`, background: color }}
+              />
+            </div>
+          )}
+          <div className="flex items-center gap-1 ml-auto">
+            <span className="text-[10px] text-gray-400">{time}</span>
+            {completed && <CheckCircle2 size={12} className="text-emerald-400" />}
+          </div>
+        </div>
       </div>
-
-      {/* Description */}
-      {lesson.description && (
-        <p className="px-4 pb-2 text-[12px] text-gray-500 leading-relaxed">{lesson.description}</p>
-      )}
-
-      {/* Content */}
-      {lesson.lesson_type === 'video' && <FeedPostVideo lesson={lesson} />}
-      {lesson.lesson_type === 'audio' && <FeedPostAudio lesson={lesson} />}
-      {lesson.lesson_type === 'text'  && <FeedPostText  lesson={lesson} />}
-
-      {/* Progress bar — only for in-progress lessons */}
-      {progress > 0 && !completed && (
-        <div className="px-4 pb-4">
-          <div className="flex justify-between text-[10px] text-gray-400 mb-1">
-            <span>Прогресс</span>
-            <span className="text-rose-500 font-medium">{progress}%</span>
-          </div>
-          <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-rose-400 to-pink-500 transition-all"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-      )}
-    </article>
+    </div>
   )
 }
