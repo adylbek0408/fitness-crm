@@ -1,3 +1,45 @@
+# HANDOFF — 2026-05-16 (сессия — 6 CRM bugfixes)
+
+## Что сделано в этой сессии
+
+### Все 6 багов исправлены и закоммичены (2 коммита)
+
+**Коммит `68b6f1f`** — backend:
+- Модель `ClientGroupReservation` (`apps/clients/models.py`) + migration 0022
+- `ClientService.create_reservation` / `cancel_reservation` (`apps/clients/services.py`)
+- Авто-запись клиентов в забронированную группу при закрытии старой (`apps/groups/services.py`)
+- Поле `active_reservation` в `ClientReadSerializer` (`apps/clients/serializers.py`)
+- Endpoints `reserve-group` (POST) и `cancel-reservation` (DELETE) (`apps/clients/views.py`)
+- Текст "поток" → "группа" в сообщениях об ошибках `re_enroll_client`
+
+**Коммит `68e00fe`** — frontend:
+- **Bug 2** `ReservationPanel` (admin) + `MobileReservationPanel` (mobile) — UI бронирования
+- **Bug 3** Временны́е метки чеков: `created_at` вместо `paid_at` в mobile ClientDetail
+- **Bug 4** Статус-дропдаун для ВСЕХ клиентов (убрана заглушка для new/trial) в обоих вариантах
+- **Bug 5** Тоггл `is_trial` в admin `EditInfoPanel`
+- **Bug 6** `canUseNewClientFlow` требует `hasPayment` для frozen-клиентов в обоих вариантах
+
+## Что нужно сделать на сервере СЕЙЧАС
+
+```fish
+cd /var/www/fitness-crm; and source venv/bin/activate.fish; and python manage.py migrate; and systemctl restart fitness-crm; and cd frontend-spa; and NODE_OPTIONS='--max-old-space-size=1024' npm run build
+```
+
+**Migration:** применяет `0022_clientgroupreservation` (новая таблица бронирования).
+
+После деплоя проверить:
+1. Активный клиент в группе → кнопка «Забронировать следующую группу» появляется
+2. Закрыть группу → клиент с бронью авто-записывается в следующую группу
+3. Новый/пробный клиент → в статусной области показывается дропдаун (не статичный текст)
+4. Admin «Редактировать данные» → есть тоггл Обычный/Пробный
+5. Замороженный клиент без оплаты → «Добавить в группу» не появляется без new-payment
+
+## Следующий конкретный шаг
+
+Деплой + проверка пунктов выше.
+
+---
+
 # HANDOFF — 2026-05-05 (сессия — mobile broadcast + VodPlayer Vidstack 1.x)
 
 ## Что сделано в этой сессии

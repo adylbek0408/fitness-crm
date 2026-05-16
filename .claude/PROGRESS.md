@@ -137,6 +137,29 @@
 - [x] **10.6** Mobile card UX: StreamsAdmin + ConsultationsAdmin — icon-only кнопки
        с title, убраны переполнения текста.
 
+## Спринт 11 — CRM bugfixes (2026-05-16)
+- [x] **11.1** Дубли в истории статусов:
+       `cancel_payment` теперь логирует смену статуса; `close_group` использует
+       `bulk_create` для `ClientStatusHistory` вместо silent `.update()`;
+       фраза "поток" → "группа" в заметках.
+- [x] **11.2** Система бронирования следующей группы:
+       Новая модель `ClientGroupReservation` (migration 0022); методы
+       `create_reservation`/`cancel_reservation` в ClientService;
+       авто-запись при закрытии группы в `close_group`; поле `active_reservation`
+       в `ClientReadSerializer`; API endpoints `reserve-group` / `cancel-reservation`;
+       UI панель `ReservationPanel` в admin и mobile `ClientDetail`.
+- [x] **11.3** Временны́е метки чеков (мобильный кабинет):
+       Используем `created_at` (datetime) вместо `paid_at` (date) в "История чеков".
+       Также убраны дубли — рассрочка показывает только платежи с прикреплённым чеком.
+- [x] **11.4** Смена статуса для новых/пробных клиентов:
+       Убрана статичная заглушка; кнопки/дропдаун теперь показываются для
+       ВСЕХ статусов в admin и mobile ClientDetail.
+- [x] **11.5** Тоггл is_trial в "Редактировать данные" (admin):
+       Панель EditInfoPanel теперь имеет кнопки Обычный/Пробный как на мобиле.
+- [x] **11.6** Замороженный клиент без оплаты не попадает в группу без new-payment:
+       `canUseNewClientFlow` в admin и mobile теперь требует наличие оплаты (`hasPayment`)
+       для frozen-клиентов.
+
 ---
 
 ## Решения по ходу
