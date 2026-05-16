@@ -329,6 +329,7 @@ export default function LessonsAdmin() {
 
   // ── Filtering + pagination ──────────────────────────────────────────────
   const filtered = useMemo(() => lessons.filter(l => {
+    if (l.lesson_type === 'text') return false  // text lessons belong in TextLessonsAdmin
     if (typeFilter !== 'all' && l.lesson_type !== typeFilter) return false
     if (groupFilter && !(l.groups || []).includes(groupFilter)) return false
     if (search && !l.title.toLowerCase().includes(search.toLowerCase())) return false

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Plus, Pencil, Trash2, Search, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { BookOpen, Plus, Pencil, Trash2, Search, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
 import GroupPicker, { GroupPickerLabel } from '../../../components/ui/GroupPicker'
@@ -109,6 +109,50 @@ function LessonModal({ lesson, groups, onClose, onSaved }) {
             className="px-5 py-2 rounded-xl text-sm font-medium bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50 transition"
           >
             {saving ? 'Сохранение…' : isEdit ? 'Сохранить' : 'Создать'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ViewModal({ lesson, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+          <BookOpen size={20} className="text-rose-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-semibold text-gray-900 truncate">{lesson.title}</h2>
+            {lesson.description && (
+              <p className="text-xs text-gray-400 mt-0.5 truncate">{lesson.description}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {lesson.content ? (
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{lesson.content}</p>
+          ) : (
+            <p className="text-sm text-gray-400 italic">Содержимое урока пусто.</p>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end shrink-0">
+          <button
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
+          >
+            Закрыть
           </button>
         </div>
       </div>
@@ -270,6 +314,12 @@ export default function TextLessonsAdmin() {
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0">
                     <button
+                      onClick={() => setModal({ type: 'view', lesson: l })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium text-blue-600 border border-blue-200 hover:bg-blue-50 transition"
+                    >
+                      <Eye size={12} /> Читать
+                    </button>
+                    <button
                       onClick={() => setModal({ type: 'edit', lesson: l })}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 transition"
                     >
@@ -305,6 +355,9 @@ export default function TextLessonsAdmin() {
         )}
       </div>
 
+      {modal?.type === 'view' && (
+        <ViewModal lesson={modal.lesson} onClose={() => setModal(null)} />
+      )}
       {modal?.type === 'create' && (
         <LessonModal groups={groups} onClose={() => setModal(null)} onSaved={handleSaved} />
       )}
