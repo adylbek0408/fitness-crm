@@ -311,6 +311,28 @@ class ClientViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
         return Response(ClientReadSerializer(client).data)
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='reserve-group')
+    def reserve_group(self, request, pk=None):
+        try:
+            self.service.create_reservation(pk, request.data, user=request.user)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        client = self.service.get_client_or_raise(pk)
+        return Response(ClientReadSerializer(client).data)
+
+    @action(detail=True, methods=['delete'], permission_classes=[IsAdminOrRegistrar], url_path='cancel-reservation')
+    def cancel_reservation(self, request, pk=None):
+        try:
+            self.service.cancel_reservation(pk, user=request.user)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        client = self.service.get_client_or_raise(pk)
+        return Response(ClientReadSerializer(client).data)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='refund')
     def refund(self, request, pk=None):
         raw = request.data.get('retention_amount', 0)

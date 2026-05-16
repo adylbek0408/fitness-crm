@@ -151,10 +151,59 @@ class GroupService(BaseService):
                 receipts=receipts,
             )
 
-        # Активных клиентов → completed
+        # Активных клиентов → completed (с логированием статуса)
+        from apps.clients.models import ClientStatusHistory
+        active_clients = list(group.clients.filter(status='active'))
         group.clients.filter(status='active').update(status='completed')
-        # Открепляем всех клиентов от потока
+        if active_clients:
+            ClientStatusHistory.objects.bulk_create([
+                ClientStatusHistory(
+                    client=c,
+                    old_status='active',
+                    new_status='completed',
+                    note=f'Группа #{group.number} завершена',
+                )
+                for c in active_clients
+            ])
+        # Открепляем всех клиентов от группы
         group.clients.update(group=None)
+
+        # Авто-зачисление клиентов у которых есть активная бронь на следующую группу
+        from django.utils import timezone as tz_utils
+        from apps.clients.models import ClientGroupReservation
+        from apps.clients.services import ClientService
+
+        client_ids = [c.id for c in clients]
+        reservations = ClientGroupReservation.objects.filter(
+            client_id__in=client_ids,
+            used_at__isnull=True,
+            reserved_group__status__in=['recruitment', 'active'],
+        ).select_related('client', 'reserved_group')
+
+        client_svc = ClientService()
+        for res in reservations:
+            try:
+                payment_data = (
+                    {'amount': str(res.payment_amount)}
+                    if res.payment_type == 'full'
+                    else {'total_cost': str(res.total_cost), 'deadline': str(res.deadline) if res.deadline else ''}
+                )
+                client_svc.re_enroll_client(
+                    str(res.client_id),
+                    {
+                        'group_id': str(res.reserved_group_id),
+                        'payment_type': res.payment_type,
+                        'payment_data': payment_data,
+                        'bonus_percent': res.bonus_percent,
+                    },
+                )
+                res.used_at = tz_utils.now()
+                res.save(update_fields=['used_at'])
+                self.logger.info(
+                    f"Auto-enrolled client {res.client_id} → group {res.reserved_group_id} (reservation {res.id})"
+                )
+            except Exception as e:
+                self.logger.error(f"Auto-enrollment failed for client {res.client_id}: {e}")
 
         group.status = 'completed'
         group.save(update_fields=['status'])

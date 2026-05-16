@@ -183,6 +183,39 @@ class ClientStatusHistory(UUIDTimestampedModel):
         return f"{self.client} | {self.old_status} → {self.new_status} | {self.created_at:%Y-%m-%d}"
 
 
+class ClientGroupReservation(UUIDTimestampedModel):
+    """Бронь следующей группы для активного клиента."""
+    PAYMENT_TYPE_CHOICES = [('full', 'Full'), ('installment', 'Installment')]
+
+    client = models.ForeignKey(
+        'Client', on_delete=models.CASCADE, related_name='group_reservations'
+    )
+    reserved_group = models.ForeignKey(
+        'groups.Group', on_delete=models.PROTECT, related_name='reservations'
+    )
+    payment_type = models.CharField(max_length=15, choices=PAYMENT_TYPE_CHOICES)
+    payment_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    total_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    deadline = models.DateField(null=True, blank=True)
+    bonus_percent = models.PositiveSmallIntegerField(default=10)
+    reserved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_reservations',
+    )
+    reserved_by_name = models.CharField(max_length=200, blank=True)
+    note = models.CharField(max_length=300, blank=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Бронь группы'
+        verbose_name_plural = 'Брони групп'
+        indexes = [models.Index(fields=['client', 'used_at'])]
+
+    def __str__(self):
+        return f"{self.client} → Группа #{self.reserved_group.number}"
+
+
 class BonusTransaction(UUIDTimestampedModel):
     """История бонусных операций клиента."""
 

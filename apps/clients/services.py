@@ -103,12 +103,12 @@ class ClientService(BaseService):
                 # Soft-deleted groups must not be selectable for new enrollments.
                 grp = Group.objects.get(id=group_id, deleted_at__isnull=True)
                 if grp.status == 'completed':
-                    raise ValidationError('Нельзя записать клиента в завершённый поток')
+                    raise ValidationError('Нельзя записать клиента в завершённую группу')
                 data['status'] = 'active'
                 if not data.get('trainer_id') and grp.trainer_id:
                     data['trainer_id'] = str(grp.trainer_id)
             except Group.DoesNotExist:
-                raise ValidationError(f'Поток {group_id} не найден')
+                raise ValidationError(f'Группа {group_id} не найдена')
         else:
             data['status'] = 'new'
 
@@ -183,9 +183,9 @@ class ClientService(BaseService):
                 # Soft-deleted groups must not be selectable.
                 grp = Group.objects.get(id=data['group_id'], deleted_at__isnull=True)
                 if grp.status == 'completed':
-                    raise ValidationError('Нельзя привязать клиента к завершённому потоку')
+                    raise ValidationError('Нельзя привязать клиента к завершённой группе')
             except Group.DoesNotExist:
-                raise ValidationError(f'Поток не найден')
+                raise ValidationError(f'Группа не найдена')
 
         for field, value in data.items():
             setattr(client, field, value)
@@ -198,7 +198,7 @@ class ClientService(BaseService):
             raise ValidationError(f"Invalid status: {new_status}")
         client = self.get_client_or_raise(client_id)
         if new_status == 'active' and not client.group_id:
-            raise ValidationError('Статус «Активный» доступен только у клиента, записанного в поток.')
+            raise ValidationError('Статус «Активный» доступен только у клиента, записанного в группу.')
         old_status = client.status
         client.status = new_status
         client.save(update_fields=['status'])
@@ -212,14 +212,14 @@ class ClientService(BaseService):
         if client.is_trial:
             raise ValidationError('Пробный клиент не может быть добавлен в группу.')
         if client.group_id and str(client.group_id) != str(group_id):
-            raise ValidationError(f'Клиент уже в Потоке #{client.group.number}')
+            raise ValidationError(f'Клиент уже в группе #{client.group.number}')
         try:
             # Skip soft-deleted groups so they can't be reassigned to.
             group = Group.objects.get(id=group_id, deleted_at__isnull=True)
         except Group.DoesNotExist:
             raise NotFoundError(f"Group {group_id} not found")
         if group.status == 'completed':
-            raise ValidationError('Нельзя добавить в завершённый поток')
+            raise ValidationError('Нельзя добавить в завершённую группу')
         old_status = client.status
         client.group = group
         fields = ['group']
@@ -233,7 +233,7 @@ class ClientService(BaseService):
         if old_status != client.status:
             self._record_status_change(
                 client, old_status, client.status, user=user,
-                note=f'Добавлен в поток #{group.number}',
+                note=f'Добавлен в группу #{group.number}',
             )
         return client
 
@@ -255,21 +255,30 @@ class ClientService(BaseService):
             raise ValidationError(
                 'Замороженного повторного клиента запишите через «Повторная запись» с новой оплатой.'
             )
+        if client.status == 'frozen':
+            has_payment = (
+                FullPayment.objects.filter(client=client).exists() or
+                InstallmentPlan.objects.filter(client=client).exists()
+            )
+            if not has_payment:
+                raise ValidationError(
+                    'Клиент заморожен без оплаты (возврат). Используйте «Повторная запись» с новой оплатой.'
+                )
         if client.group_id:
-            raise ValidationError(f'Клиент уже в Потоке #{client.group.number}.')
+            raise ValidationError(f'Клиент уже в группе #{client.group.number}.')
 
         try:
             # Skip soft-deleted groups.
             group = Group.objects.get(id=group_id, deleted_at__isnull=True)
         except Group.DoesNotExist:
-            raise ValidationError(f'Поток {group_id} не найден')
+            raise ValidationError(f'Группа {group_id} не найдена')
         if group.status == 'completed':
-            raise ValidationError('Нельзя записать в завершённый поток')
+            raise ValidationError('Нельзя записать в завершённую группу')
         if group.training_format != client.training_format:
-            raise ValidationError('Формат обучения потока не совпадает с форматом клиента.')
+            raise ValidationError('Формат обучения группы не совпадает с форматом клиента.')
         ct = (client.group_type or '').strip()
         if ct and group.group_type != ct:
-            raise ValidationError('Тип группы потока не совпадает с типом клиента.')
+            raise ValidationError('Тип группы не совпадает с типом клиента.')
 
         return self.assign_to_group(client_id, group_id)
 
@@ -277,7 +286,7 @@ class ClientService(BaseService):
     def remove_from_group(self, client_id: str, group_id: str) -> Client:
         client = self.get_client_or_raise(client_id)
         if client.group_id and str(client.group_id) != str(group_id):
-            raise ValidationError('Клиент не в этом потоке')
+            raise ValidationError('Клиент не в этой группе')
         client.group = None
         client.save(update_fields=['group'])
         return client
@@ -310,9 +319,16 @@ class ClientService(BaseService):
 
         # Статус: пробный остаётся пробным, остальные → new
         new_status = 'trial' if client.is_trial else 'new'
+        old_status = client.status
         client.group = None
         client.status = new_status
         client.save(update_fields=['group', 'status'])
+
+        if old_status != new_status:
+            self._record_status_change(
+                client, old_status=old_status, new_status=new_status,
+                user=user, note='Отмена оплаты',
+            )
 
         self.logger.info(
             f'Payment cancelled for client {client_id}. '
@@ -404,28 +420,28 @@ class ClientService(BaseService):
 
         if client.status == 'new':
             raise ValidationError(
-                'Клиент со статусом «Новый» записывается через «Добавить в поток» без новой оплаты.'
+                'Клиент со статусом «Новый» записывается через «Добавить в группу» без новой оплаты.'
             )
 
         client_status_before = client.status
 
         if client.group:
             raise ValidationError(
-                f'Клиент уже в Потоке #{client.group.number}. '
-                'Сначала сделайте возврат или закройте поток.'
+                f'Клиент уже в группе #{client.group.number}. '
+                'Сначала сделайте возврат или закройте группу.'
             )
 
         if client.payment_type == 'full':
             fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
             if fp and not fp.is_paid:
                 raise ValidationError(
-                    'Нельзя записать в новый поток — предыдущая оплата ещё не подтверждена.'
+                    'Нельзя записать в новую группу — предыдущая оплата ещё не подтверждена.'
                 )
         elif client.payment_type == 'installment':
             ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
             if ip and not ip.is_closed:
                 raise ValidationError(
-                    f'Нельзя записать в новый поток — есть непогашенный остаток: {ip.remaining} сом.'
+                    f'Нельзя записать в новую группу — есть непогашенный остаток: {ip.remaining} сом.'
                 )
 
         group_id     = data.get('group_id')
@@ -455,9 +471,9 @@ class ClientService(BaseService):
             # Skip soft-deleted groups.
             group = Group.objects.get(id=group_id, deleted_at__isnull=True)
         except Group.DoesNotExist:
-            raise ValidationError(f'Поток {group_id} не найден')
+            raise ValidationError(f'Группа {group_id} не найдена')
         if group.status == 'completed':
-            raise ValidationError('Нельзя записать в завершённый поток')
+            raise ValidationError('Нельзя записать в завершённую группу')
 
         if (
             not client.is_repeat
@@ -507,10 +523,97 @@ class ClientService(BaseService):
         client.save(update_fields=save_fields)
         self._record_status_change(
             client, old_status=client_status_before, new_status='active',
-            user=user, note=f'Повторная запись в поток #{group.number}',
+            user=user, note=f'Повторная запись в группу #{group.number}',
         )
         client.refresh_from_db()
         return client
+
+    @transaction.atomic
+    def create_reservation(self, client_id: str, data: dict, user=None):
+        """Создать бронь следующей группы для активного клиента."""
+        from apps.groups.models import Group
+        from .models import ClientGroupReservation
+
+        client = self.get_client_or_raise(client_id)
+
+        if client.status != 'active' or not client.group_id:
+            raise ValidationError('Бронь доступна только для активных клиентов, находящихся в группе.')
+
+        if ClientGroupReservation.objects.filter(client=client, used_at__isnull=True).exists():
+            raise ValidationError('У клиента уже есть активная бронь. Сначала отмените её.')
+
+        group_id = data.get('group_id')
+        if not group_id:
+            raise ValidationError('group_id обязателен.')
+
+        try:
+            group = Group.objects.get(id=group_id, deleted_at__isnull=True)
+        except Group.DoesNotExist:
+            raise ValidationError(f'Группа {group_id} не найдена.')
+        if group.status == 'completed':
+            raise ValidationError('Нельзя бронировать завершённую группу.')
+        if str(group.id) == str(client.group_id):
+            raise ValidationError('Нельзя бронировать текущую группу клиента.')
+
+        payment_type = data.get('payment_type')
+        if payment_type not in ('full', 'installment'):
+            raise ValidationError('payment_type должен быть full или installment.')
+
+        payment_amount = None
+        total_cost = None
+        deadline = None
+
+        if payment_type == 'full':
+            raw = data.get('payment_amount') or data.get('amount')
+            if not raw:
+                raise ValidationError('Для полной оплаты укажите payment_amount.')
+            payment_amount = Decimal(str(raw))
+            if payment_amount <= 0:
+                raise ValidationError('Сумма оплаты должна быть положительной.')
+        else:
+            raw_cost = data.get('total_cost')
+            raw_dl = data.get('deadline')
+            if not raw_cost or not raw_dl:
+                raise ValidationError('Для рассрочки укажите total_cost и deadline.')
+            total_cost = Decimal(str(raw_cost))
+            if total_cost <= 0:
+                raise ValidationError('Сумма рассрочки должна быть положительной.')
+            deadline = raw_dl
+
+        bp_raw = data.get('bonus_percent', client.bonus_percent)
+        try:
+            bp = int(bp_raw)
+        except (TypeError, ValueError):
+            bp = client.bonus_percent
+        bp = max(0, min(100, bp))
+
+        snap = self._get_user_snap(user) if user else ''
+
+        reservation = ClientGroupReservation.objects.create(
+            client=client,
+            reserved_group=group,
+            payment_type=payment_type,
+            payment_amount=payment_amount,
+            total_cost=total_cost,
+            deadline=deadline,
+            bonus_percent=bp,
+            reserved_by=user,
+            reserved_by_name=snap,
+            note=data.get('note', ''),
+        )
+        self.logger.info(f"Reservation created: client {client_id} → group {group_id}")
+        return reservation
+
+    def cancel_reservation(self, client_id: str, user=None) -> None:
+        """Отменить активную бронь клиента."""
+        from .models import ClientGroupReservation
+
+        client = self.get_client_or_raise(client_id)
+        reservation = ClientGroupReservation.objects.filter(client=client, used_at__isnull=True).first()
+        if not reservation:
+            raise ValidationError('У клиента нет активной брони.')
+        reservation.delete()
+        self.logger.info(f"Reservation cancelled: client {client_id}")
 
     @transaction.atomic
     def refund_client(self, client_id: str, user=None, retention_amount: Optional[Decimal] = None) -> dict:

@@ -52,6 +52,7 @@ class ClientReadSerializer(serializers.ModelSerializer):
     registered_by_name = serializers.SerializerMethodField()
     cabinet_username = serializers.SerializerMethodField()
     cabinet_password = serializers.SerializerMethodField()
+    active_reservation = serializers.SerializerMethodField()
 
     class Meta:
         model = Client
@@ -63,7 +64,8 @@ class ClientReadSerializer(serializers.ModelSerializer):
             'bonus_balance', 'bonus_percent', 'payment_type',
             'registered_at', 'registered_by_name',
             'full_payment', 'installment_plan',
-            'cabinet_username', 'cabinet_password', 'created_at'
+            'cabinet_username', 'cabinet_password', 'created_at',
+            'active_reservation',
         ]
         read_only_fields = ['id', 'created_at']
 
@@ -97,6 +99,23 @@ class ClientReadSerializer(serializers.ModelSerializer):
             return obj.cabinet_account.password_plain or None
         except ClientAccount.DoesNotExist:
             return None
+
+    def get_active_reservation(self, obj):
+        from .models import ClientGroupReservation
+        res = ClientGroupReservation.objects.filter(client=obj, used_at__isnull=True).first()
+        if not res:
+            return None
+        return {
+            'id': str(res.id),
+            'reserved_group_id': str(res.reserved_group_id),
+            'reserved_group_number': res.reserved_group.number,
+            'payment_type': res.payment_type,
+            'payment_amount': str(res.payment_amount) if res.payment_amount is not None else None,
+            'total_cost': str(res.total_cost) if res.total_cost is not None else None,
+            'deadline': str(res.deadline) if res.deadline else None,
+            'bonus_percent': res.bonus_percent,
+            'note': res.note,
+        }
 
 
 class PaymentDataFullSerializer(serializers.Serializer):
