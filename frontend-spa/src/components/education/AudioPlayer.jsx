@@ -7,12 +7,13 @@ import { Play, Pause, Loader2 } from 'lucide-react'
  */
 export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
   const audioRef   = useRef(null)
-  const [blobUrl,  setBlobUrl]  = useState('')
-  const [playing,  setPlaying]  = useState(false)
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState('')
-  const [current,  setCurrent]  = useState(0)
-  const [duration, setDuration] = useState(0)
+  const [blobUrl,     setBlobUrl]     = useState('')
+  const [playing,     setPlaying]     = useState(false)
+  const [loading,     setLoading]     = useState(false)
+  const [isBuffering, setIsBuffering] = useState(false)
+  const [error,       setError]       = useState('')
+  const [current,     setCurrent]     = useState(0)
+  const [duration,    setDuration]    = useState(0)
 
   // Fetch audio as blob (hides R2 URL from network tab)
   useEffect(() => {
@@ -43,20 +44,26 @@ export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
     }
   }, [src])
 
-  // Sync playing state
+  // Sync playing state + buffering indicator
   useEffect(() => {
     const a = audioRef.current
     if (!a) return
-    const onPlay  = () => setPlaying(true)
-    const onPause = () => setPlaying(false)
-    const onEnded = () => setPlaying(false)
-    a.addEventListener('play',  onPlay)
-    a.addEventListener('pause', onPause)
-    a.addEventListener('ended', onEnded)
+    const onPlay     = () => { setPlaying(true);  setIsBuffering(false) }
+    const onPlaying  = () => { setPlaying(true);  setIsBuffering(false) }
+    const onPause    = () => { setPlaying(false); setIsBuffering(false) }
+    const onEnded    = () => { setPlaying(false); setIsBuffering(false) }
+    const onWaiting  = () => setIsBuffering(true)
+    a.addEventListener('play',    onPlay)
+    a.addEventListener('playing', onPlaying)
+    a.addEventListener('pause',   onPause)
+    a.addEventListener('ended',   onEnded)
+    a.addEventListener('waiting', onWaiting)
     return () => {
-      a.removeEventListener('play',  onPlay)
-      a.removeEventListener('pause', onPause)
-      a.removeEventListener('ended', onEnded)
+      a.removeEventListener('play',    onPlay)
+      a.removeEventListener('playing', onPlaying)
+      a.removeEventListener('pause',   onPause)
+      a.removeEventListener('ended',   onEnded)
+      a.removeEventListener('waiting', onWaiting)
     }
   }, [blobUrl])
 
@@ -118,14 +125,20 @@ export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
         <p className="text-[13px] text-rose-600 mb-3">{error}</p>
       )}
 
+      {loading && (
+        <p className="text-[12px] text-gray-400 text-center mb-3 animate-pulse">
+          Загрузка аудио…
+        </p>
+      )}
+
       <div className="flex items-center gap-3">
         {/* Play / Pause button */}
         <button
           onClick={toggle}
-          disabled={!blobUrl}
+          disabled={!blobUrl || isBuffering}
           className="w-12 h-12 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-md hover:bg-rose-600 active:scale-95 transition disabled:opacity-50 shrink-0"
         >
-          {loading
+          {loading || isBuffering
             ? <Loader2 size={20} className="animate-spin" />
             : playing
               ? <Pause size={20} />

@@ -13,7 +13,8 @@
  *   onReady(player)   — fired once video can play
  *   live              — bool: live HLS stream (hides scrubber)
  */
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { MediaPlayer, MediaProvider, isHLSProvider } from '@vidstack/react'
 import { PlyrLayout, plyrLayoutIcons } from '@vidstack/react/player/layouts/plyr'
 import Hls from 'hls.js'
@@ -37,6 +38,7 @@ export default function VodPlayer({
   const playerRef   = useRef(null)
   const seekedRef   = useRef(false)
   const lastEmitRef = useRef(-10)
+  const [isWaiting, setIsWaiting] = useState(false)
 
   // Vidstack auto-detects HLS from .m3u8; for R2 MP4 we pass explicit type.
   const source = kind === 'r2' ? { src, type: 'video/mp4' } : src
@@ -67,6 +69,7 @@ export default function VodPlayer({
 
   // ── Resume position ────────────────────────────────────────────────────────
   const handleCanPlay = () => {
+    setIsWaiting(false)
     const player = playerRef.current
     if (!player) return
     if (!audioFixedRef.current) {
@@ -108,8 +111,11 @@ export default function VodPlayer({
       onProviderChange={handleProviderChange}
       onTimeUpdate={handleTimeUpdate}
       onCanPlay={handleCanPlay}
+      onPlay={() => setIsWaiting(true)}
+      onPlaying={() => setIsWaiting(false)}
+      onWaiting={() => setIsWaiting(true)}
       onContextMenu={e => e.preventDefault()}
-      className="vod-player w-full h-full"
+      className="vod-player w-full h-full relative"
     >
       <MediaProvider />
       <PlyrLayout
@@ -119,6 +125,13 @@ export default function VodPlayer({
       {/* Watermark rendered AFTER PlyrLayout so it sits on top of all
           player UI in every stacking context including fullscreen. */}
       <Watermark text={watermarkText} />
+      {isWaiting && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+          <div className="bg-black/50 rounded-full p-4">
+            <Loader2 className="w-12 h-12 text-white animate-spin" />
+          </div>
+        </div>
+      )}
     </MediaPlayer>
   )
 }
