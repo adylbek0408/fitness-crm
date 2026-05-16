@@ -48,21 +48,23 @@ function DateSeparator({ label }) {
 }
 
 function GroupAvatar({ group }) {
-  // group.number can be "Вип 101", "Online 5", "42" — extract compact label:
-  // prefer the numeric part (up to 3 digits), fall back to first 2 chars uppercase
-  const raw = String(group?.number || '')
-  const digits = raw.match(/\d+/)?.[0] || ''
-  const initials = digits
-    ? digits.slice(-3)                              // "101", "42", "5"
-    : raw.slice(0, 2).toUpperCase() || '??'         // "ВИ", "ON"
+  // First letters of each word in group.number, max 2, uppercase.
+  // "Вип 101" → "В1", "Online 5" → "O5", "42" → "42", "Асылзада" → "АС"
+  const raw   = String(group?.number || '')
+  const words = raw.trim().split(/\s+/)
+  const initials = words
+    .map(w => w[0] || '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || '??'
 
   return (
     <div
       className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white font-bold overflow-hidden"
       style={{
         background: 'linear-gradient(135deg,#e11d48,#9f1239)',
-        fontSize: digits.length > 2 ? '11px' : '13px',
-        letterSpacing: '-0.5px',
+        fontSize: '13px',
+        letterSpacing: '0.5px',
       }}
     >
       {initials}
