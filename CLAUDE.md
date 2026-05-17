@@ -44,24 +44,29 @@ npm install
 npm run dev
 ```
 
-### Деплой на сервер (Fish shell, Timeweb VPS)
-Сервер использует **Fish shell** — синтаксис отличается от bash.
-venv находится в `/var/www/fitness-crm/venv/` (без точки).
-Systemd-сервис называется `fitness-crm` (не `gunicorn`).
-Node.js на сервере требует увеличенного heap (иначе OOM при сборке).
+### Деплой на сервер (Timeweb VPS)
 
-```fish
-# Полный деплой одной командой (выполнять из /var/www/fitness-crm):
-source /var/www/fitness-crm/venv/bin/activate.fish
-python manage.py migrate
-systemctl restart fitness-crm
-cd frontend-spa
-NODE_OPTIONS='--max-old-space-size=1024' npm run build
+**Одна команда — полный деплой:**
+```bash
+bash /var/www/fitness-crm/deploy/update.sh
 ```
 
-Или одной строкой:
-```fish
-cd /var/www/fitness-crm; and source venv/bin/activate.fish; and python manage.py migrate; and systemctl restart fitness-crm; and cd frontend-spa; and NODE_OPTIONS='--max-old-space-size=1024' npm run build
+Скрипт делает 7 шагов: git pull → pip install → migrate → collectstatic → npm build → restart gunicorn → reload nginx.
+
+**Сервисы на сервере:**
+| Сервис | Команда управления | Назначение |
+|---|---|---|
+| `fitness-crm` | `systemctl restart fitness-crm` | Gunicorn / Django backend |
+| `nginx` | `systemctl reload nginx` | Reverse proxy + статика + SPA |
+| `postgresql` | `systemctl restart postgresql` | База данных (только при крит. изменениях) |
+
+**Полезные команды диагностики:**
+```bash
+systemctl status fitness-crm     # статус gunicorn
+systemctl status nginx            # статус nginx
+journalctl -u fitness-crm -f     # живые логи gunicorn
+journalctl -u nginx -f            # живые логи nginx
+tail -f /var/log/fitness-crm/error.log   # ошибки Django
 ```
 
 ## Где что лежит

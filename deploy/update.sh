@@ -28,7 +28,10 @@ npm install --silent
 # (falls back to old dist/ on success, leaves it intact on failure).
 NODE_OPTIONS="--max-old-space-size=3072" npm run build
 
-echo "🔁  [6/6] restart gunicorn..."
+echo "🔁  [6/7] restart gunicorn..."
 systemctl restart fitness-crm
+
+echo "🌐  [7/7] reload nginx..."
+systemctl reload nginx
 
 echo "✅  Деплой завершён!"
