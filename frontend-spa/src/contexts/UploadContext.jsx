@@ -117,6 +117,14 @@ export function UploadProvider({ children }) {
         }
       } catch {}
 
+      if (!file || file.size === 0) throw new Error('Файл пустой или не выбран')
+
+      const ALLOWED_VIDEO = ['video/mp4','video/quicktime','video/webm','video/x-matroska','video/x-m4v']
+      const ALLOWED_AUDIO = ['audio/mpeg','audio/wav','audio/webm','audio/mp4','audio/ogg']
+      const allowed = lesson_type === 'video' ? ALLOWED_VIDEO : ALLOWED_AUDIO
+      if (file.type && !allowed.includes(file.type))
+        throw new Error(`Недопустимый тип файла: ${file.type}`)
+
       update(id, { status: 'uploading', stage: 'init', progress: 5 })
 
       const init = await api.post('/education/lessons/upload-init/', {
@@ -285,6 +293,7 @@ function xhrPut(url, body, contentType, onProgress, registerControls) {
     }
     xhr.onerror   = () => reject(new Error('Ошибка сети при загрузке'))
     xhr.ontimeout = () => reject(new Error('Таймаут загрузки'))
+    xhr.onabort   = () => reject(new Error('Загрузка отменена'))
     registerControls?.(xhr)
     xhr.send(body)
   })

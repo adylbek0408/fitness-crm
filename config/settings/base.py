@@ -140,6 +140,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardResultsPagination',
     'PAGE_SIZE': 25,
     'EXCEPTION_HANDLER': 'core.exception_handler.custom_exception_handler',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '200/hour',
+        'user': '1000/hour',
+        'cabinet_login': '10/minute',
+    },
 }
 
 SIMPLE_JWT = {
