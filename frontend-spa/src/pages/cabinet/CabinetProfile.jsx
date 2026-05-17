@@ -46,6 +46,8 @@ function shortDate(iso) {
 }
 
 const STATUS_META = {
+  new:       { label: 'Новый',     color: '#7c3aed', bg: 'rgba(221,214,254,0.3)' },
+  trial:     { label: 'Пробный',   color: '#d97706', bg: 'rgba(253,230,138,0.3)' },
   active:    { label: 'Активный',  color: '#16a34a', bg: 'rgba(187,247,208,0.3)' },
   frozen:    { label: 'Заморозка', color: '#2563eb', bg: 'rgba(191,219,254,0.3)' },
   completed: { label: 'Завершил',  color: '#6b7280', bg: 'rgba(229,231,235,0.3)' },
@@ -71,6 +73,8 @@ export default function CabinetProfile() {
           api.get('/cabinet/education/streams/active/').catch(() => null),
         ])
         setProfile(pr.data)
+        // Cache lesson access flag so LessonsList can show payment message
+        localStorage.setItem('cabinet_lesson_access', pr.data.has_lesson_access ? '1' : '0')
         if (ar) setAttendance(ar.data)
         if (sr) setActiveStream(sr.data?.stream || null)
       } catch (e) {
@@ -181,23 +185,46 @@ export default function CabinetProfile() {
           </button>
         </div>
 
-        {/* Group info strip */}
+        {/* Group info strip(s) */}
         {grp && (
-          <div className="relative mt-5 flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5 text-white/60 text-[12px]">
-              <Users size={12} />
-              <span>Группа #{grp.number}</span>
-            </div>
-            {grp.trainer && (
+          <div className="relative mt-5 space-y-1.5">
+            <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-1.5 text-white/60 text-[12px]">
-                <span>·</span>
-                <span>{grp.trainer}</span>
+                <Users size={12} />
+                <span>Группа #{grp.number}</span>
               </div>
-            )}
-            {grp.schedule && (
-              <div className="flex items-center gap-1.5 text-white/60 text-[12px]">
-                <Calendar size={11} />
-                <span>{scheduleLabel(grp.schedule)}</span>
+              {grp.trainer && (
+                <div className="flex items-center gap-1.5 text-white/60 text-[12px]">
+                  <span>·</span>
+                  <span>{grp.trainer}</span>
+                </div>
+              )}
+              {grp.schedule && (
+                <div className="flex items-center gap-1.5 text-white/60 text-[12px]">
+                  <Calendar size={11} />
+                  <span>{scheduleLabel(grp.schedule)}</span>
+                </div>
+              )}
+            </div>
+            {profile.second_group && (
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1.5 text-white/50 text-[11px]">
+                  <Users size={11} />
+                  <span>Группа #{profile.second_group.number}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] font-semibold tracking-wider">2-я</span>
+                </div>
+                {profile.second_group.trainer && (
+                  <div className="flex items-center gap-1.5 text-white/50 text-[11px]">
+                    <span>·</span>
+                    <span>{profile.second_group.trainer}</span>
+                  </div>
+                )}
+                {profile.second_group.schedule && (
+                  <div className="flex items-center gap-1.5 text-white/50 text-[11px]">
+                    <Calendar size={10} />
+                    <span>{scheduleLabel(profile.second_group.schedule)}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

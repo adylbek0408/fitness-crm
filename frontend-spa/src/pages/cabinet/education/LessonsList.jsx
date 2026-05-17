@@ -38,11 +38,16 @@ export default function LessonsList() {
       nav('/cabinet'); return
     }
     setLoading(true); setError('')
+    const controller = new AbortController()
     const params = tab === 'all' ? '' : `?type=${tab}`
-    api.get(`/cabinet/education/lessons/${params}`)
+    api.get(`/cabinet/education/lessons/${params}`, { signal: controller.signal })
       .then(r => setLessons(pickList(r.data)))
-      .catch(e => setError(e.response?.data?.detail || 'Ошибка загрузки'))
+      .catch(e => {
+        if (e.name === 'CanceledError' || e.code === 'ERR_CANCELED') return
+        setError(e.response?.data?.detail || 'Ошибка загрузки')
+      })
       .finally(() => setLoading(false))
+    return () => controller.abort()
   }, [tab, nav])
 
   const filtered = useMemo(() => {
@@ -115,12 +120,28 @@ export default function LessonsList() {
           </div>
         )}
 
-        {!loading && filtered.length === 0 && (
-          <div className="text-center py-16 text-gray-500">
-            <Play size={42} className="mx-auto mb-3 opacity-40" />
-            <p className="text-[14px]">{lessons.length === 0 ? 'Уроков пока нет.' : 'Ничего не найдено.'}</p>
-          </div>
-        )}
+        {!loading && filtered.length === 0 && (() => {
+          const hasAccess = localStorage.getItem('cabinet_lesson_access') !== '0'
+          if (lessons.length === 0 && !hasAccess) {
+            return (
+              <div className="text-center py-16 px-4">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-50 mb-4">
+                  <span className="text-3xl">🔒</span>
+                </div>
+                <p className="text-[15px] font-semibold text-gray-800 mb-2">Доступ закрыт</p>
+                <p className="text-[13px] text-gray-500 leading-relaxed max-w-xs mx-auto">
+                  Уроки откроются после полной оплаты рассрочки. Свяжитесь с администратором для уточнения деталей.
+                </p>
+              </div>
+            )
+          }
+          return (
+            <div className="text-center py-16 text-gray-500">
+              <Play size={42} className="mx-auto mb-3 opacity-40" />
+              <p className="text-[14px]">{lessons.length === 0 ? 'Уроков пока нет.' : 'Ничего не найдено.'}</p>
+            </div>
+          )
+        })()}
 
         {!loading && filtered.length > 0 && (
           <>

@@ -80,6 +80,8 @@ class CabinetJWTAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed('Invalid token.')
         if payload.get('type') != CABINET_TOKEN_TYPE:
             raise exceptions.AuthenticationFailed('Invalid token type.')
+        if payload.get('token_type') == 'refresh':
+            raise exceptions.AuthenticationFailed('Refresh token cannot be used as access token.')
         client_id = payload.get('client_id')
         if not client_id:
             raise exceptions.AuthenticationFailed('Invalid token.')

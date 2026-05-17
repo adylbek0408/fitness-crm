@@ -4,15 +4,25 @@ Cabinet API: login (username/password -> JWT), me (profile: first_name, last_nam
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from .cabinet_auth import CabinetJWTAuthentication, create_cabinet_tokens
 from .models import ClientAccount, Client
 
 
+class CabinetLoginThrottle(AnonRateThrottle):
+    """10 login attempts per minute per IP — brute-force protection."""
+    scope = 'cabinet_login'
+
+    def get_rate(self):
+        return '10/minute'
+
+
 class CabinetLoginView(APIView):
     authentication_classes = []   # ← Отключаем аутентификацию: протухший cabinet-токен
     permission_classes = [AllowAny]  # не должен блокировать вход
+    throttle_classes = [CabinetLoginThrottle]
 
     def post(self, request):
         username = request.data.get('username') or request.data.get('login')

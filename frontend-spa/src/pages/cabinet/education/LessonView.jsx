@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, Link } from 'react-router-dom'
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, AlertTriangle, Shield, Play, Headphones, Maximize2, Minimize2,
 } from 'lucide-react'
@@ -11,6 +11,7 @@ import useContentProtection from '../../../components/education/useContentProtec
 export default function LessonView() {
   const { id } = useParams()
   const nav = useNavigate()
+  const location = useLocation()
   const [lesson, setLesson] = useState(null)
   const [error, setError] = useState('')
   const [warning, setWarning] = useState('')
@@ -117,9 +118,9 @@ export default function LessonView() {
     <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
       <header className="bg-white border-b border-rose-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Link to="/cabinet/lessons" className="p-2 rounded-lg hover:bg-rose-50">
+          <button onClick={() => location.key !== 'default' ? nav(-1) : nav('/cabinet/lessons')} className="p-2 rounded-lg hover:bg-rose-50">
             <ChevronLeft size={22} />
-          </Link>
+          </button>
           <div className="h-5 w-48 bg-rose-100 rounded animate-pulse" />
         </div>
       </header>
@@ -138,9 +139,9 @@ export default function LessonView() {
     <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
       <header className="bg-white border-b border-rose-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Link to="/cabinet/lessons" className="p-2 rounded-lg hover:bg-rose-50">
+          <button onClick={() => location.key !== 'default' ? nav(-1) : nav('/cabinet/lessons')} className="p-2 rounded-lg hover:bg-rose-50">
             <ChevronLeft size={22} />
-          </Link>
+          </button>
           <h1 className="text-lg font-semibold flex-1 truncate" style={{ color: '#1f1f1f' }}>
             {lesson?.title || 'Загрузка…'}
           </h1>

@@ -97,12 +97,21 @@ export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
     else a.pause()
   }
 
-  const seek = (e) => {
+  const seekToX = (clientX, rect) => {
     const a = audioRef.current
     if (!a || !duration) return
-    const rect  = e.currentTarget.getBoundingClientRect()
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     a.currentTime = ratio * duration
+  }
+
+  const seek = (e) => {
+    seekToX(e.clientX, e.currentTarget.getBoundingClientRect())
+  }
+
+  const handleTouchSeek = (e) => {
+    const touch = e.touches[0] || e.changedTouches[0]
+    if (!touch) return
+    seekToX(touch.clientX, e.currentTarget.getBoundingClientRect())
   }
 
   const fmt = (s) => {
@@ -146,10 +155,13 @@ export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
         </button>
 
         <div className="flex-1 min-w-0">
-          {/* Progress bar — clickable/seekable */}
+          {/* Progress bar — clickable/seekable + touch-drag */}
           <div
             className="h-2 bg-rose-100 rounded-full overflow-hidden cursor-pointer"
+            style={{ touchAction: 'none' }}
             onClick={seek}
+            onTouchStart={handleTouchSeek}
+            onTouchMove={handleTouchSeek}
           >
             <div
               className="h-full bg-rose-400 rounded-full transition-all"
