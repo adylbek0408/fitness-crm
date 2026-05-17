@@ -106,21 +106,25 @@ class CloudflareStreamService:
     def create_direct_upload_url(
         cls, max_duration_sec: int = 14400, name: str = '',
     ) -> dict:
-        """Initiate a CF Stream direct creator upload (non-TUS).
+        """Initiate a CF Stream direct creator upload (TUS-compatible).
 
         Returns {'upload_url': str, 'video_uid': str}.
-        Frontend does a simple POST to upload_url with the video binary as body
-        (Content-Type: video/mp4). Cloudflare handles transcoding.
+        The upload URL supports TUS resumable protocol. We request a 6-hour
+        validity window so large files (1–3 GB) have time to upload even on
+        slow connections without the URL expiring mid-way.
 
         Raises HTTPError on quota exceeded (error code 10011) or other CF errors.
         """
         import requests
+        from datetime import datetime, timedelta, timezone as dt_tz
 
+        expiry = (datetime.now(dt_tz.utc) + timedelta(hours=6)).strftime('%Y-%m-%dT%H:%M:%SZ')
         url = f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream/direct_upload"
         body = {
             'maxDurationSeconds': max_duration_sec,
             'meta': {'name': name or 'lesson'},
             'requireSignedURLs': True,
+            'expiry': expiry,
         }
         resp = requests.post(url, headers=cls._headers(), json=body, timeout=20)
         resp.raise_for_status()

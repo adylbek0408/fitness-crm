@@ -120,11 +120,12 @@ export function UploadProvider({ children }) {
       update(id, { status: 'uploading', stage: 'init', progress: 5 })
 
       const init = await api.post('/education/lessons/upload-init/', {
-        title:        title.trim(),
-        description:  description?.trim() || '',
+        title:            title.trim(),
+        description:      description?.trim() || '',
         lesson_type,
-        groups:       group_ids,
-        file_ext:     (file.name.split('.').pop() || '').toLowerCase(),
+        groups:           group_ids,
+        file_ext:         (file.name.split('.').pop() || '').toLowerCase(),
+        max_duration_sec: 7200,  // 2h ceiling — covers lessons up to ~2 hours
       })
       const { lesson, upload } = init.data
       update(id, { lessonId: lesson.id, progress: 15 })
@@ -136,15 +137,16 @@ export function UploadProvider({ children }) {
       }
 
       if (upload.kind === 'cf-direct') {
-        // CF Stream TUS upload URLs expire in ~30 min. If HEAD returns 400,
-        // tus-js-client throws "unable to resume upload". We detect that,
-        // ask the backend for a fresh URL, and retry once.
+        // CF Stream TUS upload. Upload URL is now valid for 6 hours (set server-side),
+        // so expiry mid-upload is rare. If it does happen (HEAD → 400), we fetch a
+        // fresh URL and resume — tus-js-client will HEAD the new URL to find the
+        // already-uploaded offset and continue from there, not from 0%.
         const runTusUpload = (uploadUrl) => new Promise((resolve, reject) => {
           const tusUpload = new tus.Upload(file, {
             uploadUrl,
-            chunkSize: 50 * 1024 * 1024,
-            retryDelays: [0, 1000, 3000],
-            storeFingerprintForResuming: false,
+            chunkSize:                   50 * 1024 * 1024,  // 50 MB chunks
+            retryDelays:                 [0, 3000, 10000, 30000],  // 4 retries with backoff
+            storeFingerprintForResuming: false,   // CF doesn't support cross-session resume
             removeFingerprintOnSuccess:  true,
             onProgress: (loaded, total) => {
               if (total) onUploadProgress(loaded / total)
@@ -158,22 +160,32 @@ export function UploadProvider({ children }) {
           tusUpload.start()
         })
 
-        try {
-          await runTusUpload(upload.url)
-        } catch (tusErr) {
-          const msg = tusErr?.message || ''
-          // 400 on HEAD = expired upload session — get a fresh URL from backend
-          if (msg.includes('response code: 400') || msg.includes('unable to resume')) {
-            console.warn('[upload] TUS session expired, refreshing upload URL…')
-            update(id, { stage: 'refreshing', progress: 10 })
-            const refreshed = await api.post(
-              `/education/lessons/${lesson.id}/refresh-upload-url/`
-            )
-            await runTusUpload(refreshed.data.upload.url)
-          } else {
-            throw tusErr
+        let tusAttempts = 0
+        const MAX_REFRESH = 3
+        const tryWithRefresh = async (uploadUrl) => {
+          while (tusAttempts <= MAX_REFRESH) {
+            try {
+              await runTusUpload(uploadUrl)
+              return  // success
+            } catch (tusErr) {
+              const msg = tusErr?.message || ''
+              const isExpired = msg.includes('response code: 400') || msg.includes('unable to resume')
+              if (isExpired && tusAttempts < MAX_REFRESH) {
+                tusAttempts++
+                console.warn(`[upload] TUS URL expired, refreshing (attempt ${tusAttempts}/${MAX_REFRESH})…`)
+                update(id, { stage: 'refreshing' })
+                const refreshed = await api.post(
+                  `/education/lessons/${lesson.id}/refresh-upload-url/`,
+                  { max_duration_sec: 7200 }
+                )
+                uploadUrl = refreshed.data.upload.url
+              } else {
+                throw tusErr
+              }
+            }
           }
         }
+        await tryWithRefresh(upload.url)
       } else if (upload.kind === 'r2-presigned-put') {
         await xhrPut(upload.url, file, upload.content_type, onUploadProgress, (xhr) => {
           controlsRef.current[id] = { abort: () => { try { xhr.abort() } catch {} } }
