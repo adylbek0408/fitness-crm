@@ -104,6 +104,9 @@ def _migrate_recording_to_r2(lesson_id: str) -> None:
             lesson = Lesson.objects.filter(id=lesson_id).first()
             if not lesson or not lesson.stream_uid:
                 return
+            if lesson.r2_key:
+                # Already migrated (or migration is in progress from another thread)
+                return
             video_uid = lesson.stream_uid
 
             # Poll for MP4 download — CF encodes it async, takes up to ~10 min
@@ -141,7 +144,7 @@ def _migrate_recording_to_r2(lesson_id: str) -> None:
                             content_type='image/jpeg',
                         )
                         lesson.thumbnail_url = R2StorageService.create_download_presigned_url(
-                            key=thumb_key, ttl_seconds=365 * 24 * 3600,
+                            key=thumb_key, ttl_seconds=7 * 24 * 3600,
                         )
                 except Exception as e:
                     logger.warning('r2-migrate: thumbnail copy failed: %s', e)
@@ -612,6 +615,21 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
                 {'detail': 'refresh-upload-url is only available for video lessons.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if lesson.r2_key:
+            # Lesson is already on R2 — generate a fresh presigned PUT URL instead
+            r2_url = R2StorageService.create_upload_presigned_url(
+                key=lesson.r2_key, content_type='video/mp4',
+            )
+            return Response({
+                'lesson_id': str(lesson.id),
+                'upload': {
+                    'kind': 'r2-presigned-put',
+                    'url': r2_url,
+                    'r2_key': lesson.r2_key,
+                    'content_type': 'video/mp4',
+                },
+            })
 
         max_dur = int(request.data.get('max_duration_sec') or 7200)
         try:
@@ -1625,6 +1643,7 @@ class CFStreamWebhookView(APIView):
         # `recording_uid` and reuses the existing lesson.
         if live_input_uid and video_uid:
             from django.db import transaction
+            archived_lesson_id = None
             with transaction.atomic():
                 stream = (
                     LiveStream.objects.select_for_update()
@@ -1669,9 +1688,11 @@ class CFStreamWebhookView(APIView):
                         'archived_lesson', 'recording_uid', 'status',
                         'ended_at', 'updated_at',
                     ])
-                    # Migrate recording from CF Stream → R2 in background
-                    _migrate_recording_to_r2(str(lesson.id))
-                    return Response({'ok': True, 'archived_lesson_id': str(lesson.id)})
+                    archived_lesson_id = str(lesson.id)
+            # Start R2 migration OUTSIDE transaction so thread sees committed data
+            if archived_lesson_id:
+                _migrate_recording_to_r2(archived_lesson_id)
+            return Response({'ok': True, 'archived_lesson_id': archived_lesson_id})
 
         # Case 2: regular uploaded video became ready — backfill metadata
         # and publish if it was waiting for CF (async upload from a stream).
