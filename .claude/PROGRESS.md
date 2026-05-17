@@ -160,6 +160,18 @@
        `canUseNewClientFlow` в admin и mobile теперь требует наличие оплаты (`hasPayment`)
        для frozen-клиентов.
 
+## Спринт 14 — Education live UI audit (2026-05-18)
+- [x] **14.1** Live puppeteer audit всех 5 разделов (уроки/текст/эфиры/консультации/аналитика)
+       + кабинет студента. Найдено и исправлено 8 багов (коммит `c9b00fb`):
+       - CRITICAL: `ClientAccount.is_authenticated` — 500 на всех cabinet endpoints
+       - LessonsAdmin: кнопки только на hover → недоступны на мобиле (sm:opacity-0)
+       - LessonsAdmin: счётчик "Всего X" включал текстовые уроки
+       - Везде: `training_format=online` скрывал офлайн-группы из фильтра
+       - StreamsAdmin/ConsultationsAdmin: поиск только по текущей странице → page_size=500
+       - StreamsAdmin: "готовы" → "запланировано"
+       - ConsultationsAdmin: `cancelled` → "Отменена" (розовый бейдж)
+       - TextLessonsAdmin: нет `user` контекста → имя admin не отображалось
+
 ## Спринт 13 — Education business logic audit (2026-05-18)
 - [x] **13.1** UX/reliability round (коммит `47a90e3`):
        progress race-condition IntegrityError; keyset prev/next nav; webhook

@@ -1,33 +1,36 @@
-# HANDOFF — 2026-05-18 (сессия — Education business logic audit)
+# HANDOFF — 2026-05-18 (сессия — Education live UI audit)
 
 ## Что сделано в этой сессии
 
-### Round 1 — UX/Reliability (коммит `47a90e3`)
+### Live puppeteer audit всех разделов (коммит `c9b00fb`)
 
-- **Progress race-condition** — `get_or_create` обёрнут в `IntegrityError` catch
-- **Keyset prev/next nav** — убрана O(n) загрузка всех ID; сортировка по `published_at`/`created_at`
-- **Webhook replay attack** — проверка временного окна ±5 мин по `X-Webhook-Timestamp`
-- **Recordings sorted desc** — CF записи сортируются по `created` перед выбором `recording_uid`
-- **Exponential backoff** — polling в `StreamLive.jsx`: 8s → до 60s при отсутствии эфира
-- **Progress retry** — один тихий повтор через 5 с при сетевой ошибке в `FeedPostVideo/Audio.jsx`
-- **Retry button on feed error** — кнопка «Повторить» при ошибке загрузки ленты
-- **Invite error in modal** — `alert()` заменён на `inviteError` state внутри модалки
-- **UploadDock failure header** — красный фон при ошибках загрузки
-- **Clipboard fallback** — `execCommand('copy')` в `StreamsAdmin.jsx` для HTTP/Safari
+Протестированы все 5 admin-страниц + кабинет студента через браузер.
+Найдено и исправлено **8 багов**:
 
-### Round 2 — Business logic (коммит `e85b09a`)
+**Backend:**
+- `ClientAccount.is_authenticated = True` — DRF `UserRateThrottle` вызывал
+  `request.user.is_authenticated` на `ClientAccount`, который не наследует Django User.
+  Результат: **500 на всех cabinet endpoints** (`/cabinet/me/`, уроки, эфиры и т.д.).
+  Добавлен атрибут класса `is_authenticated = True` в `apps/clients/models.py`.
 
-- **`restore()` content-aware publish** — урок публикуется только если есть контент
-  (`lesson_type='text'` OR `r2_key` OR `stream_uid`); без контента — `is_published=False`
-- **`manual_archive` race fix** — `Lesson.objects.create` обёрнут в `transaction.atomic()`
-  + `LiveStream.objects.select_for_update()`, повторная проверка `archived_lesson_id` внутри блокировки
-- **Guest invite second_group** — проверяет оба `group_id` и `second_group_id` через
-  `id__in=client_group_ids`; студенты из второй группы больше не отклоняются
-- **`_regrade_progress` try/except** — ошибка при пересчёте прогресса не роняет `finalize`
-  (урок уже опубликован, ошибка логируется)
+**Admin UI:**
+- **LessonsAdmin** — кнопки удалить/превью/редактировать были `opacity-0 group-hover:opacity-100`
+  → полностью недоступны на тач-устройствах. Исправлено: `sm:opacity-0 sm:group-hover:opacity-100`
+  (постоянно видны на < 640px).
+- **LessonsAdmin** — счётчик "Всего X" включал текстовые уроки (которые скрыты из этого вида).
+  Теперь считает только video/audio.
+- **LessonsAdmin / StreamsAdmin / TextLessonsAdmin / EducationStats** — groups fetch
+  с `training_format=online` скрывал офлайн-группы из picker'а. Удалён фильтр.
+- **StreamsAdmin / ConsultationsAdmin** — client-side поиск работал только на текущей
+  странице (server pagination). Исправлено: `page_size=500`, все данные загружаются за раз.
+- **StreamsAdmin** — счётчик "готовы" → "запланировано".
+- **ConsultationsAdmin** — статус `cancelled` отображался как "Завершена" (серый),
+  неотличимо от `used`. Исправлено: "Отменена" с розовым бейджем.
+- **TextLessonsAdmin** — нет `useOutletContext` → `AdminLayout` не получал `user` → имя/роль
+  admin не отображались в сайдбаре.
 
 ## Незакоммиченные изменения
-Нет — всё в коммитах `47a90e3` (round 1) и `e85b09a` (round 2).
+Нет — всё в коммите `c9b00fb`.
 
 ## Следующий шаг — деплой на сервер
 
@@ -35,18 +38,7 @@
 bash /var/www/fitness-crm/deploy/update.sh
 ```
 
-Или вручную:
-```bash
-cd /var/www/fitness-crm
-git pull
-source venv/bin/activate
-python manage.py migrate
-systemctl restart fitness-crm
-cd frontend-spa
-NODE_OPTIONS='--max-old-space-size=1024' npm run build
-```
-
 ## После деплоя
-- Всё бессхемно — нет новых миграций. Просто git pull + restart.
-- Проверить `manual_archive` на эфире — должен блокировать дубликат если кликнуть дважды.
-- Проверить приглашение гостя из второй группы — должно работать.
+- Существующие ЛК-токены продолжают работать (нет новых миграций).
+- Проверить что кабинет студента открывается без 500 ошибки.
+- Убедиться что на мобиле в разделе "Видео-уроки" видны кнопки на карточках.
