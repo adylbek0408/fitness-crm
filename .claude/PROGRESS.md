@@ -160,6 +160,16 @@
        `canUseNewClientFlow` в admin и mobile теперь требует наличие оплаты (`hasPayment`)
        для frozen-клиентов.
 
+## Спринт 13 — Education business logic audit (2026-05-18)
+- [x] **13.1** UX/reliability round (коммит `47a90e3`):
+       progress race-condition IntegrityError; keyset prev/next nav; webhook
+       replay protection; recordings sorted desc; exponential backoff polling;
+       progress retry on failure; retry button on feed error; invite error in modal;
+       UploadDock failure header; clipboard fallback
+- [x] **13.2** Business logic round (коммит `e85b09a`):
+       restore() content-aware publish; manual_archive select_for_update race fix;
+       guest invite checks second_group; _regrade_progress wrapped in try/except
+
 ## Спринт 12 — CRM bugfixes batch 2 (2026-05-16)
 - [x] **12.1** Fix Calendar import crash на mobile ClientDetail (MobileReservationPanel)
 - [x] **12.2** История чеков → История платежей; показываем ВСЕ транзакции (с/без чека + дата-время)
