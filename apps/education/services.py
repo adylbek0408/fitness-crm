@@ -137,6 +137,31 @@ class CloudflareStreamService:
             )
         return {'upload_url': upload_url, 'video_uid': video_uid}
 
+    @classmethod
+    def delete_video(cls, video_uid: str) -> None:
+        """Delete a video from CF Stream, freeing storage quota."""
+        import requests
+        url = f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream/{video_uid}"
+        resp = requests.delete(url, headers=cls._headers(), timeout=20)
+        resp.raise_for_status()
+
+    @classmethod
+    def request_mp4_download(cls, video_uid: str) -> str:
+        """Request MP4 encoding for a CF Stream video. Returns download URL if ready, else ''."""
+        import requests
+        url = f"{cls.BASE_URL}/accounts/{cls._account_id()}/stream/{video_uid}/downloads"
+        resp = requests.get(url, headers=cls._headers(), timeout=20)
+        if resp.ok:
+            default = resp.json().get('result', {}).get('default', {})
+            if default.get('status') == 'ready':
+                return default.get('url', '')
+        resp = requests.post(url, headers=cls._headers(), json={}, timeout=20)
+        if resp.ok:
+            default = resp.json().get('result', {}).get('default', {})
+            if default.get('status') == 'ready':
+                return default.get('url', '')
+        return ''
+
     # --- Signed HLS playback ---
 
     @classmethod
@@ -468,6 +493,37 @@ class R2StorageService:
             Key=key,
             Body=data,
             ContentType=content_type,
+        )
+
+    @classmethod
+    def upload_fileobj(
+        cls,
+        key: str,
+        fileobj,
+        content_type: str = 'video/mp4',
+    ) -> None:
+        """Stream-upload a file-like object to R2 (multipart, handles large files)."""
+        from boto3.s3.transfer import TransferConfig
+        client = cls._client()
+        config = TransferConfig(
+            multipart_threshold=50 * 1024 * 1024,
+            multipart_chunksize=50 * 1024 * 1024,
+        )
+        client.upload_fileobj(
+            fileobj,
+            cls._config_value('R2_BUCKET'),
+            key,
+            ExtraArgs={'ContentType': content_type},
+            Config=config,
+        )
+
+    @classmethod
+    def delete_object(cls, key: str) -> None:
+        """Delete an object from R2."""
+        client = cls._client()
+        client.delete_object(
+            Bucket=cls._config_value('R2_BUCKET'),
+            Key=key,
         )
 
 

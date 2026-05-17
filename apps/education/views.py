@@ -12,6 +12,7 @@ Endpoints exposed at /api/education/...
   inactive students.
 """
 import logging
+import threading
 import uuid as _uuid
 from datetime import timedelta
 
@@ -82,6 +83,88 @@ def _regrade_progress_after_duration(lesson):
         updated += 1
     if updated:
         logger.info('Regraded %d progress record(s) for lesson %s after duration set', updated, lesson.id)
+
+
+def _migrate_recording_to_r2(lesson_id: str) -> None:
+    """Background thread: CF Stream recording → R2 → update lesson → delete from CF.
+
+    Called after live_input.recording.ready so stream recordings don't pile up
+    in CF Stream and consume quota.  The lesson stays playable from CF Stream
+    during the transfer; once R2 upload succeeds we flip the lesson to r2_key
+    and delete the CF video.
+    """
+    def run():
+        import time
+        import requests as _http
+        from .models import Lesson
+        from .services import CloudflareStreamService, R2StorageService
+
+        logger.info('r2-migrate start lesson=%s', lesson_id)
+        try:
+            lesson = Lesson.objects.filter(id=lesson_id).first()
+            if not lesson or not lesson.stream_uid:
+                return
+            video_uid = lesson.stream_uid
+
+            # Poll for MP4 download — CF encodes it async, takes up to ~10 min
+            download_url = ''
+            for _ in range(60):  # max 10 minutes
+                download_url = CloudflareStreamService.request_mp4_download(video_uid)
+                if download_url:
+                    break
+                time.sleep(10)
+
+            if not download_url:
+                logger.error('r2-migrate: MP4 not ready for %s after 10 min', video_uid)
+                return
+
+            # Stream download CF → upload R2
+            r2_key = f'video/{lesson.id}.mp4'
+            with _http.get(download_url, stream=True, timeout=3600) as resp:
+                resp.raise_for_status()
+                resp.raw.decode_content = True
+                R2StorageService.upload_fileobj(
+                    key=r2_key,
+                    fileobj=resp.raw,
+                    content_type='video/mp4',
+                )
+
+            # Also migrate thumbnail to R2 if it's a CF URL
+            if lesson.thumbnail_url and 'cloudflarestream.com' in lesson.thumbnail_url:
+                try:
+                    thumb_resp = _http.get(lesson.thumbnail_url, timeout=30)
+                    if thumb_resp.ok:
+                        thumb_key = f'thumbnails/{lesson.id}.jpg'
+                        R2StorageService.upload_object(
+                            key=thumb_key,
+                            data=thumb_resp.content,
+                            content_type='image/jpeg',
+                        )
+                        lesson.thumbnail_url = R2StorageService.create_download_presigned_url(
+                            key=thumb_key, ttl_seconds=365 * 24 * 3600,
+                        )
+                except Exception as e:
+                    logger.warning('r2-migrate: thumbnail copy failed: %s', e)
+
+            # Flip lesson to R2 atomically
+            from django.db import transaction
+            with transaction.atomic():
+                lesson = Lesson.objects.select_for_update().get(id=lesson_id)
+                lesson.r2_key = r2_key
+                lesson.stream_uid = ''
+                lesson.save(update_fields=['r2_key', 'stream_uid', 'thumbnail_url', 'updated_at'])
+
+            # Delete CF video to free quota
+            try:
+                CloudflareStreamService.delete_video(video_uid)
+            except Exception as e:
+                logger.warning('r2-migrate: CF delete failed for %s: %s', video_uid, e)
+
+            logger.info('r2-migrate done lesson=%s r2_key=%s', lesson_id, r2_key)
+        except Exception:
+            logger.exception('r2-migrate failed lesson=%s', lesson_id)
+
+    threading.Thread(target=run, daemon=True, name=f'r2-migrate-{lesson_id}').start()
 
 
 # ---------------------------------------------------------------------------
@@ -221,51 +304,28 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
 
         try:
             if lesson_type == 'video':
-                max_dur = int(request.data.get('max_duration_sec') or 7200)
                 file_ext = (request.data.get('file_ext') or 'mp4').lstrip('.').lower()
                 if file_ext not in ALLOWED_VIDEO_EXTS:
                     file_ext = 'mp4'
 
-                # Try CF Stream first; fall back to R2 if quota exceeded.
-                cf_ok = False
-                try:
-                    payload = CloudflareStreamService.create_direct_upload_url(
-                        max_duration_sec=max_dur, name=title,
-                    )
-                    lesson.stream_uid = payload['video_uid']
-                    lesson.save(update_fields=['stream_uid', 'updated_at'])
-                    cf_ok = True
-                    return Response({
-                        'lesson': LessonAdminSerializer(lesson).data,
-                        'upload': {
-                            'kind': 'cf-direct',
-                            'url': payload['upload_url'],
-                            'video_uid': payload['video_uid'],
-                        },
-                    }, status=status.HTTP_201_CREATED)
-                except ImproperlyConfigured:
-                    logger.info('CF Stream not configured — using R2 for video')
-                except Exception as cf_err:
-                    logger.warning('CF Stream upload init failed (%s) — falling back to R2', cf_err)
-
-                if not cf_ok:
-                    # R2 fallback: store video as plain MP4
-                    r2_key = f"video/{lesson.id}.{file_ext}"
-                    content_type = 'video/mp4'
-                    r2_url = R2StorageService.create_upload_presigned_url(
-                        key=r2_key, content_type=content_type,
-                    )
-                    lesson.r2_key = r2_key
-                    lesson.save(update_fields=['r2_key', 'updated_at'])
-                    return Response({
-                        'lesson': LessonAdminSerializer(lesson).data,
-                        'upload': {
-                            'kind': 'r2-presigned-put',
-                            'url': r2_url,
-                            'r2_key': r2_key,
-                            'content_type': content_type,
-                        },
-                    }, status=status.HTTP_201_CREATED)
+                # Pre-recorded lessons go directly to R2 (cheaper, no quota limits).
+                # CF Stream is reserved for live streams and their auto-recordings.
+                r2_key = f"video/{lesson.id}.{file_ext}"
+                content_type = 'video/mp4'
+                r2_url = R2StorageService.create_upload_presigned_url(
+                    key=r2_key, content_type=content_type,
+                )
+                lesson.r2_key = r2_key
+                lesson.save(update_fields=['r2_key', 'updated_at'])
+                return Response({
+                    'lesson': LessonAdminSerializer(lesson).data,
+                    'upload': {
+                        'kind': 'r2-presigned-put',
+                        'url': r2_url,
+                        'r2_key': r2_key,
+                        'content_type': content_type,
+                    },
+                }, status=status.HTTP_201_CREATED)
 
             else:  # audio
                 ext = (request.data.get('file_ext') or 'mp3').lstrip('.').lower()
@@ -599,11 +659,21 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['delete'], url_path='permanent')
     def permanent_destroy(self, request, pk=None):
-        """Permanently delete a lesson from trash."""
+        """Permanently delete a lesson from trash and clean up external storage."""
         lesson = Lesson.objects.filter(pk=pk, deleted_at__isnull=False).first()
         if not lesson:
             return Response({'detail': 'Not found in trash.'},
                             status=status.HTTP_404_NOT_FOUND)
+        if lesson.stream_uid:
+            try:
+                CloudflareStreamService.delete_video(lesson.stream_uid)
+            except Exception as e:
+                logger.warning('permanent_destroy: CF delete failed %s: %s', lesson.stream_uid, e)
+        if lesson.r2_key:
+            try:
+                R2StorageService.delete_object(lesson.r2_key)
+            except Exception as e:
+                logger.warning('permanent_destroy: R2 delete failed %s: %s', lesson.r2_key, e)
         lesson.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -1599,6 +1669,8 @@ class CFStreamWebhookView(APIView):
                         'archived_lesson', 'recording_uid', 'status',
                         'ended_at', 'updated_at',
                     ])
+                    # Migrate recording from CF Stream → R2 in background
+                    _migrate_recording_to_r2(str(lesson.id))
                     return Response({'ok': True, 'archived_lesson_id': str(lesson.id)})
 
         # Case 2: regular uploaded video became ready — backfill metadata
