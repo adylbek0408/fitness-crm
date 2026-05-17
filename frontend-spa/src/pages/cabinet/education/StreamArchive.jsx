@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { ChevronLeft, Radio, Clock, CheckCircle2, Play, Search } from 'lucide-react'
 import api from '../../../api/axios'
@@ -41,8 +41,8 @@ export default function StreamArchive() {
     return q ? lessons.filter(l => l.title?.toLowerCase().includes(q)) : lessons
   }, [lessons, query])
 
-  const completed = lessons.filter(l => l.progress?.is_completed).length
-  const totalMins = Math.round(lessons.reduce((s, l) => s + (l.duration_sec || 0), 0) / 60)
+  const completed = useMemo(() => lessons.filter(l => l.progress?.is_completed).length, [lessons])
+  const totalMins = useMemo(() => Math.round(lessons.reduce((s, l) => s + (l.duration_sec || 0), 0) / 60), [lessons])
 
   return (
     <div className="min-h-screen pb-20" style={{ background: '#fdf8fa' }}>

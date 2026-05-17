@@ -28,6 +28,7 @@ export default function LessonsList() {
   const [lessons, setLessons] = useState([])
   const [tab, setTab] = useState('all')
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -50,17 +51,22 @@ export default function LessonsList() {
     return () => controller.abort()
   }, [tab, nav])
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250)
+    return () => clearTimeout(t)
+  }, [search])
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return lessons
-    const q = search.toLowerCase()
+    if (!debouncedSearch.trim()) return lessons
+    const q = debouncedSearch.toLowerCase()
     return lessons.filter(l => (l.title || '').toLowerCase().includes(q))
-  }, [lessons, search])
+  }, [lessons, debouncedSearch])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
-  useEffect(() => { setPage(1) }, [tab, search])
+  useEffect(() => { setPage(1) }, [tab, debouncedSearch])
 
   return (
     <div className="min-h-screen pb-20" style={{ background: '#fdf8fa' }}>

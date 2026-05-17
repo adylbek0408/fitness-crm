@@ -385,8 +385,18 @@ export async function startTrainerP2P({
     throw e
   }
 
+  // Stop signaling poll once ICE is healthy — no need to keep polling after connect
+  let signalingDone = false
+  pc.addEventListener('iceconnectionstatechange', () => {
+    if ((pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') && !signalingDone) {
+      signalingDone = true
+      clearInterval(pollTimer)
+    }
+  })
+
   // Poll for answer + guest ICE
   const tick = async () => {
+    if (signalingDone) return
     try {
       const data = await poll()
       if (!appliedAnswer && data.answer_sdp) {
@@ -453,10 +463,23 @@ export async function startGuestP2P({
   })
 
   let iceFailTimer = null
+  let signalingDone = false
+
+  // Offer timeout: if trainer never sends offer within 30s, abort
+  const offerTimeout = setTimeout(() => {
+    if (!appliedOffer) {
+      console.warn('[guest P2P] offer timeout — trainer did not respond in 30s')
+      onFailed?.()
+      close()
+    }
+  }, 30000)
+
   pc.addEventListener('iceconnectionstatechange', () => {
     const state = pc.iceConnectionState
     if (state === 'connected' || state === 'completed') {
       clearTimeout(iceFailTimer); iceFailTimer = null
+      clearTimeout(offerTimeout)
+      if (!signalingDone) { signalingDone = true; clearInterval(pollTimer) }
       onConnected?.()
     }
     if (state === 'disconnected') {
@@ -473,11 +496,13 @@ export async function startGuestP2P({
   })
 
   const tick = async () => {
+    if (signalingDone) return
     try {
       const data = await poll()
       if (!appliedOffer && data.offer_sdp) {
         await pc.setRemoteDescription({ type: 'offer', sdp: data.offer_sdp })
         appliedOffer = true
+        clearTimeout(offerTimeout)
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         await postAnswer(answer.sdp)
@@ -499,6 +524,7 @@ export async function startGuestP2P({
   const close = () => {
     clearInterval(pollTimer)
     clearTimeout(iceFailTimer)
+    clearTimeout(offerTimeout)
     try { pc.close() } catch {}
   }
 

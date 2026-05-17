@@ -17,9 +17,12 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
-  const lastTsRef  = useRef(null)
-  const bottomRef  = useRef(null)
-  const inputRef   = useRef(null)
+  const lastTsRef      = useRef(null)
+  const bottomRef      = useRef(null)
+  const inputRef       = useRef(null)
+  const failCountRef   = useRef(0)
+  const pollTimerRef   = useRef(null)
+  const inflightRef    = useRef(false)
 
   const chatUrl = isTrainer
     ? `/education/streams/${streamId}/chat/`
@@ -27,6 +30,8 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
 
   // ── Poll for new messages ─────────────────────────────────────────────────
   const poll = useCallback(async () => {
+    if (inflightRef.current) return
+    inflightRef.current = true
     try {
       const params = lastTsRef.current ? { after: lastTsRef.current } : { limit: 100 }
       const r = await api.get(chatUrl, { params })
@@ -34,19 +39,42 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
       if (msgs.length) {
         lastTsRef.current = msgs[msgs.length - 1].created_at
         setMessages(prev => {
-          // merge avoiding duplicates by id
           const ids = new Set(prev.map(m => m.id))
           return [...prev, ...msgs.filter(m => !ids.has(m.id))]
         })
       }
-    } catch {}
+      failCountRef.current = 0
+    } catch {
+      failCountRef.current = Math.min(failCountRef.current + 1, 10)
+    } finally {
+      inflightRef.current = false
+    }
   }, [chatUrl])
+
+  const getDelay = () => {
+    const n = failCountRef.current
+    return n === 0 ? POLL_MS : Math.min(POLL_MS * Math.pow(1.5, n), 30000)
+  }
 
   useEffect(() => {
     if (!streamId) return
     poll()
-    const id = setInterval(poll, POLL_MS)
-    return () => clearInterval(id)
+    pollTimerRef.current = setInterval(() => { if (!document.hidden) poll() }, POLL_MS)
+
+    const onVisibility = () => {
+      if (!document.hidden) {
+        // Resume: clear existing interval and restart with fresh one
+        clearInterval(pollTimerRef.current)
+        poll()
+        pollTimerRef.current = setInterval(() => { if (!document.hidden) poll() }, getDelay())
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(pollTimerRef.current)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamId, poll])
 
   // ── Auto-scroll ───────────────────────────────────────────────────────────

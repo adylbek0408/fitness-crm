@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, AlertTriangle, Shield, Play, Headphones, Maximize2, Minimize2,
@@ -99,14 +99,14 @@ export default function LessonView() {
     } catch {}
   }
 
-  const handleProgress = ({ position, percent }) => {
+  const handleProgress = useCallback(({ position, percent }) => {
     if (Math.abs(percent - lastSavedPercent.current) < 1) return
     lastSavedPercent.current = percent
     api.post(`/cabinet/education/lessons/${id}/progress/`, {
       position: Math.floor(position),
       percent,
     }).catch(() => {})
-  }
+  }, [id])
 
   const prevId = lesson?.prev_id || null
   const nextId = lesson?.next_id || null

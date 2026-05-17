@@ -20,6 +20,7 @@ export default function ConsultationRoom() {
 
   const [elapsed, setElapsed] = useState(0)   // seconds since conference joined
   const timerRef = useRef(null)
+  const lockdownTimersRef = useRef([])
 
   const containerRef = useRef(null)
   const apiRef = useRef(null)
@@ -152,8 +153,8 @@ export default function ConsultationRoom() {
       // we hide every moderator-only affordance regardless of what Jitsi thinks.
       apiRef.current.addEventListener('videoConferenceJoined', () => {
         lockDownToParticipantUI()
-        setTimeout(lockDownToParticipantUI, 1000)
-        setTimeout(lockDownToParticipantUI, 3000)
+        lockdownTimersRef.current.push(setTimeout(lockDownToParticipantUI, 1000))
+        lockdownTimersRef.current.push(setTimeout(lockDownToParticipantUI, 3000))
         // Start call timer
         setElapsed(0)
         clearInterval(timerRef.current)
@@ -183,6 +184,8 @@ export default function ConsultationRoom() {
 
     return () => {
       clearInterval(timerRef.current)
+      lockdownTimersRef.current.forEach(t => clearTimeout(t))
+      lockdownTimersRef.current = []
       if (apiRef.current) {
         try { apiRef.current.dispose() } catch {}
         apiRef.current = null

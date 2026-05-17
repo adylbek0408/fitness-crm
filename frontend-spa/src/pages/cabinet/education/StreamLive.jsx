@@ -22,6 +22,7 @@ export default function StreamLive() {
   const [stream,       setStream]       = useState(null)
   const [streamEnded,  setStreamEnded]  = useState(false)
   const [initializing, setInitializing] = useState(true)
+  const [accepting,    setAccepting]    = useState(false)
   const [viewers,      setViewers]      = useState([])
   const [joined,       setJoined]       = useState(null)
   const [warning,      setWarning]      = useState('')
@@ -138,7 +139,10 @@ export default function StreamLive() {
       clearInterval(guestPollRef.current)
       return
     }
+    let guestPollInflight = false
     const poll = async () => {
+      if (guestPollInflight) return
+      guestPollInflight = true
       try {
         const r = await api.get(`/cabinet/education/streams/${sid}/guest/`)
         const invite = r.data?.invite
@@ -149,7 +153,7 @@ export default function StreamLive() {
         // Update local state
         if (invite?.status === 'invited') setGuestInvite(invite)
         else if (!invite) setGuestInvite(null)
-      } catch {}
+      } catch {} finally { guestPollInflight = false }
     }
     poll()
     guestPollRef.current = setInterval(poll, 4000)
@@ -160,7 +164,8 @@ export default function StreamLive() {
   // ── Stage actions ─────────────────────────────────────────────────────────
 
   const acceptInvite = async () => {
-    if (!stream?.id || !guestInvite) return
+    if (accepting || !stream?.id || !guestInvite) return
+    setAccepting(true)
     setStageState('requesting-media')
     let localStream
     try {
@@ -253,6 +258,8 @@ export default function StreamLive() {
       try { localStream.getTracks().forEach(t => t.stop()) } catch {}
       stageLocalRef.current = null
       setOnStage(false)
+    } finally {
+      setAccepting(false)
     }
   }
 
@@ -266,6 +273,8 @@ export default function StreamLive() {
     if (notifyServer && stream?.id) {
       try { await api.delete(`/cabinet/education/streams/${stream.id}/guest/`) } catch {}
     }
+    // Stop sender tracks BEFORE closing PC so the camera/mic indicator turns off immediately
+    try { stagePcRef.current?.getSenders?.().forEach(s => { try { s.track?.stop() } catch {} }) } catch {}
     try { stagePcRef.current?.close() } catch {}
     stagePcRef.current = null
     try { stageLocalRef.current?.getTracks().forEach(t => t.stop()) } catch {}
@@ -278,7 +287,7 @@ export default function StreamLive() {
     setStageState('')
     setStageMicOn(true)
     setStageCamOn(true)
-    setPipSwapped(false)   // reset swap on leave
+    setPipSwapped(false)
   }
 
   const toggleStageMic = () => {
@@ -294,8 +303,13 @@ export default function StreamLive() {
   useEffect(() => {
     return () => {
       clearTimeout(warningTimerRef.current)
+      if (guestPollRef.current) clearInterval(guestPollRef.current)
+      try { stagePcRef.current?.getSenders?.().forEach(s => { try { s.track?.stop() } catch {} }) } catch {}
       try { stagePcRef.current?.close() } catch {}
       try { stageLocalRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+      try { stageRemoteStreamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+      if (stageRemoteRef.current) stageRemoteRef.current.srcObject = null
+      if (stagePreviewRef.current) stagePreviewRef.current.srcObject = null
     }
   }, [])
 
@@ -374,7 +388,7 @@ export default function StreamLive() {
           <div ref={playerShellRef} data-protected-root
                className="relative w-full bg-black shrink-0 overflow-hidden aspect-video md:flex-1 md:min-h-0 md:aspect-auto"
                style={{
-                 ...(isCssFull ? { position: 'fixed', inset: 0, width: '100vw', height: '100dvh', zIndex: 100, aspectRatio: 'auto' } : {}),
+                 ...(isCssFull ? { position: 'fixed', inset: 0, width: '100vw', height: '100vh', zIndex: 100, aspectRatio: 'auto' } : {}),
                  userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
                }}>
             {!showStageVideo && (
@@ -481,12 +495,12 @@ export default function StreamLive() {
           {onStage && (
             <div className="shrink-0 px-3 py-2 border-b border-white/10 bg-black/70 flex items-center justify-center gap-2">
               <button onClick={toggleStageMic}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ${stageMicOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
-                {stageMicOn ? <Mic size={15} /> : <MicOff size={15} />}
+                className={`w-11 h-11 rounded-full flex items-center justify-center transition active:scale-90 ${stageMicOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
+                {stageMicOn ? <Mic size={18} /> : <MicOff size={18} />}
               </button>
               <button onClick={toggleStageCam}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90 ${stageCamOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
-                {stageCamOn ? <Video size={15} /> : <VideoOff size={15} />}
+                className={`w-11 h-11 rounded-full flex items-center justify-center transition active:scale-90 ${stageCamOn ? 'bg-white/15 text-white' : 'bg-rose-600 text-white'}`}>
+                {stageCamOn ? <Video size={18} /> : <VideoOff size={18} />}
               </button>
               <div className="px-2 flex items-center gap-1.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${stageState === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'}`} />
@@ -535,12 +549,12 @@ export default function StreamLive() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={acceptInvite}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold active:scale-95 transition">
-                  Принять ✨
+                <button onClick={acceptInvite} disabled={accepting}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold active:bg-emerald-700 active:scale-95 transition disabled:opacity-60">
+                  {accepting ? 'Подключение…' : 'Принять ✨'}
                 </button>
                 <button onClick={declineInvite}
-                  className="flex-1 py-2.5 rounded-xl bg-white/10 text-white/70 text-sm active:scale-95 transition">
+                  className="flex-1 py-2.5 rounded-xl bg-white/10 text-white/70 text-sm active:bg-white/20 active:scale-95 transition">
                   Отклонить
                 </button>
               </div>

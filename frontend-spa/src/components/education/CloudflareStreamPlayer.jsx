@@ -176,7 +176,9 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
     // 'playing' wins. If WHEP wins it destroys the HLS instance.
     if (live) {
       const tryWhep = async () => {
+        let whepAttempts = 0
         while (!cleanedUp && !hasPlayed) {
+          whepAttempts++
           let pc = null
           try {
             pc = new RTCPeerConnection({
@@ -208,9 +210,10 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
             })
 
             if (!resp.ok) {
-              console.warn('[player] WHEP HTTP', resp.status, '— retrying in 5s')
+              const delay = Math.min(1000 * Math.pow(1.6, whepAttempts), 30000) + Math.random() * 1000
+              console.warn('[player] WHEP HTTP', resp.status, `— retry in ${Math.round(delay)}ms`)
               pc.close(); whepRef.current = null
-              await new Promise(r => setTimeout(r, 5000))
+              await new Promise(r => setTimeout(r, delay))
               continue
             }
 
@@ -427,6 +430,8 @@ const CloudflareStreamPlayer = forwardRef(function CloudflareStreamPlayer({
         maxBufferHole:                0.5,
         highBufferWatchdogPeriod:     1,
         nudgeMaxRetry:                10,
+        maxLoadingDelay:              4,    // fail fast on stalled segment (default 20s → 4s)
+        highlevelStuckToleranceMs:    2000, // detect stuck playback in 2s not 10s
         capLevelToPlayerSize:         true,
         maxStarvationDelay:           4,
         abrEwmaDefaultEstimate:       3_000_000,   // стартуем с 3 Mbps — хорошая точка для WiFi/4G; ABR опустит сам если нужно
