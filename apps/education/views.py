@@ -407,7 +407,10 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         update += ['is_published', 'published_at', 'updated_at']
         lesson.save(update_fields=update)
         if duration is not None:
-            _regrade_progress_after_duration(lesson)
+            try:
+                _regrade_progress_after_duration(lesson)
+            except Exception:
+                logger.exception('_regrade_progress_after_duration failed for lesson %s', lesson.pk)
         return Response(LessonAdminSerializer(lesson).data)
 
     @action(detail=True, methods=['get'])
@@ -670,9 +673,21 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         if not lesson:
             return Response({'detail': 'Not found in trash.'},
                             status=status.HTTP_404_NOT_FOUND)
+        # Only publish if the lesson actually has playable content.
+        # A video/audio restored without a file would show up in student feeds
+        # but produce an empty player — confusing and unacceptable UX.
+        has_content = (
+            lesson.lesson_type == 'text'
+            or bool(lesson.r2_key)
+            or bool(lesson.stream_uid)
+        )
         lesson.deleted_at = None
-        lesson.is_published = True
-        lesson.save(update_fields=['deleted_at', 'is_published', 'updated_at'])
+        lesson.is_published = has_content
+        # Bump published_at so a restored lesson rises to the top of the feed
+        # (students see it as "new", not buried at its original publish date).
+        if has_content:
+            lesson.published_at = timezone.now()
+        lesson.save(update_fields=['deleted_at', 'is_published', 'published_at', 'updated_at'])
         return Response(LessonAdminSerializer(lesson).data)
 
     @action(detail=True, methods=['delete'], url_path='permanent')
@@ -906,15 +921,19 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         except (Client.DoesNotExist, ValueError, TypeError, DjangoValidationError):
             return Response({'error': 'client not found'}, status=404)
 
-        # Validate the client can actually access this stream
-        if stream.groups.exists() and (
-            not client.group_id
-            or not stream.groups.filter(id=client.group_id).exists()
-        ):
-            return Response(
-                {'error': 'client is not in a group that can access this stream'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Validate the client can actually access this stream.
+        # Check both primary group and second_group so students enrolled in
+        # a supplementary group are not erroneously rejected.
+        if stream.groups.exists():
+            client_group_ids = [
+                gid for gid in [client.group_id, getattr(client, 'second_group_id', None)]
+                if gid
+            ]
+            if not client_group_ids or not stream.groups.filter(id__in=client_group_ids).exists():
+                return Response(
+                    {'error': 'client is not in a group that can access this stream'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         # Atomically cancel old invites and create new one — stream row lock
         # serialises concurrent invites so we never produce duplicate active guests.
@@ -1187,6 +1206,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         if recording_uid is empty (webhook didn't fire).
         """
         stream = self.get_object()
+        # Quick pre-check before acquiring the lock (avoids unnecessary DB round-trip).
         if stream.archived_lesson_id:
             return Response({'detail': 'У эфира уже есть запись.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1239,26 +1259,34 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                 'recordings_processing': len([r for r in recordings if not r.get('readyToStream', False)]),
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        lesson = Lesson.objects.create(
-            title=f"Эфир: {stream.title}",
-            description=stream.description or '',
-            lesson_type='video',
-            stream_uid=recording_uid,
-            duration_sec=0,
-            thumbnail_url='',
-            trainer=stream.trainer,
-            is_published=True,
-            published_at=timezone.now(),
-            created_by=request.user if request.user.is_authenticated else None,
-        )
-        if stream.groups.exists():
-            lesson.groups.set(list(stream.groups.values_list('id', flat=True)))
-        stream.archived_lesson = lesson
-        if stream.status != 'archived':
-            stream.status = 'archived'
-        if not stream.ended_at:
-            stream.ended_at = timezone.now()
-        stream.save(update_fields=['archived_lesson', 'status', 'ended_at', 'updated_at'])
+        from django.db import transaction as _txn
+        with _txn.atomic():
+            # Re-fetch under a row lock so a simultaneous CF webhook handler
+            # cannot create a second archived lesson for the same stream.
+            stream = LiveStream.objects.select_for_update().get(pk=stream.pk)
+            if stream.archived_lesson_id:
+                return Response({'detail': 'У эфира уже есть запись.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            lesson = Lesson.objects.create(
+                title=f"Эфир: {stream.title}",
+                description=stream.description or '',
+                lesson_type='video',
+                stream_uid=recording_uid,
+                duration_sec=0,
+                thumbnail_url='',
+                trainer=stream.trainer,
+                is_published=True,
+                published_at=timezone.now(),
+                created_by=request.user if request.user.is_authenticated else None,
+            )
+            if stream.groups.exists():
+                lesson.groups.set(list(stream.groups.values_list('id', flat=True)))
+            stream.archived_lesson = lesson
+            if stream.status != 'archived':
+                stream.status = 'archived'
+            if not stream.ended_at:
+                stream.ended_at = timezone.now()
+            stream.save(update_fields=['archived_lesson', 'status', 'ended_at', 'updated_at'])
         return Response(LiveStreamAdminSerializer(stream).data)
 
     @action(detail=True, methods=['post'], url_path='publish-recording')
