@@ -99,6 +99,7 @@ export default function BroadcastPage() {
   const [showInviteModal, setShowInviteModal]  = useState(false)
   const [activeViewers,   setActiveViewers]    = useState([])
   const [inviteLoading,   setInviteLoading]    = useState(false)
+  const [inviteError,     setInviteError]      = useState('')
   const [activeGuest,       setActiveGuest]       = useState(null)
   const [guestStatus,       setGuestStatus]       = useState('') // '' | 'connecting' | 'live' | 'failed'
   const [guestRemoteStream, setGuestRemoteStream] = useState(null)
@@ -759,12 +760,13 @@ export default function BroadcastPage() {
   }
 
   const sendInvite = async (clientId) => {
+    setInviteError('')
     try {
       const r = await api.post(`/education/streams/${id}/guests/`, { client_id: clientId })
       setActiveGuest(r.data)
       setShowInviteModal(false)
     } catch(e) {
-      alert('Ошибка при отправке приглашения: ' + (e?.response?.data?.error || e.message))
+      setInviteError(e?.response?.data?.error || e?.message || 'Ошибка при отправке приглашения')
     }
   }
 
@@ -1373,10 +1375,15 @@ export default function BroadcastPage() {
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-semibold">Пригласить на сцену</h3>
-              <button onClick={() => setShowInviteModal(false)} className="text-white/40 hover:text-white">
+              <button onClick={() => { setShowInviteModal(false); setInviteError('') }} className="text-white/40 hover:text-white">
                 <X size={18} />
               </button>
             </div>
+            {inviteError && (
+              <p className="mb-3 px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[12px]">
+                {inviteError}
+              </p>
+            )}
             {inviteLoading && (
               <div className="flex justify-center py-8">
                 <span className="w-8 h-8 border-2 border-white/20 border-t-rose-400 rounded-full animate-spin" />

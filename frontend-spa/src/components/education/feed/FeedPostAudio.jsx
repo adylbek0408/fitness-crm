@@ -13,15 +13,25 @@ export default function FeedPostAudio({ lesson }) {
   const loadingRef = useRef(false)
   const abortRef   = useRef(null)
   const lastSaved  = useRef(0)
+  const retryRef   = useRef(null)
 
-  useEffect(() => () => { abortRef.current?.abort() }, [])
+  useEffect(() => () => {
+    abortRef.current?.abort()
+    clearTimeout(retryRef.current)
+  }, [])
 
   const handleProgress = ({ position, percent }) => {
     if (Math.abs(percent - lastSaved.current) < 1) return
     lastSaved.current = percent
-    api.post(`/cabinet/education/lessons/${lesson.id}/progress/`, {
-      position: Math.floor(position), percent,
-    }).catch(() => {})
+    clearTimeout(retryRef.current)
+    const save = (attempt = 0) => {
+      api.post(`/cabinet/education/lessons/${lesson.id}/progress/`, {
+        position: Math.floor(position), percent,
+      }).catch(() => {
+        if (attempt === 0) retryRef.current = setTimeout(() => save(1), 5000)
+      })
+    }
+    save()
   }
 
   const handlePlay = async () => {

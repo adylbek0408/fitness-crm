@@ -70,7 +70,11 @@ export default function UploadDock() {
       <button
         type="button"
         onClick={() => setCollapsed(c => !c)}
-        className="w-full px-4 py-2.5 flex items-center gap-3 bg-gradient-to-r from-rose-50 to-pink-50 border-b border-rose-100 hover:from-rose-100/60 hover:to-pink-100/60 transition focus:outline-none"
+        className={`w-full px-4 py-2.5 flex items-center gap-3 border-b transition focus:outline-none ${
+          failed.length > 0 && active.length === 0
+            ? 'bg-gradient-to-r from-rose-100 to-rose-50 border-rose-300 hover:from-rose-150/80 hover:to-rose-100/80'
+            : 'bg-gradient-to-r from-rose-50 to-pink-50 border-rose-100 hover:from-rose-100/60 hover:to-pink-100/60'
+        }`}
       >
         {active.length > 0
           ? <Loader2 size={16} className="text-rose-500 animate-spin shrink-0" />

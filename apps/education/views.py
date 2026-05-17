@@ -1201,8 +1201,13 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         if not recording_uid and stream.cf_input_uid:
             try:
                 cf_info = CloudflareStreamService.get_live_input_status(stream.cf_input_uid)
-                # Pick the first ready recording
-                for r in (cf_info.get('recordings') or []):
+                # Pick the most-recent ready recording (sort by created desc).
+                recordings_sorted = sorted(
+                    (cf_info.get('recordings') or []),
+                    key=lambda r: r.get('created', ''),
+                    reverse=True,
+                )
+                for r in recordings_sorted:
                     if r.get('readyToStream', False):
                         recording_uid = r.get('uid', '')
                         break

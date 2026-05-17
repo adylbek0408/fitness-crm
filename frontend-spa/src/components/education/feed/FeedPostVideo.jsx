@@ -15,8 +15,12 @@ export default function FeedPostVideo({ lesson }) {
   const loadingRef  = useRef(false)
   const abortRef    = useRef(null)
   const lastSaved   = useRef(0)
+  const retryRef    = useRef(null)   // pending retry timeout
 
-  useEffect(() => () => { abortRef.current?.abort() }, [])
+  useEffect(() => () => {
+    abortRef.current?.abort()
+    clearTimeout(retryRef.current)
+  }, [])
 
   useEffect(() => {
     const onFs = () => setIsFullscreen(
@@ -59,9 +63,17 @@ export default function FeedPostVideo({ lesson }) {
   const handleProgress = ({ position, percent }) => {
     if (Math.abs(percent - lastSaved.current) < 1) return
     lastSaved.current = percent
-    api.post(`/cabinet/education/lessons/${lesson.id}/progress/`, {
-      position: Math.floor(position), percent,
-    }).catch(() => {})
+    clearTimeout(retryRef.current)
+    const save = (attempt = 0) => {
+      api.post(`/cabinet/education/lessons/${lesson.id}/progress/`, {
+        position: Math.floor(position), percent,
+      }).catch(() => {
+        // One silent retry after 5 s on network error (e.g. brief 3G gap).
+        // Beyond one retry we give up to avoid stale/duplicate saves.
+        if (attempt === 0) retryRef.current = setTimeout(() => save(1), 5000)
+      })
+    }
+    save()
   }
 
   const toggleFullscreen = async () => {

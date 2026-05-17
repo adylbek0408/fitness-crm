@@ -251,26 +251,33 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
             'is_completed': progress.is_completed if progress else False,
         }
 
-        # Prev/next lesson IDs for in-player navigation — avoids client
-        # fetching page_size=200 just to compute neighbours.
+        # Prev/next lesson IDs for in-player navigation.
+        # Use keyset pagination against the queryset ordering (-published_at,
+        # -created_at) so we never load all lesson IDs into memory.
         try:
-            nav_items = list(
-                self.filter_queryset(self.get_queryset())
-                .values('id', 'title')
+            nav_qs = self.filter_queryset(self.get_queryset())
+            from django.db.models import Q as _Q
+            pa, ca = lesson.published_at, lesson.created_at
+
+            # "prev" in the list = newer item = published_at AFTER current
+            prev_item = (
+                nav_qs.filter(
+                    _Q(published_at__gt=pa) |
+                    _Q(published_at=pa, created_at__gt=ca)
+                ).order_by('published_at', 'created_at').values('id', 'title').first()
             )
-            idx = next((i for i, x in enumerate(nav_items) if x['id'] == lesson.id), -1)
-            if idx > 0:
-                data['prev_id']    = str(nav_items[idx - 1]['id'])
-                data['prev_title'] = nav_items[idx - 1]['title']
-            else:
-                data['prev_id']    = None
-                data['prev_title'] = None
-            if idx != -1 and idx < len(nav_items) - 1:
-                data['next_id']    = str(nav_items[idx + 1]['id'])
-                data['next_title'] = nav_items[idx + 1]['title']
-            else:
-                data['next_id']    = None
-                data['next_title'] = None
+            # "next" in the list = older item = published_at BEFORE current
+            next_item = (
+                nav_qs.filter(
+                    _Q(published_at__lt=pa) |
+                    _Q(published_at=pa, created_at__lt=ca)
+                ).order_by('-published_at', '-created_at').values('id', 'title').first()
+            )
+
+            data['prev_id']    = str(prev_item['id'])    if prev_item else None
+            data['prev_title'] = prev_item['title']       if prev_item else None
+            data['next_id']    = str(next_item['id'])    if next_item else None
+            data['next_title'] = next_item['title']       if next_item else None
         except Exception:
             logger.warning('Failed to compute lesson nav for %s', lesson.id, exc_info=True)
             data['prev_id'] = data['prev_title'] = None
@@ -329,15 +336,19 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         # last_watched_at is auto_now in the model — ensure update_or_create
         # actually bumps it even when nothing else changed.
         from django.utils import timezone as _tz
-        # Use get_or_create + explicit save instead of update_or_create to
-        # avoid the race condition where two concurrent requests from the same
-        # client (two browser tabs) both see no row and both try to INSERT,
-        # hitting the unique_together constraint and raising IntegrityError.
-        progress, _ = LessonProgress.objects.get_or_create(
-            client=client,
-            lesson=lesson,
-            defaults={'last_position_sec': 0, 'percent_watched': 0},
-        )
+        # get_or_create guards against duplicate INSERTs from two concurrent
+        # requests (e.g. two browser tabs), but if both requests race past the
+        # SELECT at the same millisecond, both attempt INSERT → IntegrityError.
+        # The except clause handles that edge case gracefully.
+        from django.db import IntegrityError as _IntegrityError
+        try:
+            progress, _ = LessonProgress.objects.get_or_create(
+                client=client,
+                lesson=lesson,
+                defaults={'last_position_sec': 0, 'percent_watched': 0},
+            )
+        except _IntegrityError:
+            progress = LessonProgress.objects.get(client=client, lesson=lesson)
         now = _tz.now()
         # Never let percent go backward (two-device race, seek-back, etc.)
         new_percent = max(progress.percent_watched, percent)

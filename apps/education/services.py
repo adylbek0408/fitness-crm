@@ -409,6 +409,19 @@ class CloudflareStreamService:
         if not ts or not sig:
             return False
 
+        # Replay attack protection: reject webhooks older than 5 minutes.
+        import time as _time
+        try:
+            ts_int = int(ts)
+            if abs(_time.time() - ts_int) > 300:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    'CF webhook: timestamp too old or too far in future (ts=%s)', ts
+                )
+                return False
+        except (ValueError, TypeError):
+            return False
+
         signed_payload = f'{ts}.'.encode('utf-8') + body
         expected = hmac.new(
             secret.encode('utf-8'),

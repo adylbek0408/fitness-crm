@@ -86,6 +86,23 @@ export default function StreamLive() {
 
     let ok = true
     let inflight = false
+    let timerId = null
+
+    // Adaptive interval: fast while stream is live (8 s), slow while waiting
+    // for it to start (backoff 8→16→32→60 s, cap 60 s). This saves ~80%
+    // of requests and battery when a student opens the page early.
+    let waitTicks = 0
+    const getInterval = (isLive) => {
+      if (isLive) { waitTicks = 0; return 8000 }
+      waitTicks++
+      return Math.min(8000 * Math.pow(1.5, waitTicks - 1), 60000)
+    }
+
+    const schedule = (ms) => {
+      if (!ok) return
+      timerId = setTimeout(tick, ms)
+    }
+
     const tick = async () => {
       if (streamEndedRef.current) return
       if (inflight) return       // skip if previous tick still running (slow network)
@@ -104,13 +121,16 @@ export default function StreamLive() {
             setAccessDenied(reason)
           }
           setInitializing(false)
+          schedule(getInterval(false))
           return
         }
 
         setStream(s)
         setAccessDenied('')
         setInitializing(false)
-        if (s.status !== 'live') return
+        const isLive = s.status === 'live'
+        schedule(getInterval(isLive))
+        if (!isLive) return
 
         if (!joinedRef.current) {
           joinedRef.current = true
@@ -123,13 +143,14 @@ export default function StreamLive() {
         api.get(`/cabinet/education/streams/${s.id}/viewers/`)
           .then(r2 => { if (ok) setViewers(r2.data || []) })
           .catch(() => {})
-      } catch {}
+      } catch {
+        schedule(getInterval(false))
+      }
       finally { inflight = false }
     }
 
     tick()
-    const id = setInterval(tick, 8000)
-    return () => { ok = false; clearInterval(id); joinedRef.current = false }
+    return () => { ok = false; clearTimeout(timerId); joinedRef.current = false }
   }, [streamId])
 
   // ── Guest invite polling ──────────────────────────────────────────────────

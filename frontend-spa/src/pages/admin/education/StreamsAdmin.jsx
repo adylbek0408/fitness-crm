@@ -355,7 +355,31 @@ export default function StreamsAdmin() {
   }
 
   const copy = (text, key) => {
-    navigator.clipboard?.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(''), 2000) })
+    const done = () => { setCopied(key); setTimeout(() => setCopied(''), 2000) }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {
+        // Fallback for HTTP or older browsers
+        try {
+          const el = document.createElement('textarea')
+          el.value = text
+          el.style.position = 'fixed'; el.style.opacity = '0'
+          document.body.appendChild(el); el.select()
+          document.execCommand('copy')
+          document.body.removeChild(el)
+          done()
+        } catch {}
+      })
+    } else {
+      try {
+        const el = document.createElement('textarea')
+        el.value = text
+        el.style.position = 'fixed'; el.style.opacity = '0'
+        document.body.appendChild(el); el.select()
+        document.execCommand('copy')
+        document.body.removeChild(el)
+        done()
+      } catch {}
+    }
   }
 
   const studentLink = id => `${window.location.origin}/cabinet/stream?id=${id}`

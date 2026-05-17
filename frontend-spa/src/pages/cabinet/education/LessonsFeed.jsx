@@ -81,6 +81,7 @@ export default function LessonsFeed() {
   const [visible, setVisible]   = useState(BATCH)
   const [loading, setLoading]   = useState(true)
   const [error,   setError]     = useState('')
+  const [retryKey, setRetryKey] = useState(0)
   const sentinelRef = useRef(null)
   const nav = useNavigate()
 
@@ -90,7 +91,7 @@ export default function LessonsFeed() {
     api.get('/cabinet/me/').then(r => setGroup(r.data.current_group || null)).catch(() => {})
   }, [])
 
-  // Fetch lessons — abort on tab change / unmount
+  // Fetch lessons — abort on tab change / unmount / retry
   useEffect(() => {
     if (!localStorage.getItem('cabinet_access_token')) { nav('/cabinet'); return }
     setLoading(true); setError('')
@@ -108,7 +109,7 @@ export default function LessonsFeed() {
       })
       .finally(() => setLoading(false))
     return () => ctrl.abort()
-  }, [tab, nav])
+  }, [tab, nav, retryKey])
 
   // Reset pagination when filter/search changes
   useEffect(() => { setVisible(BATCH) }, [search, tab])
@@ -236,7 +237,13 @@ export default function LessonsFeed() {
 
         {error && (
           <div className="mx-2 mb-3 p-3 rounded-2xl bg-white/80 text-rose-700 text-[13px] text-center shadow-sm">
-            {error}
+            {error}{' '}
+            <button
+              className="underline font-medium"
+              onClick={() => setRetryKey(k => k + 1)}
+            >
+              Повторить
+            </button>
           </div>
         )}
 
