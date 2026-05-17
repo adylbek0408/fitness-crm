@@ -89,16 +89,19 @@ export default function StreamsAdmin() {
 
   const reload = () => {
     setLoading(true)
-    api.get(`/education/streams/?page=${page}&page_size=${PAGE_SIZE}`)
+    // Load all streams at once so client-side search works across the full
+    // list, not just the current page. Streams are typically a few hundred.
+    api.get('/education/streams/?page_size=500')
       .then(r => {
-        if (Array.isArray(r.data)) { setStreams(r.data); setTotalCount(r.data.length) }
-        else { setStreams(r.data?.results || []); setTotalCount(r.data?.count ?? 0) }
+        const list = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        setStreams(list)
+        setTotalCount(list.length)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { reload() }, [page]) // eslint-disable-line
+  useEffect(() => { reload() }, []) // eslint-disable-line
 
   // Recording preparation progress per stream id.
   // Sources merged in priority order:
@@ -176,7 +179,7 @@ export default function StreamsAdmin() {
   }, [streams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.get('/groups/?page_size=200&training_format=online').then(r => setGroups(pickList(r.data))).catch(() => {})
+    api.get('/groups/?page_size=200').then(r => setGroups(pickList(r.data))).catch(() => {})
   }, [])
 
   // Client-side filter
@@ -396,7 +399,7 @@ export default function StreamsAdmin() {
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Эфиры</h1>
             <p className="text-xs text-gray-500 flex gap-2">
               <span className="text-rose-600 font-semibold">{counts.live} live</span>·
-              <span>{counts.scheduled} готовы</span>·
+              <span>{counts.scheduled} запланировано</span>·
               <span>{counts.archived} архив</span>
             </p>
           </div>

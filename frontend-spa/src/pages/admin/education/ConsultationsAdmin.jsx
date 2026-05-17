@@ -45,7 +45,7 @@ const STATUS_TABS = [
 
 const STATUS_MAP = {
   active:    { label: 'Активна',   cls: 'bg-emerald-100 text-emerald-700' },
-  cancelled: { label: 'Завершена', cls: 'bg-gray-100 text-gray-600' },
+  cancelled: { label: 'Отменена',  cls: 'bg-rose-100 text-rose-700' },
   expired:   { label: 'Истекла',   cls: 'bg-amber-100 text-amber-700' },
   used:      { label: 'Завершена', cls: 'bg-gray-100 text-gray-600' },
 }
@@ -84,16 +84,20 @@ export default function ConsultationsAdmin() {
 
   const reload = () => {
     setLoading(true)
-    api.get(`/education/consultations/?page=${page}&page_size=${PAGE_SIZE}`)
+    // Load all consultations at once so client-side search works across the
+    // full dataset, not just the current page. Consultations are typically
+    // few hundred at most.
+    api.get('/education/consultations/?page_size=500')
       .then(r => {
-        if (Array.isArray(r.data)) { setItems(r.data); setTotalCount(r.data.length) }
-        else { setItems(r.data?.results || []); setTotalCount(r.data?.count ?? 0) }
+        const list = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        setItems(list)
+        setTotalCount(list.length)
       })
       .catch(e => setAlertModal({ title: 'Не удалось загрузить', message: e.response?.data?.detail || e.message, variant: 'error' }))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { reload() }, [page]) // eslint-disable-line
+  useEffect(() => { reload() }, []) // eslint-disable-line
   useEffect(() => {
     api.get('/trainers/?page_size=200').then(r => setTrainers(pickList(r.data))).catch(() => {})
     api.get('/clients/?page_size=200').then(r => setClients(pickList(r.data))).catch(() => {})

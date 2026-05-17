@@ -93,7 +93,7 @@ export default function LessonsAdmin() {
 
   useEffect(() => {
     reload()
-    api.get('/groups/?page_size=200&training_format=online')
+    api.get('/groups/?page_size=200')
       .then(r => setGroups(pickList(r.data)))
       .catch(() => {})
   }, [])
@@ -356,9 +356,14 @@ export default function LessonsAdmin() {
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Уроки</h1>
               <p className="text-xs text-gray-500 truncate">
-                Всего <span className="font-semibold text-gray-700">{lessons.length}</span>
-                {' · '}
-                Опубликовано <span className="font-semibold text-emerald-600">{lessons.filter(l => l.is_published).length}</span>
+                {(() => {
+                  const mediaLessons = lessons.filter(l => l.lesson_type !== 'text')
+                  return <>
+                    Всего <span className="font-semibold text-gray-700">{mediaLessons.length}</span>
+                    {' · '}
+                    Опубликовано <span className="font-semibold text-emerald-600">{mediaLessons.filter(l => l.is_published).length}</span>
+                  </>
+                })()}
               </p>
             </div>
           </div>
@@ -720,30 +725,30 @@ function LessonCard({
           </div>
         </div>
 
-        {/* Delete button — hover only, bottom-left */}
+        {/* Delete button — always visible on touch, hover-only on desktop */}
         <button
           onClick={e => { e.stopPropagation(); onDelete() }}
-          className="absolute bottom-2 left-2 w-8 h-8 rounded-full bg-white/95 text-rose-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg hover:bg-rose-50"
+          className="absolute bottom-2 left-2 w-8 h-8 rounded-full bg-white/95 text-rose-500 flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition shadow-lg hover:bg-rose-50"
           title="В корзину"
         >
           <Trash2 size={14} />
         </button>
 
-        {/* Thumbnail button — hover only */}
+        {/* Thumbnail button — always visible on touch, hover-only on desktop */}
         {!isAudio && (
           <button
             onClick={e => { e.stopPropagation(); onSetThumbnail() }}
-            className="absolute bottom-2 left-12 w-8 h-8 rounded-full bg-white/95 text-blue-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg hover:bg-blue-50"
+            className="absolute bottom-2 left-12 w-8 h-8 rounded-full bg-white/95 text-blue-500 flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition shadow-lg hover:bg-blue-50"
             title="Обновить превью"
           >
             <Image size={14} />
           </button>
         )}
 
-        {/* Edit button — hover only */}
+        {/* Edit button — always visible on touch, hover-only on desktop */}
         <button
           onClick={e => { e.stopPropagation(); onEdit() }}
-          className={`absolute bottom-2 ${isAudio ? 'left-12' : 'left-[5.5rem]'} w-8 h-8 rounded-full bg-white/95 text-purple-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg hover:bg-purple-50`}
+          className={`absolute bottom-2 ${isAudio ? 'left-12' : 'left-[5.5rem]'} w-8 h-8 rounded-full bg-white/95 text-purple-500 flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition shadow-lg hover:bg-purple-50`}
           title="Редактировать"
         >
           <Pencil size={14} />

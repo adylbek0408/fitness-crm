@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BookOpen, Plus, Pencil, Trash2, Search, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react'
+import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
 import AdminLayout from '../../../components/AdminLayout'
 import GroupPicker, { GroupPickerLabel } from '../../../components/ui/GroupPicker'
@@ -185,6 +186,7 @@ function DeleteConfirm({ lesson, onClose, onDeleted }) {
 }
 
 export default function TextLessonsAdmin() {
+  const { user } = useOutletContext()
   const [lessons, setLessons] = useState([])
   const [groups,  setGroups]  = useState([])
   const [loading, setLoading] = useState(true)
@@ -197,7 +199,7 @@ export default function TextLessonsAdmin() {
     try {
       const [lr, gr] = await Promise.all([
         api.get('/education/lessons/?page_size=500&type=text'),
-        api.get('/groups/?page_size=200&training_format=online'),
+        api.get('/groups/?page_size=200'),
       ])
       setLessons(pickList(lr.data))
       setGroups(pickList(gr.data))
@@ -231,7 +233,7 @@ export default function TextLessonsAdmin() {
   const handleDeleted = (id) => setLessons(prev => prev.filter(l => l.id !== id))
 
   return (
-    <AdminLayout>
+    <AdminLayout user={user}>
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
           <div className="flex items-center gap-2 flex-1">

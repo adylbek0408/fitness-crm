@@ -9,6 +9,11 @@ from core.models import UUIDTimestampedModel
 
 class ClientAccount(models.Model):
     """Cabinet access for client: login + password, one per client."""
+    # DRF's UserRateThrottle calls request.user.is_authenticated to decide
+    # whether to rate-limit by pk or by IP. ClientAccount is not a Django User
+    # so we declare this compatibility attribute explicitly.
+    is_authenticated = True
+
     client = models.OneToOneField(
         'Client', on_delete=models.CASCADE, related_name='cabinet_account',
     )

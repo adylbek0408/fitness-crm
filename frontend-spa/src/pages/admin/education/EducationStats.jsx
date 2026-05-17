@@ -43,7 +43,7 @@ export default function EducationStats() {
   }
 
   useEffect(() => {
-    api.get('/groups/?page_size=200&training_format=online')
+    api.get('/groups/?page_size=200')
       .then(r => setGroups(pickList(r.data)))
       .catch(() => {})
   }, [])
