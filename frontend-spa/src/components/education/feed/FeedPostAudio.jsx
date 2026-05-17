@@ -46,7 +46,12 @@ export default function FeedPostAudio({ lesson }) {
   if (phase === 'ready') {
     return (
       <div className="mx-3.5 mb-2 rounded-xl overflow-hidden">
-        <AudioPlayer src={playbackUrl} startAt={startAt} onTimeUpdate={handleProgress} />
+        <AudioPlayer
+          src={playbackUrl}
+          startAt={startAt}
+          onTimeUpdate={handleProgress}
+          onError={() => setPhase('idle')}
+        />
       </div>
     )
   }

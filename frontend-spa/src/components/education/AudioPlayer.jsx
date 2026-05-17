@@ -5,7 +5,7 @@ import { Play, Pause, Loader2 } from 'lucide-react'
  * Custom audio player — no native <audio controls> visible.
  * Fetches audio as blob so the source URL is hidden from DevTools.
  */
-export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
+export default function AudioPlayer({ src, onTimeUpdate, onError, startAt = 0 }) {
   const audioRef   = useRef(null)
   const [blobUrl,     setBlobUrl]     = useState('')
   const [playing,     setPlaying]     = useState(false)
@@ -37,6 +37,7 @@ export default function AudioPlayer({ src, onTimeUpdate, startAt = 0 }) {
         if (e.name === 'AbortError') return
         setError('Не удалось загрузить аудио.')
         setLoading(false)
+        onError?.()
       })
     return () => {
       ac.abort()
