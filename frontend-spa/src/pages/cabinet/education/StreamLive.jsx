@@ -21,6 +21,7 @@ export default function StreamLive() {
 
   const [stream,       setStream]       = useState(null)
   const [streamEnded,  setStreamEnded]  = useState(false)
+  const [initializing, setInitializing] = useState(true)
   const [viewers,      setViewers]      = useState([])
   const [joined,       setJoined]       = useState(null)
   const [warning,      setWarning]      = useState('')
@@ -101,11 +102,13 @@ export default function StreamLive() {
           if (!s && (reason === 'payment_required' || (streamId && (reason === 'forbidden' || reason === 'not_found')))) {
             setAccessDenied(reason)
           }
+          setInitializing(false)
           return
         }
 
         setStream(s)
         setAccessDenied('')
+        setInitializing(false)
         if (s.status !== 'live') return
 
         if (!joinedRef.current) {
@@ -629,7 +632,7 @@ export default function StreamLive() {
                 : 'Этот эфир открыт другой группе. Свяжитесь с тренером для уточнения.'
             } />
         )}
-        {!stream && !streamEnded && !error && !accessDenied && (
+        {!stream && !streamEnded && !error && !accessDenied && !initializing && (
           <EmptyState icon={Radio} iconBg="#fce7f3" iconColor="#ec4899"
             title="Сейчас эфиров нет" text="Когда тренер начнёт трансляцию — она появится здесь." />
         )}

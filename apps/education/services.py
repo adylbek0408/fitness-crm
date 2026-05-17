@@ -120,7 +120,7 @@ class CloudflareStreamService:
         body = {
             'maxDurationSeconds': max_duration_sec,
             'meta': {'name': name or 'lesson'},
-            'requireSignedURLs': False,
+            'requireSignedURLs': True,
         }
         resp = requests.post(url, headers=cls._headers(), json=body, timeout=20)
         resp.raise_for_status()
@@ -203,7 +203,7 @@ class CloudflareStreamService:
             'meta': {'name': name or 'stream'},
             'recording': {
                 'mode': 'automatic',  # ← key: auto-save the live as a video
-                'requireSignedURLs': False,
+                'requireSignedURLs': True,
                 'allowedOrigins': [],
             },
         }

@@ -381,11 +381,11 @@ function LessonDetailModal({ lesson, onClose }) {
           </button>
         </div>
         <div className="overflow-y-auto flex-1">
-          {lesson.viewers.length === 0 && (
+          {(lesson.viewers || []).length === 0 && (
             <div className="p-10 text-center text-gray-400">Этот урок ещё никто не открывал.</div>
           )}
           <div className="divide-y divide-gray-50">
-            {lesson.viewers.map(v => (
+            {(lesson.viewers || []).map(v => (
               <div key={v.client_id} className="flex items-center gap-3 px-4 py-3">
                 <div className="w-9 h-9 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 font-bold text-sm shrink-0">
                   {(v.first_name?.[0] || '?').toUpperCase()}

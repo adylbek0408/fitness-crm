@@ -111,7 +111,6 @@ export default function VodPlayer({
       onProviderChange={handleProviderChange}
       onTimeUpdate={handleTimeUpdate}
       onCanPlay={handleCanPlay}
-      onPlay={() => setIsWaiting(true)}
       onPlaying={() => setIsWaiting(false)}
       onWaiting={() => setIsWaiting(true)}
       onContextMenu={e => e.preventDefault()}

@@ -25,10 +25,15 @@ export default function StreamArchive() {
       nav('/cabinet'); return
     }
     setLoading(true); setError('')
-    api.get('/cabinet/education/lessons/?source=stream')
+    const controller = new AbortController()
+    api.get('/cabinet/education/lessons/?source=stream', { signal: controller.signal })
       .then(r => setLessons(pickList(r.data)))
-      .catch(e => setError(e.response?.data?.detail || 'Ошибка загрузки'))
+      .catch(e => {
+        if (e.name === 'CanceledError' || e.code === 'ERR_CANCELED') return
+        setError(e.response?.data?.detail || 'Ошибка загрузки')
+      })
       .finally(() => setLoading(false))
+    return () => controller.abort()
   }, [nav])
 
   const filtered = useMemo(() => {

@@ -26,6 +26,7 @@ export default function ConsultationRoom() {
   const pollRef = useRef(null)
 
   const handleJoin = async () => {
+    if (!name.trim()) { setError('Введите ваше имя для входа в комнату.'); return }
     setLoading(true); setError('')
     try {
       const r = await api.get(`/consultation/${uuid}/`, {
@@ -186,6 +187,8 @@ export default function ConsultationRoom() {
         try { apiRef.current.dispose() } catch {}
         apiRef.current = null
       }
+      const scriptEl = document.getElementById(scriptId)
+      if (scriptEl) scriptEl.remove()
     }
   }, [info])
 

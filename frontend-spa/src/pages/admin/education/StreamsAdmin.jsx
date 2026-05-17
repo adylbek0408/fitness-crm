@@ -268,7 +268,10 @@ export default function StreamsAdmin() {
     if (!editStream) return
     setEditSaving(true)
     try {
-      // Edit the archived lesson metadata (title, description, groups)
+      await api.patch(`/education/streams/${editStream.id}/`, {
+        title: editForm.title,
+        description: editForm.description,
+      })
       if (editStream.archived_lesson) {
         await api.patch(`/education/lessons/${editStream.archived_lesson}/metadata/`, {
           title: editForm.title,
