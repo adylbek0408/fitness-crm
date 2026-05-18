@@ -53,11 +53,7 @@ export default function Login({ defaultMode = 'staff' }) {
 
           {/* Лого */}
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center overflow-hidden shrink-0"
-                 style={{ background: '#130a1e', boxShadow: '0 4px 20px rgba(147,51,234,0.35)' }}>
-              <img src="/logo.png" alt="Айым Сыры" className="w-full h-full object-contain"
-                   style={{ mixBlendMode: 'screen' }} />
-            </div>
+            <img src="/logo.png" alt="Айым Сыры" className="w-16 h-16 object-contain shrink-0" />
             <div>
               <p className="font-bold text-base" style={{ color: 'var(--text)' }}>Айым Сыры CRM</p>
               <p className="text-xs" style={{ color: 'var(--text-xs)' }}>Fitness Center</p>
