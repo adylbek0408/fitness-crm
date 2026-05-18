@@ -591,7 +591,7 @@ class ConsultationStatusView(APIView):
 
     def get(self, request, room_uuid):
         try:
-            c = Consultation.objects.get(room_uuid=room_uuid)
+            c = Consultation.objects.get(room_uuid=room_uuid, deleted_at__isnull=True)
         except Consultation.DoesNotExist:
             return Response({'active': False, 'status': 'not_found'})
 
@@ -621,7 +621,7 @@ class PublicConsultationView(APIView):
 
     def get(self, request, room_uuid):
         try:
-            consultation = Consultation.objects.get(room_uuid=room_uuid)
+            consultation = Consultation.objects.get(room_uuid=room_uuid, deleted_at__isnull=True)
         except Consultation.DoesNotExist:
             return Response({'valid': False, 'reason': 'not_found'},
                             status=status.HTTP_404_NOT_FOUND)

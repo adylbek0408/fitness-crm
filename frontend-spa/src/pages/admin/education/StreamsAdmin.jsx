@@ -10,7 +10,7 @@ import { ru } from 'date-fns/locale'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
 import { pickList } from '../../../utils/format'
-import AdminLayout from '../../../components/AdminLayout'
+import AdminLayout, { useToast } from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import Pagination from '../../../components/Pagination'
@@ -46,6 +46,7 @@ const STATUS_TABS = [
 
 export default function StreamsAdmin() {
   const { user } = useOutletContext()
+  const toast = useToast()
   const [streams, setStreams] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
@@ -211,7 +212,7 @@ export default function StreamsAdmin() {
     try {
       await api.post('/education/streams/', { title: form.title.trim(), description: '', groups: form.group_ids })
       setForm({ title: '', group_ids: [] }); setShowForm(false); reload()
-      setAlertModal({ title: 'Эфир создан', message: 'Скопируйте RTMP-ключ и запустите трансляцию.', variant: 'success' })
+      toast.success('Эфир создан')
     } catch (e) {
       setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })
     } finally { setCreating(false) }
@@ -222,7 +223,7 @@ export default function StreamsAdmin() {
     if (!confirmEnd) return
     try {
       await api.post(`/education/streams/${confirmEnd.id}/end/`); setConfirmEnd(null); reload()
-      setAlertModal({ title: 'Эфир завершён', message: 'Запись появится в архиве после обработки Cloudflare.', variant: 'success' })
+      toast.success('Эфир завершён')
     } catch (e) { setConfirmEnd(null); setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' }) }
   }
 
@@ -231,7 +232,7 @@ export default function StreamsAdmin() {
     if (!confirmDelete) return
     try {
       await api.delete(`/education/streams/${confirmDelete.id}/`); setConfirmDelete(null); reload()
-      setAlertModal({ title: 'Эфир удалён', message: '', variant: 'success' })
+      toast.success('Эфир удалён')
     } catch (e) { setConfirmDelete(null); setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' }) }
   }
 
@@ -283,7 +284,7 @@ export default function StreamsAdmin() {
         })
       }
       setEditStream(null); reload()
-      setAlertModal({ title: 'Сохранено', message: '', variant: 'success' })
+      toast.success('Сохранено')
     } catch (e) {
       setAlertModal({ title: 'Ошибка сохранения', message: e.response?.data?.detail || e.message, variant: 'error' })
     } finally { setEditSaving(false) }

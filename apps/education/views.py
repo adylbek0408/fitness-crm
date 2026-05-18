@@ -101,7 +101,7 @@ def _migrate_recording_to_r2(lesson_id: str) -> None:
 
         logger.info('r2-migrate start lesson=%s', lesson_id)
         try:
-            lesson = Lesson.objects.filter(id=lesson_id).first()
+            lesson = Lesson.objects.filter(id=lesson_id, deleted_at__isnull=True).first()
             if not lesson or not lesson.stream_uid:
                 return
             if lesson.r2_key:
@@ -152,7 +152,7 @@ def _migrate_recording_to_r2(lesson_id: str) -> None:
             # Flip lesson to R2 atomically
             from django.db import transaction
             with transaction.atomic():
-                lesson = Lesson.objects.select_for_update().get(id=lesson_id)
+                lesson = Lesson.objects.select_for_update().filter(deleted_at__isnull=True).get(id=lesson_id)
                 lesson.r2_key = r2_key
                 lesson.stream_uid = ''
                 lesson.save(update_fields=['r2_key', 'stream_uid', 'thumbnail_url', 'updated_at'])
@@ -1696,7 +1696,7 @@ class CFStreamWebhookView(APIView):
                     # exists (e.g. webhook arrived twice and the prior call
                     # created the row before this transaction got the lock),
                     # link it instead of creating a duplicate.
-                    lesson = Lesson.objects.filter(stream_uid=video_uid).first()
+                    lesson = Lesson.objects.filter(stream_uid=video_uid, deleted_at__isnull=True).first()
                     if not lesson:
                         lesson = Lesson.objects.create(
                             title=f"Эфир: {stream.title}",
@@ -1730,7 +1730,7 @@ class CFStreamWebhookView(APIView):
         # Case 2: regular uploaded video became ready — backfill metadata
         # and publish if it was waiting for CF (async upload from a stream).
         if video_uid:
-            lesson = Lesson.objects.filter(stream_uid=video_uid).first()
+            lesson = Lesson.objects.filter(stream_uid=video_uid, deleted_at__isnull=True).first()
             if lesson:
                 update = []
                 if duration and not lesson.duration_sec:

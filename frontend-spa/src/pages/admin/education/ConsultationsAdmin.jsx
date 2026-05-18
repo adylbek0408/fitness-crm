@@ -10,7 +10,7 @@ import { ru } from 'date-fns/locale'
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
 import { pickList } from '../../../utils/format'
-import AdminLayout from '../../../components/AdminLayout'
+import AdminLayout, { useToast } from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import Pagination from '../../../components/Pagination'
@@ -52,6 +52,7 @@ const STATUS_MAP = {
 
 export default function ConsultationsAdmin() {
   const { user } = useOutletContext()
+  const toast = useToast()
   const [items, setItems] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
@@ -167,7 +168,7 @@ export default function ConsultationsAdmin() {
     try {
       await api.post(`/education/consultations/${confirmStop.id}/stop/`)
       setConfirmStop(null); reload()
-      setAlertModal({ title: 'Консультация завершена', message: 'Комната закрыта. Ученик увидит сообщение в течение 10 секунд.', variant: 'success' })
+      toast.success('Консультация завершена')
     } catch (e) {
       setConfirmStop(null)
       setAlertModal({ title: 'Ошибка', message: e.response?.data?.detail || e.message, variant: 'error' })

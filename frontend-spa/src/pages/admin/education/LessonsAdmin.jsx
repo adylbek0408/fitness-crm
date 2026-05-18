@@ -8,7 +8,7 @@ import {
 import { useOutletContext } from 'react-router-dom'
 import api from '../../../api/axios'
 import { pickList } from '../../../utils/format'
-import AdminLayout from '../../../components/AdminLayout'
+import AdminLayout, { useToast } from '../../../components/AdminLayout'
 import AlertModal from '../../../components/AlertModal'
 import ConfirmModal from '../../../components/ConfirmModal'
 import VodPlayer from '../../../components/education/VodPlayer'
@@ -22,6 +22,7 @@ const PAGE_SIZE = 12
 export default function LessonsAdmin() {
   const { user } = useOutletContext()
   const { startUpload } = useUploads()
+  const toast = useToast()
   const [lessons, setLessons]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [groups, setGroups]     = useState([])
@@ -291,7 +292,7 @@ export default function LessonsAdmin() {
       await api.delete(`/education/lessons/${confirmDelete.id}/`)
       setConfirmDelete(null)
       reload()
-      setAlertModal({ title: 'Урок удалён', message: '', variant: 'success' })
+      toast.success('Урок удалён')
     } catch (e) {
       setConfirmDelete(null)
       setAlertModal({
@@ -323,7 +324,7 @@ export default function LessonsAdmin() {
         variant: 'error',
       })
     } else {
-      setAlertModal({ title: `Удалено ${ids.length} урок${ids.length === 1 ? '' : ids.length < 5 ? 'а' : 'ов'}`, message: '', variant: 'success' })
+      toast.success(`Удалено ${ids.length} урок${ids.length === 1 ? '' : ids.length < 5 ? 'а' : 'ов'}`)
     }
   }
 
