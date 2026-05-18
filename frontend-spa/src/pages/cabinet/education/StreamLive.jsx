@@ -387,6 +387,21 @@ export default function StreamLive() {
 
   const watermarkText = joined?.watermark?.text || ''
   const isLive = stream && stream.status === 'live'
+
+  // Extract the signed token from stream.playback_url so CloudflareStreamPlayer
+  // builds signed HLS + WHEP URLs. The backend returns:
+  //   https://{subdomain}/{JWT_or_uid}/webRTC/play  OR
+  //   https://{subdomain}/{JWT_or_uid}/manifest/video.m3u8
+  // We only need the first path segment (JWT or raw uid).
+  const livePlaybackUid = (() => {
+    const url = stream?.playback_url || ''
+    try {
+      const seg = new URL(url).pathname.split('/').filter(Boolean)[0]
+      return seg || stream?.cf_playback_id || ''
+    } catch {
+      return stream?.cf_playback_id || ''
+    }
+  })()
   // Show P2P trainer stream only while we have a healthy P2P link. If the
   // connection failed (or never established), fall back to CF playback so
   // the student isn't stuck on a black screen.
@@ -418,7 +433,7 @@ export default function StreamLive() {
               // as the video for any fullscreen path (shell or native).
               <CloudflareStreamPlayer
                 ref={playerRef}
-                uid={stream.cf_playback_id}
+                uid={livePlaybackUid}
                 subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK}
                 live
                 watermarkText={watermarkText}
