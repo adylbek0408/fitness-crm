@@ -53,10 +53,10 @@ export default function Login({ defaultMode = 'staff' }) {
 
           {/* Лого */}
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center overflow-hidden shrink-0"
-                 style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)', boxShadow: '0 4px 14px rgba(190,24,93,0.3)' }}>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center overflow-hidden shrink-0"
+                 style={{ background: '#130a1e', boxShadow: '0 4px 20px rgba(147,51,234,0.35)' }}>
               <img src="/logo.png" alt="Айым Сыры" className="w-full h-full object-contain"
-                   style={{ mixBlendMode: 'multiply' }} />
+                   style={{ mixBlendMode: 'screen' }} />
             </div>
             <div>
               <p className="font-bold text-base" style={{ color: 'var(--text)' }}>Айым Сыры CRM</p>

@@ -121,11 +121,8 @@ export default function AdminLayout({ children, user }) {
       {/* Лого */}
       <div className="px-4 pt-5 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden"
-               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
-            <img src="/logo.png" alt="Айым Сыры" className="w-full h-full object-contain"
-                 style={{ mixBlendMode: 'multiply' }} />
-          </div>
+          <img src="/logo.png" alt="Айым Сыры" className="w-12 h-12 object-contain shrink-0"
+               style={{ mixBlendMode: 'screen' }} />
           <div>
             <p className="text-white text-sm font-bold leading-tight tracking-tight">Айым Сыры CRM</p>
           </div>
@@ -186,11 +183,8 @@ export default function AdminLayout({ children, user }) {
           >
             <Menu size={20} />
           </button>
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden"
-               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
-            <img src="/logo.png" alt="Айым Сыры" className="w-full h-full object-contain"
-                 style={{ mixBlendMode: 'multiply' }} />
-          </div>
+          <img src="/logo.png" alt="Айым Сыры" className="w-10 h-10 object-contain shrink-0"
+               style={{ mixBlendMode: 'screen' }} />
           <span className="text-white font-semibold text-sm flex-1 truncate">
             {getActiveTitle(loc.pathname)}
           </span>

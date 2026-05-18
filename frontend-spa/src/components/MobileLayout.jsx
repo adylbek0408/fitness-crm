@@ -26,11 +26,8 @@ export default function MobileLayout({ children }) {
           paddingBottom: '0.75rem',
         }}>
         <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden"
-               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
-            <img src="/logo.png" alt="Айым Сыры" className="w-full h-full object-contain"
-                 style={{ mixBlendMode: 'multiply' }} />
-          </div>
+          <img src="/logo.png" alt="Айым Сыры" className="w-10 h-10 object-contain shrink-0"
+               style={{ mixBlendMode: 'screen' }} />
           <span className="font-bold text-sm" style={{ color: 'var(--text)', letterSpacing: '-0.015em' }}>
             Айым Сыры CRM
           </span>
