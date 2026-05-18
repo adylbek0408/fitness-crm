@@ -388,20 +388,23 @@ export default function StreamLive() {
   const watermarkText = joined?.watermark?.text || ''
   const isLive = stream && stream.status === 'live'
 
-  // Extract the signed token from stream.playback_url so CloudflareStreamPlayer
-  // builds signed HLS + WHEP URLs. The backend returns:
-  //   https://{subdomain}/{JWT_or_uid}/webRTC/play  OR
-  //   https://{subdomain}/{JWT_or_uid}/manifest/video.m3u8
-  // We only need the first path segment (JWT or raw uid).
-  const livePlaybackUid = (() => {
-    const url = stream?.playback_url || ''
+  // Stabilize the signed UID per CF playback input — backend generates a NEW
+  // JWT on every poll response, but CloudflareStreamPlayer fully restarts
+  // whenever `uid` changes (closes WHEP → black screen). We only need a fresh
+  // token when the underlying stream input changes, not every 8-second tick.
+  const [stableUid, setStableUid] = useState('')
+  useEffect(() => {
+    if (!stream?.cf_playback_id) return
+    const url = stream.playback_url || ''
     try {
       const seg = new URL(url).pathname.split('/').filter(Boolean)[0]
-      return seg || stream?.cf_playback_id || ''
+      setStableUid(seg || stream.cf_playback_id)
     } catch {
-      return stream?.cf_playback_id || ''
+      setStableUid(stream.cf_playback_id)
     }
-  })()
+  // Only update when the CF input itself changes (new stream), not on every poll.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream?.cf_playback_id])
   // Show P2P trainer stream only while we have a healthy P2P link. If the
   // connection failed (or never established), fall back to CF playback so
   // the student isn't stuck on a black screen.
@@ -433,7 +436,7 @@ export default function StreamLive() {
               // as the video for any fullscreen path (shell or native).
               <CloudflareStreamPlayer
                 ref={playerRef}
-                uid={livePlaybackUid}
+                uid={stableUid}
                 subdomain={stream.cf_subdomain || CF_SUBDOMAIN_FALLBACK}
                 live
                 watermarkText={watermarkText}
