@@ -24,6 +24,39 @@ function bonusPercentDisplay(bp) {
   return bp === null || bp === undefined ? 10 : bp
 }
 
+// ── Визуально заметный выбор даты (нативный пикер скрыт под стилизованной кнопкой) ──
+function DatePickerInput({ value, onChange }) {
+  const display = value
+    ? new Date(value + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null
+  return (
+    <label className="block relative cursor-pointer touch-manipulation">
+      <div className={`flex items-center gap-3 px-3 py-3 rounded-xl border-2 transition ${
+        value ? 'bg-violet-50' : 'bg-amber-50'
+      }`} style={value
+        ? { borderColor: '#7c3aed' }
+        : { borderColor: '#f59e0b', borderStyle: 'dashed' }
+      }>
+        <Calendar size={18} className="shrink-0" style={{ color: value ? '#7c3aed' : '#d97706' }} />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold" style={{ color: value ? '#6d28d9' : '#92400e' }}>
+            Дата дедлайна {!value && '— обязательно'}
+          </p>
+          <p className="text-sm font-medium truncate" style={{ color: value ? '#5b21b6' : '#b45309' }}>
+            {display || 'Нажмите, чтобы выбрать дату'}
+          </p>
+        </div>
+        {value
+          ? <Check size={14} className="shrink-0" style={{ color: '#7c3aed' }} />
+          : <span className="text-xs font-bold shrink-0" style={{ color: '#d97706' }}>▼</span>
+        }
+      </div>
+      <input type="date" value={value} onChange={onChange}
+        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" style={{ zIndex: 1 }} />
+    </label>
+  )
+}
+
 const DAY_LABELS = { Mon:'Пн', Tue:'Вт', Wed:'Ср', Thu:'Чт', Fri:'Пт', Sat:'Сб', Sun:'Вс' }
 const fmtSchedule = s => {
   if (!s) return '—'
@@ -467,8 +500,7 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
               <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
                 value={totalCost} onChange={e => setTotalCost(e.target.value)}
                 className="crm-mobile-input w-full" />
-              <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
-                className="crm-mobile-input w-full" />
+              <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
             </div>
           )}
           <div>
@@ -697,8 +729,7 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
               <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
                 value={totalCost} onChange={e => setTotalCost(e.target.value)}
                 className="crm-mobile-input w-full" />
-              <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
-                className="crm-mobile-input w-full" />
+              <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
             </div>
           )}
           <div>
@@ -929,7 +960,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Детали рассрочки</p>
                   <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
                     value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-mobile-input w-full" />
-                  <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className="crm-mobile-input w-full" />
+                  <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
                 </div>
               )}
               {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -1117,7 +1148,7 @@ function MobileReservationPanel({ client, clientId, onSuccess }) {
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Рассрочка</p>
                   <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
                     value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-mobile-input w-full" />
-                  <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className="crm-mobile-input w-full" />
+                  <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
                 </div>
               )}
               <div>
