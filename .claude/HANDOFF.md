@@ -1,38 +1,57 @@
-# HANDOFF — 2026-05-18 (сессия — Live stream 401 fix)
+# HANDOFF — 2026-05-18 (сессия — 7 CRM tasks)
 
 ## Что сделано в этой сессии
 
-### 1. Migration 0016 (коммит `3d22c27`)
-Удалены 3 устаревших индекса из education-моделей — убрал warning
-`makemigrations --check` при каждом деплое.
+### Commit `bbefe91` — 7 задач по управлению клиентами
 
-### 2. Live stream 401 fix (коммит `fe190c3`)
+**Task 1 — notes видна admin**: Уже было исправлено ранее (`notes` в `allowed` и `ClientUpdateSerializer`). Без изменений.
 
-**Причина:** `create_live_input` создаёт CF live input с
-`recording.requireSignedURLs: True`. Cloudflare propagates это на весь
-live input → HLS (`/manifest/video.m3u8`) и WebRTC (`/webRTC/play`)
-требуют подписанный JWT. Бэкенд возвращал сырые URL → 401.
+**Task 2 — скрыть бонусный блок для пробных клиентов**:
+- `ClientRegister.jsx`: бонусный блок скрыт когда `is_trial=true`
+- Валидация `bonus_percent` пропускается при `is_trial=true`
+- При отправке `bonus_percent=0` для пробных
+- В сводке строка «Бонус» убрана для пробных
 
-**Фикс:**
-- Новый метод `CloudflareStreamService.create_signed_live_urls(uid, client_id)`
-  в `apps/education/services.py` — RS256 JWT (тот же ключ что и для VOD),
-  `sub` = live input UID, возвращает `{hls_url, webrtc_url}` со встроенным токеном.
-- `CabinetStreamView` (GET `/streams/active/`) и `CabinetStreamJoinView`
-  (POST `/{id}/join/`) теперь используют `create_signed_live_urls`.
-- Проверено через curl: `playback_url` теперь содержит `eyJhbGciOiJSUzI1Ni.../webRTC/play`.
+**Task 3 — добавить в группу без закрытой рассрочки**: Уже работало корректно для статуса `new` (нет проверки на закрытие оплаты). Без изменений.
+
+**Task 4 — убрать выбор группы из регистрации + fix EnterPaymentPanel**:
+- `ClientRegister.jsx`: удалён весь блок выбора группы (Блок 5)
+- Убраны `groups` и `groupsLoading` state, useEffect загрузки групп
+- `MobileEnterPaymentPanel`: условие исправлено — показывается и для `active` клиентов без оплаты
+  (сценарий: trial→обычный→добавить в группу→ввести оплату)
+- Аналогичное исправление в `EnterPaymentPanel` (admin)
+
+**Task 5 — только «Отчислен» вручную**:
+- Backend `services.py`: `valid_statuses = ['expelled']`
+- Mobile: `STATUS_OPTIONS` теперь только `expelled`
+- Admin: все кнопки статуса отключены кроме `expelled` (tooltip «Авто» для остальных)
+
+**Task 6 — переименовать «Возврат» в «Заморозить»**:
+- `RefundModal.jsx`: «Возврат средств» → «Заморозить клиента», «Сделать возврат» → «Заморозить»
+- Mobile ClientDetail: блок «Возврат» → «Заморозить клиента», кнопка «Возврат» → «Заморозить»
+- Admin ClientDetail: секция «Возврат средств» → «Заморозить клиента»
+
+**Task 7 — смена training_format в панели редактирования**:
+- Backend `views.py`: `training_format` добавлен в `allowed` set в `edit_info`
+- При смене формата создаётся запись в `ClientStatusHistory` с note «Смена формата: X → Y»
+- Mobile `MobileEditInfoPanel`: добавлен переключатель Оффлайн/Онлайн + предупреждение при смене
+- Admin `EditInfoPanel`: добавлен переключатель Оффлайн/Онлайн + предупреждение при смене
+- `telegram_link` теперь передаётся только для онлайн-формата при сохранении
 
 ## Незакоммиченные изменения
-Нет — всё запушено, задеплоено.
+Нет.
 
 ## Текущий статус
-- Все изменения в production (`crm.aiym-syry.kg`).
-- Гарниcorn перезапущен (12:07:53 UTC), новый код активен.
-- Подпись работает: `SIGNING OK` подтверждено на сервере.
-- `playback_url` от API возвращает подписанный WebRTC URL.
+Все изменения закоммичены (`bbefe91`), не задеплоены.
 
 ## Следующий шаг
-Протестировать E2E:
-1. Запустить эфир с BroadcastPage
-2. Ученик открывает `/cabinet/stream` (свежий рефреш)
-3. 401 ошибок не должно быть
-4. Плеер грузит эфир
+Задеплоить на сервер:
+```bash
+bash /var/www/fitness-crm/deploy/update.sh
+```
+Проверить сценарии:
+1. Регистрация пробного клиента → бонусный блок скрыт
+2. trial→обычный→добавить в группу → появляется «Ввести оплату»
+3. Смена статуса вручную → только «Отчислен» доступен
+4. «Заморозить клиента» вместо «Возврат средств»
+5. Смена формата в редактировании → в истории статусов появляется запись
