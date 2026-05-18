@@ -1,44 +1,38 @@
-# HANDOFF — 2026-05-18 (сессия — Education live UI audit)
+# HANDOFF — 2026-05-18 (сессия — Live stream 401 fix)
 
 ## Что сделано в этой сессии
 
-### Live puppeteer audit всех разделов (коммит `c9b00fb`)
+### 1. Migration 0016 (коммит `3d22c27`)
+Удалены 3 устаревших индекса из education-моделей — убрал warning
+`makemigrations --check` при каждом деплое.
 
-Протестированы все 5 admin-страниц + кабинет студента через браузер.
-Найдено и исправлено **8 багов**:
+### 2. Live stream 401 fix (коммит `fe190c3`)
 
-**Backend:**
-- `ClientAccount.is_authenticated = True` — DRF `UserRateThrottle` вызывал
-  `request.user.is_authenticated` на `ClientAccount`, который не наследует Django User.
-  Результат: **500 на всех cabinet endpoints** (`/cabinet/me/`, уроки, эфиры и т.д.).
-  Добавлен атрибут класса `is_authenticated = True` в `apps/clients/models.py`.
+**Причина:** `create_live_input` создаёт CF live input с
+`recording.requireSignedURLs: True`. Cloudflare propagates это на весь
+live input → HLS (`/manifest/video.m3u8`) и WebRTC (`/webRTC/play`)
+требуют подписанный JWT. Бэкенд возвращал сырые URL → 401.
 
-**Admin UI:**
-- **LessonsAdmin** — кнопки удалить/превью/редактировать были `opacity-0 group-hover:opacity-100`
-  → полностью недоступны на тач-устройствах. Исправлено: `sm:opacity-0 sm:group-hover:opacity-100`
-  (постоянно видны на < 640px).
-- **LessonsAdmin** — счётчик "Всего X" включал текстовые уроки (которые скрыты из этого вида).
-  Теперь считает только video/audio.
-- **LessonsAdmin / StreamsAdmin / TextLessonsAdmin / EducationStats** — groups fetch
-  с `training_format=online` скрывал офлайн-группы из picker'а. Удалён фильтр.
-- **StreamsAdmin / ConsultationsAdmin** — client-side поиск работал только на текущей
-  странице (server pagination). Исправлено: `page_size=500`, все данные загружаются за раз.
-- **StreamsAdmin** — счётчик "готовы" → "запланировано".
-- **ConsultationsAdmin** — статус `cancelled` отображался как "Завершена" (серый),
-  неотличимо от `used`. Исправлено: "Отменена" с розовым бейджем.
-- **TextLessonsAdmin** — нет `useOutletContext` → `AdminLayout` не получал `user` → имя/роль
-  admin не отображались в сайдбаре.
+**Фикс:**
+- Новый метод `CloudflareStreamService.create_signed_live_urls(uid, client_id)`
+  в `apps/education/services.py` — RS256 JWT (тот же ключ что и для VOD),
+  `sub` = live input UID, возвращает `{hls_url, webrtc_url}` со встроенным токеном.
+- `CabinetStreamView` (GET `/streams/active/`) и `CabinetStreamJoinView`
+  (POST `/{id}/join/`) теперь используют `create_signed_live_urls`.
+- Проверено через curl: `playback_url` теперь содержит `eyJhbGciOiJSUzI1Ni.../webRTC/play`.
 
 ## Незакоммиченные изменения
-Нет — всё в коммите `c9b00fb`.
+Нет — всё запушено, задеплоено.
 
-## Следующий шаг — деплой на сервер
+## Текущий статус
+- Все изменения в production (`crm.aiym-syry.kg`).
+- Гарниcorn перезапущен (12:07:53 UTC), новый код активен.
+- Подпись работает: `SIGNING OK` подтверждено на сервере.
+- `playback_url` от API возвращает подписанный WebRTC URL.
 
-```bash
-bash /var/www/fitness-crm/deploy/update.sh
-```
-
-## После деплоя
-- Существующие ЛК-токены продолжают работать (нет новых миграций).
-- Проверить что кабинет студента открывается без 500 ошибки.
-- Убедиться что на мобиле в разделе "Видео-уроки" видны кнопки на карточках.
+## Следующий шаг
+Протестировать E2E:
+1. Запустить эфир с BroadcastPage
+2. Ученик открывает `/cabinet/stream` (свежий рефреш)
+3. 401 ошибок не должно быть
+4. Плеер грузит эфир
