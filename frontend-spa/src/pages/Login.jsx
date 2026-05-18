@@ -53,12 +53,13 @@ export default function Login({ defaultMode = 'staff' }) {
 
           {/* Лого */}
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center overflow-hidden"
-                 style={{ background: '#fff', boxShadow: '0 2px 8px rgba(190,24,93,0.15)' }}>
-              <img src="/logo.png" alt="Aiym Syry" className="w-full h-full object-contain p-1" />
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center overflow-hidden shrink-0"
+                 style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)', boxShadow: '0 4px 14px rgba(190,24,93,0.3)' }}>
+              <img src="/logo.png" alt="Айым Сыры" className="w-full h-full object-contain"
+                   style={{ mixBlendMode: 'multiply' }} />
             </div>
             <div>
-              <p className="font-bold text-base" style={{ color: 'var(--text)' }}>CRM система</p>
+              <p className="font-bold text-base" style={{ color: 'var(--text)' }}>Айым Сыры CRM</p>
               <p className="text-xs" style={{ color: 'var(--text-xs)' }}>Fitness Center</p>
             </div>
           </div>
@@ -144,7 +145,7 @@ export default function Login({ defaultMode = 'staff' }) {
           </p>
 
           <p className="text-center text-xs mt-6" style={{ color: '#d4b8c8' }}>
-            © 2026 CRM система
+            © 2026 Айым Сыры CRM
           </p>
       </div>
     </div>

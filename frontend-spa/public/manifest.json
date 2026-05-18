@@ -1,7 +1,7 @@
 {
-  "name": "Aiym Syry CRM",
-  "short_name": "Aiym Syry",
-  "description": "CRM система фитнес-школы Aiym Syry",
+  "name": "Айым Сыры CRM",
+  "short_name": "Айым Сыры",
+  "description": "CRM система фитнес-школы Айым Сыры",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#faf7f8",

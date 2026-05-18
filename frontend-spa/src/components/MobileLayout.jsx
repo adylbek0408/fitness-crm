@@ -26,12 +26,13 @@ export default function MobileLayout({ children }) {
           paddingBottom: '0.75rem',
         }}>
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center overflow-hidden"
-               style={{ background: '#fff' }}>
-            <img src="/logo.png" alt="Aiym Syry" className="w-full h-full object-contain p-0.5" />
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden"
+               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
+            <img src="/logo.png" alt="Айым Сыры" className="w-full h-full object-contain"
+                 style={{ mixBlendMode: 'multiply' }} />
           </div>
           <span className="font-bold text-sm" style={{ color: 'var(--text)', letterSpacing: '-0.015em' }}>
-            CRM система
+            Айым Сыры CRM
           </span>
         </div>
         <button type="button" onClick={logout}
