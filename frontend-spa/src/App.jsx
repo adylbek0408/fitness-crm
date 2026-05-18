@@ -8,6 +8,7 @@ import { RefreshProvider } from './contexts/RefreshContext'
 import { AuthProvider } from './contexts/AuthContext'
 import { UploadProvider } from './contexts/UploadContext'
 import UploadDock from './components/UploadDock'
+import { ToastProvider } from './components/ui/Toast'
 
 // ── Lazy chunks ──────────────────────────────────────────────────────────
 // Admin
@@ -67,6 +68,7 @@ export default function App() {
     <ErrorBoundary>
       <AuthProvider>
         <UploadProvider>
+        <ToastProvider>
         <BrowserRouter>
           <Suspense fallback={<RouteFallback />}>
             <Routes>
@@ -111,6 +113,7 @@ export default function App() {
           </Suspense>
           <UploadDock />
         </BrowserRouter>
+        </ToastProvider>
         </UploadProvider>
       </AuthProvider>
     </ErrorBoundary>

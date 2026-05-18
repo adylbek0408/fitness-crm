@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { ToastProvider } from './ui/Toast'
 import {
   LayoutDashboard, Layers2, UserCircle, Users,
   BarChart2, UserCog, LogOut, Trash2,
@@ -165,7 +164,6 @@ export default function AdminLayout({ children, user }) {
   )
 
   return (
-    <ToastProvider>
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
 
       {/* ══ SIDEBAR (Desktop ≥ lg) ══ */}
@@ -251,7 +249,6 @@ export default function AdminLayout({ children, user }) {
         </div>
       </main>
     </div>
-    </ToastProvider>
   )
 }
 
