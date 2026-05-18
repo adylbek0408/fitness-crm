@@ -66,7 +66,7 @@ export default function RefundModal({
           <div className={`w-12 h-12 rounded-2xl ${vs.iconBg} flex items-center justify-center mb-4`}>
             <AlertTriangle size={22} className={vs.iconColor} />
           </div>
-          <h3 className="text-lg font-bold text-slate-800 mb-2">Возврат средств</h3>
+          <h3 className="text-lg font-bold text-slate-800 mb-2">Заморозить клиента</h3>
           <p className="text-sm text-slate-500 mb-4">
             Клиент: <strong className="text-slate-700">{clientName}</strong>
             <br />
@@ -115,7 +115,7 @@ export default function RefundModal({
             className={`flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-60 ${vs.btnBg} shadow-lg ${vs.btnShadow} flex items-center justify-center gap-2`}
           >
             {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            Сделать возврат
+            Заморозить
           </button>
         </div>
       </div>

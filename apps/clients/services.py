@@ -193,9 +193,9 @@ class ClientService(BaseService):
         return client
 
     def change_status(self, client_id: str, new_status: str, user=None) -> Client:
-        valid_statuses = ['active', 'completed', 'expelled', 'frozen']
+        valid_statuses = ['expelled']
         if new_status not in valid_statuses:
-            raise ValidationError(f"Invalid status: {new_status}")
+            raise ValidationError(f"Ручная смена статуса доступна только для «Отчислен». Остальные статусы меняются автоматически.")
         client = self.get_client_or_raise(client_id)
         if new_status == 'active' and not client.group_id:
             raise ValidationError('Статус «Активный» доступен только у клиента, записанного в группу.')

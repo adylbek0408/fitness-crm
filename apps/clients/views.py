@@ -266,8 +266,12 @@ class ClientViewSet(viewsets.ModelViewSet):
                 data.pop('group', None)
                 data.pop('trainer', None)
 
-        allowed = {'first_name', 'last_name', 'phone', 'group', 'second_group', 'trainer', 'telegram_link', 'notes'}
+        allowed = {'first_name', 'last_name', 'phone', 'group', 'second_group', 'trainer', 'telegram_link', 'notes', 'training_format'}
         filtered = {k: v for k, v in data.items() if k in allowed}
+
+        # Detect training_format change for audit log
+        old_training_format = instance.training_format
+        new_training_format = filtered.get('training_format')
 
         if filtered:
             serializer = ClientUpdateSerializer(instance, data=filtered, partial=True)
@@ -276,6 +280,18 @@ class ClientViewSet(viewsets.ModelViewSet):
                 instance = self.service.update_client(str(instance.id), dict(serializer.validated_data))
             except ValidationError as e:
                 return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+            if new_training_format and new_training_format != old_training_format:
+                FORMAT_LABEL = {'online': 'Онлайн', 'offline': 'Оффлайн'}
+                from .models import ClientStatusHistory
+                ClientStatusHistory.objects.create(
+                    client=instance,
+                    old_status=old_training_format,
+                    new_status=new_training_format,
+                    changed_by=request.user,
+                    changed_by_name=self.service._get_user_snap(request.user),
+                    note=f'Смена формата: {FORMAT_LABEL.get(old_training_format, old_training_format)} → {FORMAT_LABEL.get(new_training_format, new_training_format)}',
+                )
         else:
             instance.refresh_from_db()
 

@@ -43,6 +43,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
   const [notes, setNotes] = useState(client.notes || '')
   const [isTrial, setIsTrial] = useState(client.is_trial || false)
+  const [trainingFormat, setTrainingFormat] = useState(client.training_format || 'offline')
   const [groupId, setGroupId] = useState(client.group?.id || '')
   const [groups, setGroups] = useState([])
   const [gLoading, setGLoading] = useState(false)
@@ -53,6 +54,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
     setFirstName(client.first_name); setLastName(client.last_name)
     setPhone(client.phone); setTelegramLink(client.telegram_link || '')
     setNotes(client.notes || ''); setIsTrial(client.is_trial || false)
+    setTrainingFormat(client.training_format || 'offline')
     setGroupId(client.group?.id || ''); setErr('')
     if (!open) {
       setGLoading(true)
@@ -76,9 +78,10 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone: phone.trim(),
-        telegram_link: (telegramLink || '').trim(),
+        telegram_link: trainingFormat === 'online' ? (telegramLink || '').trim() : '',
         notes: (notes || '').trim(),
         is_trial: isTrial,
+        training_format: trainingFormat,
       }
       // Группу передаём только если клиент не пробный
       if (!isTrial) {
@@ -136,7 +139,37 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
               className="crm-mobile-input w-full resize-none" rows={2}
               placeholder="Пометки для сотрудников..." />
           </div>
-          {client.training_format === 'online' && (
+          {/* ── Формат обучения ── */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">Формат обучения</p>
+            <div className="flex gap-2">
+              {[{ v: 'offline', l: 'Оффлайн' }, { v: 'online', l: 'Онлайн' }].map(({ v, l }) => (
+                <button key={v} type="button" onClick={() => setTrainingFormat(v)}
+                  className="flex-1 flex items-center justify-between px-3 py-3 rounded-xl transition-all"
+                  style={trainingFormat === v
+                    ? { background: '#ede9fe', border: '2px solid #7c3aed' }
+                    : { background: '#fafafa', border: '2px solid #e5e7eb' }
+                  }>
+                  <p className="text-sm font-semibold" style={{ color: trainingFormat === v ? '#7c3aed' : '#6b7280' }}>{l}</p>
+                  <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                    style={trainingFormat === v
+                      ? { borderColor: '#7c3aed', background: '#7c3aed' }
+                      : { borderColor: '#d1d5db', background: '#fff' }
+                    }>
+                    {trainingFormat === v && <Check size={9} className="text-white" strokeWidth={3} />}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {trainingFormat !== client.training_format && (
+              <p className="text-xs mt-1.5 px-2 py-1.5 rounded-lg text-amber-700"
+                 style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+                ⚠ Формат будет изменён. Группа с другим форматом будет несовместима.
+              </p>
+            )}
+          </div>
+
+          {trainingFormat === 'online' && (
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Ссылка Telegram (необяз.)</p>
               <input value={telegramLink} onChange={e => setTelegramLink(e.target.value)}
@@ -358,7 +391,10 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
   const [ok,           setOk]           = useState('')
 
   const hasPayment = !!(client.full_payment || client.installment_plan)
-  if (!['new', 'trial'].includes(client.status) || hasPayment) return null
+  // Show for new/trial clients without payment, and also for 'active' clients
+  // without payment (e.g. after trial→regular conversion then add-to-group)
+  if (hasPayment) return null
+  if (!['new', 'trial', 'active'].includes(client.status)) return null
 
   const handleSubmit = async () => {
     if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) {
@@ -1267,12 +1303,7 @@ export default function MobileClientDetail() {
   useEffect(() => setNewPassword(null), [id])
 
   const STATUS_OPTIONS = [
-    { value: 'new',       label: 'Новый',     dot: 'bg-violet-500' },
-    { value: 'trial',     label: 'Пробный',   dot: 'bg-orange-500' },
-    { value: 'active',    label: 'Активный',  dot: 'bg-emerald-500' },
-    { value: 'frozen',    label: 'Заморозка', dot: 'bg-blue-500' },
-    { value: 'completed', label: 'Завершил',  dot: 'bg-slate-400' },
-    { value: 'expelled',  label: 'Отчислен',  dot: 'bg-red-500' },
+    { value: 'expelled', label: 'Отчислен', dot: 'bg-red-500' },
   ]
 
   const STATUS_ALL_LABELS = {
@@ -1597,12 +1628,12 @@ export default function MobileClientDetail() {
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-semibold text-gray-800 text-sm">Возврат средств</p>
-                <p className="text-xs text-gray-400">Удержание за занятия; остаток — клиенту.</p>
+                <p className="font-semibold text-gray-800 text-sm">Заморозить клиента</p>
+                <p className="text-xs text-gray-400">Удержание за занятия; остаток — клиенту. Статус станет «Заморозка».</p>
               </div>
               <button type="button" onClick={() => setRefundOpen(true)}
-                className="px-3 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 border border-red-200 touch-manipulation">
-                Возврат
+                className="px-3 py-2 rounded-xl text-xs font-medium bg-sky-50 text-sky-600 border border-sky-200 touch-manipulation">
+                Заморозить
               </button>
             </div>
           </div>

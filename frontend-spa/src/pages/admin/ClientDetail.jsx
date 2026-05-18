@@ -198,9 +198,10 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
   const [phone,        setPhone]        = useState(client.phone)
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
   const [notes,        setNotes]        = useState(client.notes || '')
-  const [isTrial,      setIsTrial]      = useState(client.is_trial || false)
-  const [groupId,      setGroupId]      = useState(client.group?.id || '')
-  const [secondGroupId,setSecondGroupId]= useState(client.second_group?.id || '')
+  const [isTrial,        setIsTrial]        = useState(client.is_trial || false)
+  const [trainingFormat, setTrainingFormat] = useState(client.training_format || 'offline')
+  const [groupId,        setGroupId]        = useState(client.group?.id || '')
+  const [secondGroupId,  setSecondGroupId]  = useState(client.second_group?.id || '')
   const [groups,       setGroups]       = useState([])
   const [gLoading,     setGLoading]     = useState(false)
   const [saving,       setSaving]       = useState(false)
@@ -214,6 +215,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
     setTelegramLink(client.telegram_link || '')
     setNotes(client.notes || '')
     setIsTrial(client.is_trial || false)
+    setTrainingFormat(client.training_format || 'offline')
     setGroupId(client.group?.id || '')
     setSecondGroupId(client.second_group?.id || '')
     setErr(''); setOk('')
@@ -239,12 +241,13 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
     setSaving(true); setErr(''); setOk('')
     try {
       const body = {
-        first_name:    firstName.trim(),
-        last_name:     lastName.trim(),
-        phone:         phone.trim(),
-        telegram_link: (telegramLink || '').trim(),
-        notes:         (notes || '').trim(),
-        is_trial:      isTrial,
+        first_name:       firstName.trim(),
+        last_name:        lastName.trim(),
+        phone:            phone.trim(),
+        telegram_link:    trainingFormat === 'online' ? (telegramLink || '').trim() : '',
+        notes:            (notes || '').trim(),
+        is_trial:         isTrial,
+        training_format:  trainingFormat,
       }
       if (!isTrial) {
         body.group_id = groupId || null
@@ -304,7 +307,34 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
               className="crm-input w-full" placeholder="+996..."
               type="tel" />
           </div>
-          {client.training_format === 'online' && (
+          {/* ── Формат обучения ── */}
+          <div>
+            <label className="crm-label">Формат обучения</label>
+            <div className="flex gap-2 mt-1">
+              {[{ v: 'offline', l: 'Оффлайн' }, { v: 'online', l: 'Онлайн' }].map(({ v, l }) => (
+                <button key={v} type="button" onClick={() => setTrainingFormat(v)}
+                  className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition text-sm font-medium ${
+                    trainingFormat === v
+                      ? 'bg-violet-50 border-violet-400 text-violet-700'
+                      : 'bg-white border-slate-200 text-slate-500'
+                  }`}>
+                  {l}
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    trainingFormat === v ? 'border-violet-500 bg-violet-500' : 'border-slate-300 bg-white'
+                  }`}>
+                    {trainingFormat === v && <Check size={9} className="text-white" strokeWidth={3} />}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {trainingFormat !== client.training_format && (
+              <p className="text-xs mt-1.5 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
+                ⚠ Формат изменится. Убедитесь, что группа клиента совместима с новым форматом.
+              </p>
+            )}
+          </div>
+
+          {trainingFormat === 'online' && (
             <div>
               <label className="crm-label">Ссылка Telegram (необязательно)</label>
               <input value={telegramLink} onChange={e => setTelegramLink(e.target.value)}
@@ -529,7 +559,10 @@ function EnterPaymentPanel({ client, clientId, onSuccess }) {
   const [ok,            setOk]            = useState('')
 
   const hasPayment = !!(client.full_payment || client.installment_plan)
-  if (!['new', 'trial'].includes(client.status) || hasPayment) return null
+  // Show for new/trial clients without payment, and also for 'active' clients
+  // without payment (e.g. after trial→regular conversion then add-to-group)
+  if (hasPayment) return null
+  if (!['new', 'trial', 'active'].includes(client.status)) return null
 
   const handleSubmit = async () => {
     if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) {
@@ -1895,36 +1928,37 @@ export default function ClientDetail() {
       {/* ── Изменить статус ── */}
       <div className="crm-card p-5 mb-5">
         <h3 className="font-bold text-slate-800 mb-1">Изменить статус</h3>
-        {(client.status === 'new' || client.status === 'trial') && (
-          <p className="text-xs text-slate-400 mb-3">
-            {client.is_trial
-              ? 'Пробный клиент — добавление в группу недоступно. При необходимости смените статус вручную.'
-              : 'Статус «Новый» обычно меняется автоматически при добавлении в группу. При необходимости можно сменить вручную.'}
-          </p>
-        )}
-        <p className="text-xs text-slate-400 mb-4">Нажмите на нужный статус чтобы применить</p>
+        <p className="text-xs text-slate-400 mb-4">
+          Статусы меняются автоматически при оплате, добавлении в группу и закрытии группы.
+          Единственный доступный ручной перевод — «Отчислен».
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {STATUS_CONFIG.map(s => {
             const isActive = client.status === s.value
+            const isExpelled = s.value === 'expelled'
+            const canClick = isExpelled && !isActive
             return (
               <button key={s.value} type="button"
-                onClick={() => !isActive && changeStatus(s.value)}
-                disabled={isActive || statusLoading}
+                onClick={() => canClick && changeStatus(s.value)}
+                disabled={!canClick || statusLoading}
+                title={!isExpelled && !isActive ? 'Меняется автоматически' : undefined}
                 className={`
                 relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border-2 text-sm
                 font-medium transition-all duration-150 text-center
                 ${isActive
                   ? `${s.activeBg} ${s.activeText} shadow-sm`
-                  : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50 cursor-pointer'
+                  : canClick
+                    ? 'bg-white border-slate-200 text-slate-500 hover:border-red-300 hover:bg-red-50 cursor-pointer'
+                    : 'bg-white border-slate-100 text-slate-300 cursor-not-allowed opacity-50'
                 }
                 ${statusLoading ? 'opacity-50 cursor-not-allowed' : ''}
               `}
               >
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isActive ? 'bg-white/60' : 'bg-slate-100'}`}>
-                  <s.Icon size={18} className={isActive ? s.iconColor : 'text-slate-400'} />
+                  <s.Icon size={18} className={isActive ? s.iconColor : canClick ? 'text-red-400' : 'text-slate-300'} />
                 </div>
                 <span className="font-semibold leading-tight">{s.label}</span>
-                <span className="text-xs opacity-60 font-normal leading-tight">{s.desc}</span>
+                <span className="text-xs opacity-60 font-normal leading-tight">{isActive ? s.desc : (!isExpelled ? 'Авто' : s.desc)}</span>
                 {isActive && (
                   <span className="absolute top-2 right-2 text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 opacity-80">✓</span>
                 )}
@@ -1939,14 +1973,14 @@ export default function ClientDetail() {
         <div className="crm-card p-5 mb-5">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-slate-800 mb-0.5">Возврат средств</h3>
-              <p className="text-xs text-slate-400">Удержание за посещённые занятия; к возврату — остаток. Бонусы с этой оплаты аннулируются.</p>
+              <h3 className="font-bold text-slate-800 mb-0.5">Заморозить клиента</h3>
+              <p className="text-xs text-slate-400">Удержание за посещённые занятия; остаток возвращается клиенту. Статус станет «Заморозка». Бонусы аннулируются.</p>
             </div>
             <button
               type="button"
               onClick={() => setRefundOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition">
-              <Undo2 size={14} /> Возврат
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-sky-50 text-sky-600 border border-sky-200 hover:bg-sky-100 transition">
+              <Undo2 size={14} /> Заморозить
             </button>
           </div>
         </div>

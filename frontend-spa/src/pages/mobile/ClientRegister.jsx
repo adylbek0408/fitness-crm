@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { User, Phone, BookOpen, CreditCard, ChevronRight, Check, Users, FlaskConical } from 'lucide-react'
+import { User, Phone, BookOpen, CreditCard, ChevronRight, Check, FlaskConical } from 'lucide-react'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
 import MobileDateField from '../../components/MobileDateField'
 import { useRefresh } from '../../contexts/RefreshContext'
-import { GROUP_TYPE_LABEL } from '../../utils/format'
 
 const STEPS = ['Данные', 'Обучение', 'Оплата']
 
@@ -74,47 +73,16 @@ export default function ClientRegister() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [createdCredentials, setCreatedCredentials] = useState(null)
-  const [groups, setGroups] = useState([])
-  const [groupsLoading, setGroupsLoading] = useState(false)
   const [form, setForm] = useState({
     first_name: '', last_name: '', phone: '',
     notes: '',
     is_trial: false,
-    training_format: '', group_type: '', group_id: '',
+    training_format: '', group_type: '',
     telegram_link: '',
     payment_type: '', pay_amount: '', total_cost: '', deadline: '',
     bonus_percent: '10',
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
-  // Группы: шаг «Оплата» + полная оплата + не пробный
-  useEffect(() => {
-    if (step !== 2 || form.payment_type !== 'full' || !form.training_format || form.is_trial) return
-    if (form.training_format === 'offline' && !form.group_type) return
-    setGroupsLoading(true)
-    const base = { page_size: 100, training_format: form.training_format }
-    if (form.training_format === 'offline') base.group_type = form.group_type
-    Promise.all([
-      api.get('/groups/', { params: { ...base, status: 'recruitment' } }),
-      api.get('/groups/', { params: { ...base, status: 'active' } }),
-    ])
-      .then(([r, a]) => {
-        const merged = [...(r.data.results || []), ...(a.data.results || [])]
-        const tf = form.training_format
-        const gt = form.group_type
-        const seen = new Set()
-        const filtered = merged.filter(g => {
-          if (g.training_format !== tf) return false
-          if (tf === 'offline' && g.group_type !== gt) return false
-          if (seen.has(g.id)) return false
-          seen.add(g.id)
-          return true
-        })
-        setGroups(filtered)
-      })
-      .catch(() => setGroups([]))
-      .finally(() => setGroupsLoading(false))
-  }, [step, form.payment_type, form.training_format, form.group_type, form.is_trial])
 
   const validateStep = () => {
     setError('')
@@ -132,10 +100,12 @@ export default function ClientRegister() {
     }
     if (step === 2) {
       if (!form.payment_type) { setError('Выберите тип оплаты'); return false }
-      const bp = Number(String(form.bonus_percent).replace(',', '.'))
-      if (form.bonus_percent === '' || Number.isNaN(bp) || bp < 0 || bp > 100) {
-        setError('Укажите процент бонуса от 0 до 100')
-        return false
+      if (!form.is_trial) {
+        const bp = Number(String(form.bonus_percent).replace(',', '.'))
+        if (form.bonus_percent === '' || Number.isNaN(bp) || bp < 0 || bp > 100) {
+          setError('Укажите процент бонуса от 0 до 100')
+          return false
+        }
       }
       if (form.payment_type === 'full') {
         if (!form.pay_amount || Number(form.pay_amount) <= 0) { setError('Введите сумму курса'); return false }
@@ -151,7 +121,6 @@ export default function ClientRegister() {
   const handleNext = () => { if (validateStep()) setStep(s => s + 1) }
   const handleBack = () => {
     setError('')
-    if (step === 2) setForm(p => ({ ...p, group_id: '' }))
     setStep(s => s - 1)
   }
 
@@ -162,7 +131,7 @@ export default function ClientRegister() {
     const paymentData = pt === 'full'
       ? { amount: form.pay_amount }
       : { total_cost: form.total_cost, deadline: form.deadline }
-    const bonusPct = Math.round(Number(String(form.bonus_percent).replace(',', '.')))
+    const bonusPct = form.is_trial ? 0 : Math.round(Number(String(form.bonus_percent).replace(',', '.')))
     const body = {
       first_name: form.first_name, last_name: form.last_name, phone: form.phone,
       notes: (form.notes || '').trim(),
@@ -174,8 +143,6 @@ export default function ClientRegister() {
       bonus_percent: bonusPct,
       payment_type: pt, payment_data: paymentData,
     }
-    // Группа только при полной оплате и если клиент не пробный
-    if (form.payment_type === 'full' && form.group_id && !form.is_trial) body.group = form.group_id
     try {
       const r = await api.post('/clients/', body)
       const cabinet = r.data.cabinet_username
@@ -446,28 +413,30 @@ export default function ClientRegister() {
             </div>
           </div>
 
-          <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-xs)' }}>
-              Бонус с оплаты
-            </p>
-            <p className="text-xs mb-3" style={{ color: 'var(--text-xs)' }}>
-              Укажите процент начисления при подтверждении оплаты (от суммы группы), например 3, 5 или 10.
-            </p>
-            <label className="block">
-              <span className="text-xs font-medium" style={{ color: 'var(--text-soft)' }}>Процент бонуса (0–100) *</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                max={100}
-                step={1}
-                placeholder="Например: 3"
-                value={form.bonus_percent}
-                onChange={e => set('bonus_percent', e.target.value)}
-                className="crm-mobile-input mt-1"
-              />
-            </label>
-          </div>
+          {!form.is_trial && (
+            <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-xs)' }}>
+                Бонус с оплаты
+              </p>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-xs)' }}>
+                Укажите процент начисления при подтверждении оплаты (от суммы группы), например 3, 5 или 10.
+              </p>
+              <label className="block">
+                <span className="text-xs font-medium" style={{ color: 'var(--text-soft)' }}>Процент бонуса (0–100) *</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={100}
+                  step={1}
+                  placeholder="Например: 3"
+                  value={form.bonus_percent}
+                  onChange={e => set('bonus_percent', e.target.value)}
+                  className="crm-mobile-input mt-1"
+                />
+              </label>
+            </div>
+          )}
 
           {form.payment_type === 'full' && (
             <div className="rounded-2xl p-4 space-y-3 animate-fade-in"
@@ -495,69 +464,6 @@ export default function ClientRegister() {
             </div>
           )}
 
-          {/* Группа — только при полной оплате и НЕ пробный */}
-          {form.payment_type === 'full' && !form.is_trial && (
-            <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid var(--border)' }}>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center"
-                     style={{ background: '#fce7f3' }}>
-                  <Users size={13} style={{ color: '#be185d' }} />
-                </div>
-                <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-xs)' }}>
-                  Группа (необязательно)
-                </span>
-              </div>
-              <p className="text-xs mb-3" style={{ color: 'var(--text-xs)' }}>
-                {form.training_format === 'online'
-                  ? 'Показаны онлайн-потоки (набор или активный). Запись в группу — после полной оплаты.'
-                  : 'Показаны группы под ваш формат и тип. Запись в группу — после полной оплаты.'}
-              </p>
-              {groupsLoading ? (
-                <div className="flex justify-center py-4">
-                  <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#be185d' }} />
-                </div>
-              ) : groups.length === 0 ? (
-                <p className="text-sm text-center py-3" style={{ color: 'var(--text-xs)' }}>
-                  Нет подходящих групп (набор или активный)
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  <button type="button"
-                    onClick={() => set('group_id', '')}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all"
-                    style={!form.group_id
-                      ? { background: '#fce7f3', border: '2px solid #be185d' }
-                      : { background: '#fafafa', border: '2px solid #e5e7eb' }}>
-                    <span className="text-sm font-medium" style={{ color: !form.group_id ? '#be185d' : 'var(--text-soft)' }}>Без группы</span>
-                    {!form.group_id && <Check size={14} style={{ color: '#be185d' }} />}
-                  </button>
-                  {groups.map(g => (
-                    <button key={g.id} type="button"
-                      onClick={() => set('group_id', g.id)}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all"
-                      style={form.group_id === g.id
-                        ? { background: '#fce7f3', border: '2px solid #be185d' }
-                        : { background: '#fafafa', border: '2px solid #e5e7eb' }}>
-                      <div className="text-left">
-                        <p className="text-sm font-semibold" style={{ color: form.group_id === g.id ? '#be185d' : 'var(--text)' }}>
-                          Группа #{g.number}
-                          <span className="ml-1.5 text-xs font-normal" style={{ color: 'var(--text-xs)' }}>
-                            {g.group_type ? (GROUP_TYPE_LABEL[g.group_type] || g.group_type) : ''}
-                            {g.training_format === 'online' ? ' · онлайн' : ' · офлайн'}
-                          </span>
-                        </p>
-                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-xs)' }}>
-                          {g.trainer?.full_name || '—'} · {g.status === 'active' ? 'Активный' : 'Набор'}
-                        </p>
-                      </div>
-                      {form.group_id === g.id && <Check size={14} style={{ color: '#be185d' }} />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Итоговая сводка */}
           <div className="rounded-2xl p-4" style={{ background: '#fdf8fb', border: '1px solid #ece4e8' }}>
             <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-xs)' }}>
@@ -573,11 +479,8 @@ export default function ClientRegister() {
                   ? [['Тип группы', form.group_type === '1.5h' ? '1.5 часа' : '2.5 часа']]
                   : []),
                 ...(!form.is_trial
-                  ? [['Группа', form.payment_type !== 'full'
-                      ? 'После полной оплаты — в карточке'
-                      : (form.group_id ? `Группа #${groups.find(g=>g.id===form.group_id)?.number || '?'}` : 'Не выбрана')]]
+                  ? [['Бонус с оплаты', `${form.bonus_percent === '' ? '—' : `${form.bonus_percent}%`}`]]
                   : []),
-                ['Бонус с оплаты', `${form.bonus_percent === '' ? '—' : `${form.bonus_percent}%`}`],
                 ['Оплата', form.payment_type === 'full'
                   ? `Полная — ${form.pay_amount || '0'} сом`
                   : form.payment_type === 'installment'
