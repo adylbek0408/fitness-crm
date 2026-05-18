@@ -374,10 +374,11 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
   const [ok,           setOk]           = useState('')
 
   const hasPayment = !!(client.full_payment || client.installment_plan)
-  // Только для trial (пробный без оплаты) и active (после отмены оплаты).
+  // Только для trial (пробный без оплаты после отмены).
   // new-клиенты вводят оплату через шаг 2 в "Добавить в группу".
+  // active-клиенты: backend не позволяет enter-payment для этого статуса.
   if (hasPayment) return null
-  if (!['trial', 'active'].includes(client.status)) return null
+  if (client.status !== 'trial') return null
 
   const handleSubmit = async () => {
     if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) {
@@ -1165,7 +1166,7 @@ function MobileStreamsHistory({ client, clientId }) {
             <Layers size={18} className="text-gray-500" />
           </div>
           <div className="text-left">
-            <p className="font-semibold text-gray-800 text-sm">Группы</p>
+            <p className="font-semibold text-gray-800 text-sm">История группы</p>
             <p className="text-xs text-gray-400">
               {client.group ? `Текущая: Группа #${client.group.number}` : 'Нет активной группы'}
             </p>
@@ -1684,6 +1685,9 @@ export default function MobileClientDetail() {
 
         {/* Бронь следующей группы */}
         <MobileReservationPanel client={client} clientId={id} onSuccess={load} />
+
+        {/* История группы */}
+        <MobileStreamsHistory client={client} clientId={id} />
 
         {/* История статусов */}
         <MobileStatusHistory clientId={id} />
