@@ -217,6 +217,76 @@ class CloudflareStreamService:
         )
         return f'https://{cls._customer()}.cloudflarestream.com/{token}/manifest/video.m3u8'
 
+    @classmethod
+    def create_signed_live_urls(
+        cls,
+        live_input_uid: str,
+        client_id: str,
+        ttl_seconds: int = 4 * 3600,
+    ) -> dict:
+        """Return signed HLS + WebRTC playback URLs for a live input.
+
+        When the live input has requireSignedURLs=True (which is always the
+        case for our inputs), the raw UID must be replaced with a signed JWT
+        — both for HLS (manifest/video.m3u8) and WebRTC (webRTC/play).
+
+        Falls back to unsigned URLs if signing keys are not configured.
+
+        Returns {'hls_url': str, 'webrtc_url': str}.
+        """
+        if not live_input_uid:
+            return {'hls_url': '', 'webrtc_url': ''}
+
+        key_id = getattr(settings, 'CF_STREAM_SIGNING_KEY_ID', '') or ''
+        jwk_b64 = getattr(settings, 'CF_STREAM_SIGNING_JWK', '') or ''
+
+        # Signing not configured — fall back to unsigned (dev / public streams)
+        if not key_id or not jwk_b64:
+            try:
+                sub = cls._customer()
+            except Exception:
+                return {'hls_url': '', 'webrtc_url': ''}
+            return {
+                'hls_url': f'https://{sub}.cloudflarestream.com/{live_input_uid}/manifest/video.m3u8',
+                'webrtc_url': f'https://{sub}.cloudflarestream.com/{live_input_uid}/webRTC/play',
+            }
+
+        import base64
+        import json
+        import jwt  # PyJWT
+        from jwt.algorithms import RSAAlgorithm
+
+        try:
+            jwk_str = base64.b64decode(jwk_b64 + '==').decode('utf-8')
+            json.loads(jwk_str)
+        except Exception:
+            jwk_str = jwk_b64
+
+        private_key = RSAAlgorithm.from_jwk(jwk_str)
+
+        now = datetime.now(dt_timezone.utc)
+        payload = {
+            'sub': live_input_uid,
+            'kid': key_id,
+            'iat': int(now.timestamp()),
+            'nbf': int(now.timestamp()) - 30,
+            'exp': int((now + timedelta(seconds=ttl_seconds)).timestamp()),
+            'id': str(client_id),
+            'downloadable': False,
+            'accessRules': [{'type': 'any', 'action': 'allow'}],
+        }
+        token = jwt.encode(
+            payload,
+            private_key,
+            algorithm='RS256',
+            headers={'kid': key_id},
+        )
+        sub = cls._customer()
+        return {
+            'hls_url': f'https://{sub}.cloudflarestream.com/{token}/manifest/video.m3u8',
+            'webrtc_url': f'https://{sub}.cloudflarestream.com/{token}/webRTC/play',
+        }
+
     # --- Live inputs ---
 
     @classmethod

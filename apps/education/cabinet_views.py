@@ -439,12 +439,16 @@ class CabinetStreamView(APIView):
                 return Response({'stream': None})
 
         data = LiveStreamSerializer(stream).data
-        webrtc_url = stream.cf_webrtc_playback_url or ''
-        if stream.status == 'live' and '/webRTC/play' in webrtc_url:
-            data['playback_url'] = webrtc_url
+        # Always sign the playback URL: the live input is created with
+        # requireSignedURLs=True so unsigned URLs return 401.
+        signed = CloudflareStreamService.create_signed_live_urls(
+            stream.cf_playback_id, str(client.id)
+        )
+        if stream.status == 'live' and stream.cf_webrtc_playback_url:
+            data['playback_url'] = signed['webrtc_url']
             data['playback_kind'] = 'webrtc'
         else:
-            data['playback_url'] = _build_stream_playback_url(stream)
+            data['playback_url'] = signed['hls_url']
             data['playback_kind'] = 'hls'
         return Response({'stream': data})
 
@@ -478,12 +482,15 @@ class CabinetStreamJoinView(APIView):
             StreamViewer.objects.filter(pk=viewer.pk).update(is_active=True, left_at=None)
             viewer.is_active = True
             viewer.left_at = None
-        webrtc_url = stream.cf_webrtc_playback_url or ''
-        if '/webRTC/play' in webrtc_url:
-            playback_url = webrtc_url
+        # Sign both HLS and WebRTC URLs — live input has requireSignedURLs=True.
+        signed = CloudflareStreamService.create_signed_live_urls(
+            stream.cf_playback_id, str(client.id)
+        )
+        if stream.cf_webrtc_playback_url:
+            playback_url = signed['webrtc_url']
             playback_kind = 'webrtc'
         else:
-            playback_url = _build_stream_playback_url(stream)
+            playback_url = signed['hls_url']
             playback_kind = 'hls'
         return Response({
             'viewer': StreamViewerSerializer(viewer).data,
