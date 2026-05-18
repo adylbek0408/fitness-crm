@@ -266,7 +266,7 @@ class ClientViewSet(viewsets.ModelViewSet):
                 data.pop('group', None)
                 data.pop('trainer', None)
 
-        allowed = {'first_name', 'last_name', 'phone', 'group', 'second_group', 'trainer', 'telegram_link', 'notes', 'training_format'}
+        allowed = {'first_name', 'last_name', 'phone', 'group', 'second_group', 'trainer', 'telegram_link', 'notes', 'training_format', 'group_type'}
         filtered = {k: v for k, v in data.items() if k in allowed}
 
         # Detect training_format change for audit log

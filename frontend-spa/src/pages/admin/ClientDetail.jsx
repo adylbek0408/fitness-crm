@@ -200,6 +200,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
   const [notes,        setNotes]        = useState(client.notes || '')
   const [isTrial,        setIsTrial]        = useState(client.is_trial || false)
   const [trainingFormat, setTrainingFormat] = useState(client.training_format || 'offline')
+  const [groupType,      setGroupType]      = useState(client.group_type || '')
   const [groupId,        setGroupId]        = useState(client.group?.id || '')
   const [secondGroupId,  setSecondGroupId]  = useState(client.second_group?.id || '')
   const [groups,       setGroups]       = useState([])
@@ -216,6 +217,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
     setNotes(client.notes || '')
     setIsTrial(client.is_trial || false)
     setTrainingFormat(client.training_format || 'offline')
+    setGroupType(client.group_type || '')
     setGroupId(client.group?.id || '')
     setSecondGroupId(client.second_group?.id || '')
     setErr(''); setOk('')
@@ -248,6 +250,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
         notes:            (notes || '').trim(),
         is_trial:         isTrial,
         training_format:  trainingFormat,
+        group_type:       trainingFormat === 'offline' ? groupType : '',
       }
       if (!isTrial) {
         body.group_id = groupId || null
@@ -333,6 +336,29 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
               </p>
             )}
           </div>
+
+          {trainingFormat === 'offline' && (
+            <div>
+              <label className="crm-label">Тип группы *</label>
+              <div className="flex gap-2 mt-1">
+                {[{ v: '1.5h', l: '1.5 часа' }, { v: '2.5h', l: '2.5 часа' }].map(({ v, l }) => (
+                  <button key={v} type="button" onClick={() => setGroupType(v)}
+                    className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition text-sm font-medium ${
+                      groupType === v
+                        ? 'bg-violet-50 border-violet-400 text-violet-700'
+                        : 'bg-white border-slate-200 text-slate-500'
+                    }`}>
+                    {l}
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      groupType === v ? 'border-violet-500 bg-violet-500' : 'border-slate-300 bg-white'
+                    }`}>
+                      {groupType === v && <Check size={9} className="text-white" strokeWidth={3} />}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {trainingFormat === 'online' && (
             <div>

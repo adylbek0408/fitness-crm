@@ -17,7 +17,6 @@ import AddPaymentForm from '../../components/payments/AddPaymentForm'
 import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPaymentForm'
 import ConfirmModal from '../../components/ConfirmModal'
 import RefundModal from '../../components/RefundModal'
-import AppSelect from '../../components/ui/AppSelect'
 
 const GROUP_TYPE_SHORT = { '1.5h': '1.5 ч', '2.5h': '2.5 ч' }
 
@@ -44,29 +43,17 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const [notes, setNotes] = useState(client.notes || '')
   const [isTrial, setIsTrial] = useState(client.is_trial || false)
   const [trainingFormat, setTrainingFormat] = useState(client.training_format || 'offline')
-  const [groupId, setGroupId] = useState(client.group?.id || '')
-  const [groups, setGroups] = useState([])
-  const [gLoading, setGLoading] = useState(false)
+  const [groupType, setGroupType] = useState(client.group_type || '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
-  const handleOpen = async () => {
+  const handleOpen = () => {
     setFirstName(client.first_name); setLastName(client.last_name)
     setPhone(client.phone); setTelegramLink(client.telegram_link || '')
     setNotes(client.notes || ''); setIsTrial(client.is_trial || false)
     setTrainingFormat(client.training_format || 'offline')
-    setGroupId(client.group?.id || ''); setErr('')
-    if (!open) {
-      setGLoading(true)
-      try {
-        const r  = await api.get('/groups/', { params: { page_size: 200, status: 'recruitment' } })
-        const r2 = await api.get('/groups/', { params: { page_size: 200, status: 'active' } })
-        const all  = [...(r.data.results || []), ...(r2.data.results || [])]
-        const seen = new Set()
-        setGroups(all.filter(g => { if (seen.has(g.id)) return false; seen.add(g.id); return true }))
-      } catch { setGroups([]) }
-      finally { setGLoading(false) }
-    }
+    setGroupType(client.group_type || '')
+    setErr('')
     setOpen(v => !v)
   }
 
@@ -82,10 +69,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
         notes: (notes || '').trim(),
         is_trial: isTrial,
         training_format: trainingFormat,
-      }
-      // Группу передаём только если клиент не пробный
-      if (!isTrial) {
-        body.group_id = groupId || null
+        group_type: trainingFormat === 'offline' ? groupType : '',
       }
       await api.patch(`/clients/${clientId}/edit-info/`, body)
       setOpen(false); onSuccess()
@@ -169,6 +153,31 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
             )}
           </div>
 
+          {trainingFormat === 'offline' && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-2">Тип группы *</p>
+              <div className="flex gap-2">
+                {[{ v: '1.5h', l: '1.5 часа' }, { v: '2.5h', l: '2.5 часа' }].map(({ v, l }) => (
+                  <button key={v} type="button" onClick={() => setGroupType(v)}
+                    className="flex-1 flex items-center justify-between px-3 py-3 rounded-xl transition-all"
+                    style={groupType === v
+                      ? { background: '#ede9fe', border: '2px solid #7c3aed' }
+                      : { background: '#fafafa', border: '2px solid #e5e7eb' }
+                    }>
+                    <p className="text-sm font-semibold" style={{ color: groupType === v ? '#7c3aed' : '#6b7280' }}>{l}</p>
+                    <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                      style={groupType === v
+                        ? { borderColor: '#7c3aed', background: '#7c3aed' }
+                        : { borderColor: '#d1d5db', background: '#fff' }
+                      }>
+                      {groupType === v && <Check size={9} className="text-white" strokeWidth={3} />}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {trainingFormat === 'online' && (
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Ссылка Telegram (необяз.)</p>
@@ -243,32 +252,6 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
               </div>
             )}
           </div>
-
-          {/* Группа — только для НЕ пробных */}
-          {!isTrial && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 mb-1">Группа</p>
-              {gLoading ? (
-                <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
-                  <span className="w-3 h-3 border-2 border-t-transparent rounded-full animate-spin"
-                        style={{ borderColor: '#be185d' }} />
-                  Загрузка...
-                </div>
-              ) : (
-                <AppSelect variant="mobile" value={groupId} onChange={e => setGroupId(e.target.value)}
-                  className="w-full">
-                  <option value="">— Без группы —</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>
-                      #{g.number} {g.group_type ? `(${GROUP_TYPE_LABEL[g.group_type] || g.group_type})` : ''}
-                      {' · '}{GROUP_STATUS_LABEL[g.status] || g.status}
-                      {g.trainer?.full_name ? ` · ${g.trainer.full_name}` : ''}
-                    </option>
-                  ))}
-                </AppSelect>
-              )}
-            </div>
-          )}
 
           {err && (
             <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
@@ -391,10 +374,10 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
   const [ok,           setOk]           = useState('')
 
   const hasPayment = !!(client.full_payment || client.installment_plan)
-  // Show for new/trial clients without payment, and also for 'active' clients
-  // without payment (e.g. after trial→regular conversion then add-to-group)
+  // Только для trial (пробный без оплаты) и active (после отмены оплаты).
+  // new-клиенты вводят оплату через шаг 2 в "Добавить в группу".
   if (hasPayment) return null
-  if (!['new', 'trial', 'active'].includes(client.status)) return null
+  if (!['trial', 'active'].includes(client.status)) return null
 
   const handleSubmit = async () => {
     if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) {
@@ -526,9 +509,18 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const [loadingId, setLoadingId] = useState(null)
   const [err, setErr] = useState('')
 
+  // Шаг 2 — ввод оплаты после добавления в группу
+  const [payStep, setPayStep] = useState(false)
+  const [payType, setPayType] = useState('full')
+  const [payAmount, setPayAmount] = useState('')
+  const [totalCost, setTotalCost] = useState('')
+  const [deadline, setDeadline] = useState('')
+  const [bonusPercent, setBonusPercent] = useState(String(bonusPercentDisplay(client.bonus_percent)))
+  const [payLoading, setPayLoading] = useState(false)
+  const [payErr, setPayErr] = useState('')
+
   const hasPayment = !!(client.full_payment || client.installment_plan)
 
-  // Frozen без оплаты (после возврата) — только через Повторная запись.
   const canUseNewClientFlow =
     !client.is_trial &&
     (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat && hasPayment))
@@ -560,14 +552,111 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
 
   const handleToggle = () => { const next = !open; setOpen(next); if (next) loadGroups(statusFilter) }
   const switchFilter = (st) => { setStatusFilter(st); loadGroups(st) }
+
   const addToGroup = async (groupId) => {
     setLoadingId(groupId); setErr('')
     try {
       await api.post(`/clients/${clientId}/add-to-group/`, { group_id: groupId })
-      setOpen(false); onSuccess()
+      // Не обновляем страницу — показываем шаг ввода оплаты внутри этого блока
+      setOpen(false)
+      setPayStep(true)
+      setPayType('full'); setPayAmount(''); setTotalCost(''); setDeadline('')
+      setBonusPercent(String(bonusPercentDisplay(client.bonus_percent)))
+      setPayErr('')
     } catch (e) {
       setErr(e.response?.data?.detail || 'Ошибка')
     } finally { setLoadingId(null) }
+  }
+
+  const handlePaySubmit = async () => {
+    if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) { setPayErr('Укажите сумму оплаты'); return }
+    if (payType === 'installment' && (!totalCost || !deadline)) { setPayErr('Укажите стоимость и дедлайн'); return }
+    const bp = parseInt(String(bonusPercent).trim(), 10)
+    if (Number.isNaN(bp) || bp < 0 || bp > 100) { setPayErr('Процент бонуса: от 0 до 100'); return }
+    setPayLoading(true); setPayErr('')
+    try {
+      await api.post(`/clients/${clientId}/enter-payment/`, {
+        payment_type: payType,
+        payment_data: payType === 'full' ? { amount: payAmount } : { total_cost: totalCost, deadline },
+        bonus_percent: bp,
+      })
+      onSuccess()
+    } catch (e) {
+      setPayErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setPayLoading(false) }
+  }
+
+  // Шаг 2 — форма оплаты (группа уже добавлена)
+  if (payStep) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden"
+           style={{ borderColor: '#c7d2fe', borderWidth: 2 }}>
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#eef2ff' }}>
+              <CreditCard size={18} style={{ color: '#4f46e5' }} />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 text-sm">Ввести оплату</p>
+              <p className="text-xs font-semibold" style={{ color: '#16a34a' }}>✓ Группа добавлена — введите оплату</p>
+            </div>
+          </div>
+        </div>
+        <div className="px-4 pb-5 space-y-4 pt-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Тип оплаты</p>
+            <div className="flex gap-2">
+              {[{ v: 'full', l: 'Полная оплата' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+                <button key={v} type="button" onClick={() => setPayType(v)}
+                  className="flex-1 py-3 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
+                  style={payType === v
+                    ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                    : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                  }>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          {payType === 'full' && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Сумма</p>
+              <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                className="crm-mobile-input w-full" />
+            </div>
+          )}
+          {payType === 'installment' && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Рассрочка</p>
+              <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+                value={totalCost} onChange={e => setTotalCost(e.target.value)}
+                className="crm-mobile-input w-full" />
+              <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
+                className="crm-mobile-input w-full" />
+            </div>
+          )}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Бонус (%)</p>
+            <input type="number" min={0} max={100} step={1} placeholder="Например: 10"
+              value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
+              className="crm-mobile-input w-full" />
+          </div>
+          {payErr && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+                 style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+              <AlertTriangle size={13} /> {payErr}
+            </div>
+          )}
+          <button type="button" onClick={handlePaySubmit} disabled={payLoading}
+            className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+            style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
+            {payLoading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+            Сохранить оплату
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -1587,17 +1676,14 @@ export default function MobileClientDetail() {
         {/* Отменить оплату */}
         <MobileCancelPaymentPanel client={client} clientId={id} onSuccess={load} />
 
-        {/* Ввести оплату заново */}
-        <MobileEnterPaymentPanel client={client} clientId={id} onSuccess={load} />
-
-        {/* Добавить в группу */}
+        {/* Добавить в группу (шаг 1 — выбор группы; шаг 2 — ввод оплаты) */}
         <MobileNewClientAddPanel client={client} clientId={id} onSuccess={load} />
+
+        {/* Ввести оплату заново (только для trial/active без оплаты — сценарий отмены оплаты) */}
+        <MobileEnterPaymentPanel client={client} clientId={id} onSuccess={load} />
 
         {/* Бронь следующей группы */}
         <MobileReservationPanel client={client} clientId={id} onSuccess={load} />
-
-        {/* История групп */}
-        <MobileStreamsHistory client={client} clientId={id} />
 
         {/* История статусов */}
         <MobileStatusHistory clientId={id} />
