@@ -1,7 +1,7 @@
 {
-  "name": "CRM система",
-  "short_name": "CRM",
-  "description": "CRM система управления клиентами",
+  "name": "Aiym Syry CRM",
+  "short_name": "Aiym Syry",
+  "description": "CRM система фитнес-школы Aiym Syry",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#faf7f8",
@@ -9,9 +9,9 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/vite.svg",
+      "src": "/logo.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

@@ -121,11 +121,9 @@ export default function AdminLayout({ children, user }) {
       {/* Лого */}
       <div className="px-4 pt-5 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/>
-            </svg>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 overflow-hidden"
+               style={{ background: '#fff' }}>
+            <img src="/logo.png" alt="Aiym Syry" className="w-full h-full object-contain p-0.5" />
           </div>
           <div>
             <p className="text-white text-sm font-bold leading-tight tracking-tight">CRM система</p>
@@ -187,11 +185,9 @@ export default function AdminLayout({ children, user }) {
           >
             <Menu size={20} />
           </button>
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-               style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.9"/>
-            </svg>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 overflow-hidden"
+               style={{ background: '#fff' }}>
+            <img src="/logo.png" alt="Aiym Syry" className="w-full h-full object-contain p-0.5" />
           </div>
           <span className="text-white font-semibold text-sm flex-1 truncate">
             {getActiveTitle(loc.pathname)}

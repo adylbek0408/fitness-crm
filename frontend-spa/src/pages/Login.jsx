@@ -3,11 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
-const LogoIcon = ({ size = 36 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.92"/>
-  </svg>
-)
 import api from '../api/axios'
 
 export default function Login({ defaultMode = 'staff' }) {
@@ -58,9 +53,9 @@ export default function Login({ defaultMode = 'staff' }) {
 
           {/* Лого */}
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #be185d, #9333ea)' }}>
-              <LogoIcon size={18} />
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center overflow-hidden"
+                 style={{ background: '#fff', boxShadow: '0 2px 8px rgba(190,24,93,0.15)' }}>
+              <img src="/logo.png" alt="Aiym Syry" className="w-full h-full object-contain p-1" />
             </div>
             <div>
               <p className="font-bold text-base" style={{ color: 'var(--text)' }}>CRM система</p>
