@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import {
   RefreshCw, CheckCircle2, X, Phone,
-  ChevronLeft, ChevronRight, Play, Headphones, BarChart2,
+  ChevronLeft, ChevronRight, Play, Headphones, BarChart2, Download,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
@@ -87,6 +87,36 @@ export default function EducationStats() {
 
   const barColor = v => v >= 75 ? '#10b981' : v >= 40 ? '#f59e0b' : '#f43f5e'
 
+  const exportCsv = () => {
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const rows = []
+
+    rows.push(['НЕАКТИВНЫЕ СТУДЕНТЫ (7+ дней без просмотра)'])
+    rows.push(['Фамилия', 'Имя', 'Телефон', 'Группа', 'Последний просмотр'])
+    inactive.forEach(c => rows.push([
+      esc(c.last_name), esc(c.first_name), esc(c.phone), esc(c.group_name || ''),
+      c.last_watched_at
+        ? new Date(c.last_watched_at).toLocaleDateString('ru')
+        : 'никогда',
+    ]))
+
+    rows.push([])
+    rows.push(['СТАТИСТИКА УРОКОВ'])
+    rows.push(['Название', 'Тип', 'Зрителей', 'Среднее %', 'Завершили'])
+    sortedLessons.forEach(l => rows.push([
+      esc(l.title), esc(l.lesson_type), l.viewers_count, l.avg_percent, l.completed_count,
+    ]))
+
+    const csv = '﻿' + rows.map(r => r.join(',')).join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `analytics_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <AdminLayout user={user}>
 
@@ -101,6 +131,16 @@ export default function EducationStats() {
           <option value="">Все группы</option>
           {groups.map(g => <option key={g.id} value={g.id}>Группа {g.number}</option>)}
         </AppSelect>
+
+        {data && (
+          <button
+            onClick={exportCsv}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition"
+          >
+            <Download size={14} />
+            CSV
+          </button>
+        )}
 
         <button
           onClick={() => reload()}

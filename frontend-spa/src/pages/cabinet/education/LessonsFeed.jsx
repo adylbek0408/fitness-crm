@@ -4,6 +4,7 @@ import { ChevronLeft, Search, X, BookOpen } from 'lucide-react'
 import api from '../../../api/axios'
 import ChatBubble from '../../../components/education/feed/FeedPost'
 import CabinetNav from '../../../components/CabinetNav'
+import LiveStreamBanner from '../../../components/LiveStreamBanner'
 import { pickList } from '../../../utils/format'
 
 const BATCH = 20
@@ -164,6 +165,7 @@ export default function LessonsFeed() {
 
   return (
     <div className="min-h-screen flex flex-col pb-16" style={{ background: '#e8dce8' }}>
+      <LiveStreamBanner />
 
       {/* ── TG-style sticky header ── */}
       <header className="bg-white sticky top-0 z-20" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.10)' }}>
