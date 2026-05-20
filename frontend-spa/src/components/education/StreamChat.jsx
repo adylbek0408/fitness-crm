@@ -58,6 +58,7 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
   const [online,     setOnline]     = useState(true)
   const lastTsRef    = useRef(null)
   const bottomRef    = useRef(null)
+  const scrollRef    = useRef(null)
   const inputRef     = useRef(null)
   const failCountRef = useRef(0)
   const inflightRef  = useRef(false)
@@ -92,15 +93,24 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
   useEffect(() => {
     if (!streamId) return
     poll()
-    const t = setInterval(() => { if (!document.hidden) poll() }, POLL_MS)
-    const onVis = () => { if (!document.hidden) { clearInterval(t); poll() } }
+    let t = setInterval(() => { if (!document.hidden) poll() }, POLL_MS)
+    const onVis = () => {
+      if (!document.hidden) {
+        poll()
+        clearInterval(t)
+        t = setInterval(() => { if (!document.hidden) poll() }, POLL_MS)
+      }
+    }
     document.addEventListener('visibilitychange', onVis)
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamId, poll])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = scrollRef.current
+    if (!el) return
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (isNearBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   /* ── Send ─────────────────────────────────────────────────────────────── */
@@ -158,7 +168,7 @@ export default function StreamChat({ streamId, isTrainer = false, senderName = '
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1 min-h-0"
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-1 min-h-0"
            style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
 
         {messages.length === 0 && (

@@ -114,7 +114,8 @@ export default function ConsultationsAdmin() {
     return matchSearch && matchStatus
   })
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const counts = {
     active:  items.filter(i => i.status === 'active').length,
@@ -292,7 +293,7 @@ export default function ConsultationsAdmin() {
             <p className="text-gray-500 font-medium">{items.length === 0 ? 'Консультаций ещё нет' : 'Ничего не найдено'}</p>
           </div>
         )}
-        {filtered.map(item => (
+        {paginated.map(item => (
           <ConsultationCard
             key={item.id}
             item={item}

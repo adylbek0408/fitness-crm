@@ -192,7 +192,8 @@ export default function StreamsAdmin() {
     return matchSearch && matchStatus
   })
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const counts = {
     live: streams.filter(s => s.status === 'live').length,
@@ -484,7 +485,7 @@ export default function StreamsAdmin() {
             )}
           </div>
         )}
-        {filtered.map(s => (
+        {paginated.map(s => (
           <StreamCard
             key={s.id}
             stream={s}
