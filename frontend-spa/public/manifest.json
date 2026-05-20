@@ -1,18 +1,27 @@
 {
+  "id": "/",
   "name": "Айым Сыры CRM",
   "short_name": "Айым Сыры",
   "description": "CRM система фитнес-школы Айым Сыры",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#faf7f8",
   "theme_color": "#1a1023",
-  "orientation": "portrait-primary",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/logo.png",
-      "sizes": "any",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
