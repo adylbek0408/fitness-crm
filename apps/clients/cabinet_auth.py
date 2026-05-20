@@ -39,7 +39,7 @@ def create_cabinet_tokens(client):
         'client_id': str(client.id),
         'type': CABINET_TOKEN_TYPE,
         'session_key': new_session_key,
-        'exp': now + timedelta(days=30),
+        'exp': now + timedelta(days=1),
         'iat': now,
     }
     payload_refresh = {

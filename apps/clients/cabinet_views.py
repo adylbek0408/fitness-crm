@@ -10,7 +10,9 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
-from .cabinet_auth import CabinetJWTAuthentication, create_cabinet_tokens
+import jwt
+
+from .cabinet_auth import CabinetJWTAuthentication, create_cabinet_tokens, CABINET_TOKEN_TYPE
 from .models import ClientAccount, Client
 
 
@@ -132,6 +134,61 @@ class CabinetGoogleAuthView(APIView):
 
         tokens = create_cabinet_tokens(account.client)
         return Response({'access': tokens['access'], 'refresh': tokens['refresh']})
+
+
+class CabinetTokenRefreshView(APIView):
+    """
+    POST /api/cabinet/token/refresh/
+    Body: { "refresh": "<cabinet refresh token>" }
+    Returns a new short-lived access token without rotating the session.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from datetime import datetime as _dt, timedelta, timezone as dt_tz
+
+        refresh_token = (request.data.get('refresh') or '').strip()
+        if not refresh_token:
+            return Response({'detail': 'refresh required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=['HS256'])
+        except jwt.ExpiredSignatureError:
+            return Response({'detail': 'Refresh token expired.'}, status=status.HTTP_401_UNAUTHORIZED)
+        except jwt.InvalidTokenError:
+            return Response({'detail': 'Invalid token.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if payload.get('type') != CABINET_TOKEN_TYPE:
+            return Response({'detail': 'Invalid token type.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if payload.get('token_type') != 'refresh':
+            return Response({'detail': 'Not a refresh token.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        client_id = payload.get('client_id')
+        session_key = payload.get('session_key', '')
+
+        try:
+            account = ClientAccount.objects.select_related('client').get(
+                client__id=client_id,
+                client__deleted_at__isnull=True,
+            )
+        except ClientAccount.DoesNotExist:
+            return Response({'detail': 'Client not found.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        stored = account.session_key or ''
+        if stored and stored != session_key:
+            return Response({'detail': 'Session expired. Please log in again.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        now = _dt.now(dt_tz.utc)
+        new_payload = {
+            'client_id': str(client_id),
+            'type': CABINET_TOKEN_TYPE,
+            'session_key': session_key,
+            'exp': now + timedelta(days=1),
+            'iat': now,
+        }
+        access = jwt.encode(new_payload, settings.SECRET_KEY, algorithm='HS256')
+        return Response({'access': access})
 
 
 class CabinetAttendanceView(APIView):
