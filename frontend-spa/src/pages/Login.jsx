@@ -75,14 +75,16 @@ export default function Login({ defaultMode = 'staff' }) {
   const handleSubmit = async e => {
     e.preventDefault()
     setError(''); setLoading(true)
+    const trimmedUsername = username.trim()
+    const trimmedPassword = password.trim()
     try {
       if (mode === 'student') {
-        const r = await api.post('/cabinet/login/', { username, password })
+        const r = await api.post('/cabinet/login/', { username: trimmedUsername, password: trimmedPassword })
         localStorage.setItem('cabinet_access_token', r.data.access)
         localStorage.setItem('cabinet_refresh_token', r.data.refresh)
         nav('/cabinet/profile')
       } else {
-        const r = await api.post('/accounts/token/', { username, password })
+        const r = await api.post('/accounts/token/', { username: trimmedUsername, password: trimmedPassword })
         // login() сохраняет токены + загружает /accounts/me/ → обновляет AuthContext
         const userData = await login(r.data.access, r.data.refresh)
         nav(userData?.role === 'admin' ? '/admin/dashboard' : '/mobile')

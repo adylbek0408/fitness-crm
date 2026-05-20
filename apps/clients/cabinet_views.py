@@ -28,8 +28,8 @@ class CabinetLoginView(APIView):
     throttle_classes = [CabinetLoginThrottle]
 
     def post(self, request):
-        username = request.data.get('username') or request.data.get('login')
-        password = request.data.get('password')
+        username = (request.data.get('username') or request.data.get('login') or '').strip()
+        password = (request.data.get('password') or '').strip()
         if not username or not password:
             return Response(
                 {'detail': 'username and password required'},
