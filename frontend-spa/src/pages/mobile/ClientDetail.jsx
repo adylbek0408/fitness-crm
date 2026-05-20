@@ -407,11 +407,10 @@ function MobileEnterPaymentPanel({ client, clientId, onSuccess }) {
   const [ok,           setOk]           = useState('')
 
   const hasPayment = !!(client.full_payment || client.installment_plan)
-  // Только для trial (пробный без оплаты после отмены).
-  // new-клиенты вводят оплату через шаг 2 в "Добавить в группу".
+  // Показываем для new/trial без оплаты (например, после cancel_payment).
   // active-клиенты: backend не позволяет enter-payment для этого статуса.
   if (hasPayment) return null
-  if (client.status !== 'trial') return null
+  if (!['new', 'trial'].includes(client.status)) return null
 
   const handleSubmit = async () => {
     if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) {
@@ -601,21 +600,25 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
     setErr('')
   }
 
-  // Шаг 2: сначала оплата (клиент ещё new → backend принимает), потом группа
+  // Шаг 2: если оплаты ещё нет — сначала enter-payment, потом add-to-group.
+  // Если оплата уже введена (через MobileEnterPaymentPanel) — сразу add-to-group.
   const handleEnroll = async () => {
-    if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) { setErr('Укажите сумму оплаты'); return }
-    if (payType === 'installment' && (!totalCost || !deadline)) { setErr('Укажите стоимость и дедлайн'); return }
-    const bp = parseInt(String(bonusPercent).trim(), 10)
-    if (Number.isNaN(bp) || bp < 0 || bp > 100) { setErr('Процент бонуса: от 0 до 100'); return }
+    if (!hasPayment) {
+      if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) { setErr('Укажите сумму оплаты'); return }
+      if (payType === 'installment' && (!totalCost || !deadline)) { setErr('Укажите стоимость и дедлайн'); return }
+      const bp = parseInt(String(bonusPercent).trim(), 10)
+      if (Number.isNaN(bp) || bp < 0 || bp > 100) { setErr('Процент бонуса: от 0 до 100'); return }
+    }
     setLoading(true); setErr('')
     try {
-      // 1. Оплата пока клиент ещё new
-      await api.post(`/clients/${clientId}/enter-payment/`, {
-        payment_type: payType,
-        payment_data: payType === 'full' ? { amount: payAmount } : { total_cost: totalCost, deadline },
-        bonus_percent: bp,
-      })
-      // 2. Добавить в группу (клиент становится active)
+      if (!hasPayment) {
+        const bp = parseInt(String(bonusPercent).trim(), 10)
+        await api.post(`/clients/${clientId}/enter-payment/`, {
+          payment_type: payType,
+          payment_data: payType === 'full' ? { amount: payAmount } : { total_cost: totalCost, deadline },
+          bonus_percent: bp,
+        })
+      }
       await api.post(`/clients/${clientId}/add-to-group/`, { group_id: selectedGroup.id })
       onSuccess()
     } catch (e) {
@@ -635,7 +638,7 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
             <p className="font-semibold text-gray-800 text-sm">Добавить в группу</p>
             <p className="text-xs text-gray-400">
               {step === 2 && selectedGroup
-                ? `Группа #${selectedGroup.number} — введите оплату`
+                ? (hasPayment ? `Группа #${selectedGroup.number} — оплата уже введена` : `Группа #${selectedGroup.number} — введите оплату`)
                 : 'Подходят тип и формат клиента'}
             </p>
           </div>
@@ -700,44 +703,52 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
               {GROUP_TYPE_LABEL[selectedGroup.group_type] || selectedGroup.group_type}
             </span>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Тип оплаты</p>
-            <div className="flex gap-2">
-              {[{ v: 'full', l: 'Полная оплата' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
-                <button key={v} type="button" onClick={() => setPayType(v)}
-                  className="flex-1 py-3 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
-                  style={payType === v
-                    ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
-                    : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
-                  }>
-                  {l}
-                </button>
-              ))}
+          {hasPayment ? (
+            <div className="p-3 rounded-xl text-sm" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }}>
+              ✓ Оплата уже введена — клиент будет добавлен в группу
             </div>
-          </div>
-          {payType === 'full' && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Сумма</p>
-              <input type="number" min="0" step="100" placeholder="Сумма (сом)"
-                value={payAmount} onChange={e => setPayAmount(e.target.value)}
-                className="crm-mobile-input w-full" />
-            </div>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Тип оплаты</p>
+                <div className="flex gap-2">
+                  {[{ v: 'full', l: 'Полная оплата' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+                    <button key={v} type="button" onClick={() => setPayType(v)}
+                      className="flex-1 py-3 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
+                      style={payType === v
+                        ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                        : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                      }>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {payType === 'full' && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Сумма</p>
+                  <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                    value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                    className="crm-mobile-input w-full" />
+                </div>
+              )}
+              {payType === 'installment' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Рассрочка</p>
+                  <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+                    value={totalCost} onChange={e => setTotalCost(e.target.value)}
+                    className="crm-mobile-input w-full" />
+                  <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Бонус (%)</p>
+                <input type="number" min={0} max={100} step={1} placeholder="Например: 10"
+                  value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
+                  className="crm-mobile-input w-full" />
+              </div>
+            </>
           )}
-          {payType === 'installment' && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Рассрочка</p>
-              <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
-                value={totalCost} onChange={e => setTotalCost(e.target.value)}
-                className="crm-mobile-input w-full" />
-              <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
-            </div>
-          )}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Бонус (%)</p>
-            <input type="number" min={0} max={100} step={1} placeholder="Например: 10"
-              value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
-              className="crm-mobile-input w-full" />
-          </div>
           {err && (
             <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
                  style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
@@ -1716,7 +1727,7 @@ export default function MobileClientDetail() {
         {/* Добавить в группу: шаг1 выбрать группу, шаг2 оплата, submit в правильном порядке */}
         <MobileNewClientAddPanel client={client} clientId={id} onSuccess={load} />
 
-        {/* Ввести оплату отдельно — только для trial без оплаты (пробный урок) */}
+        {/* Ввести оплату: показывается для new/trial без оплаты (после cancel или пробного) */}
         <MobileEnterPaymentPanel client={client} clientId={id} onSuccess={load} />
 
         {/* Бронь следующей группы */}
