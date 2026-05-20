@@ -67,22 +67,21 @@ def _regrade_progress_after_duration(lesson):
         percent_watched__gte=45,
     )
     now = _tz.now()
-    updated = 0
+    to_update = []
     for p in candidates:
         if p.last_position_sec <= 0:
             continue
         position_pct = (p.last_position_sec / duration) * 100
         if position_pct < 90:
             continue
-        # Position corroborates near-completion — mark done.
         p.is_completed = True
         p.percent_watched = min(100, max(p.percent_watched, int(position_pct)))
         if not p.completed_at:
             p.completed_at = now
-        p.save(update_fields=['is_completed', 'percent_watched', 'completed_at'])
-        updated += 1
-    if updated:
-        logger.info('Regraded %d progress record(s) for lesson %s after duration set', updated, lesson.id)
+        to_update.append(p)
+    if to_update:
+        LessonProgress.objects.bulk_update(to_update, ['is_completed', 'percent_watched', 'completed_at'])
+        logger.info('Regraded %d progress record(s) for lesson %s after duration set', len(to_update), lesson.id)
 
 
 def _migrate_recording_to_r2(lesson_id: str) -> None:
@@ -197,7 +196,7 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         if search:
             qs = qs.filter(Q(title__icontains=search)
                            | Q(description__icontains=search))
-        return qs.order_by('-created_at')
+        return qs.prefetch_related('groups').order_by('-created_at')
 
     def perform_destroy(self, instance):
         # Soft delete, follow project pattern.
@@ -725,7 +724,12 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
 
     def get_queryset(self):
-        return LiveStream.objects.filter(deleted_at__isnull=True).order_by('-created_at')
+        return (
+            LiveStream.objects.filter(deleted_at__isnull=True)
+            .select_related('archived_lesson', 'trainer')
+            .prefetch_related('groups')
+            .order_by('-created_at')
+        )
 
     def perform_destroy(self, instance):
         instance.deleted_at = timezone.now()
@@ -1483,7 +1487,11 @@ class ConsultationAdminViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
 
     def get_queryset(self):
-        return Consultation.objects.filter(deleted_at__isnull=True).order_by('-created_at')
+        return (
+            Consultation.objects.filter(deleted_at__isnull=True)
+            .select_related('trainer', 'client')
+            .order_by('-created_at')
+        )
 
     def perform_destroy(self, instance):
         instance.deleted_at = timezone.now()
@@ -1883,8 +1891,10 @@ class EducationStatsView(APIView):
             .annotate(last=Max('last_watched_at'))
             .values_list('client', 'last')
         )
+        # Materialise once — reuse for loop, inactive list, and count.
+        all_clients = list(clients_qs.select_related('group'))
         inactive = []
-        for client in clients_qs.select_related('group'):
+        for client in all_clients:
             last = last_activity.get(client.id)
             if not last or last < cutoff:
                 inactive.append({
@@ -1935,7 +1945,7 @@ class EducationStatsView(APIView):
         response = {
             'summary': {
                 'total_lessons': len(lessons_data),
-                'total_clients_eligible': clients_qs.count(),
+                'total_clients_eligible': len(all_clients),
                 'avg_completion_percent': round(avg_completion, 1),
                 'active_last_7_days': active_count,
                 'inactive': len(inactive),

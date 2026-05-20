@@ -60,9 +60,13 @@ class StatisticsService(BaseService):
         f = self._build_filters(params)
         alive = Q(deleted_at__isnull=True)
 
-        client_ids = list(
-            Client.objects.filter(f['client'], alive).values_list('id', flat=True)
+        # Single query: fetch id + training_format, split in Python (saves 2 extra queries).
+        client_rows = list(
+            Client.objects.filter(f['client'], alive).values_list('id', 'training_format')
         )
+        client_ids = [r[0] for r in client_rows]
+        online_client_ids = [r[0] for r in client_rows if r[1] == 'online']
+        offline_client_ids = [r[0] for r in client_rows if r[1] == 'offline']
 
         full_revenue = FullPayment.objects.filter(
             f['full_payment'],
@@ -81,17 +85,6 @@ class StatisticsService(BaseService):
 
         total_revenue = full_revenue + installment_revenue
 
-        online_client_ids = list(
-            Client.objects.filter(
-                f['client'], alive, training_format='online'
-            ).values_list('id', flat=True)
-        )
-        offline_client_ids = list(
-            Client.objects.filter(
-                f['client'], alive, training_format='offline'
-            ).values_list('id', flat=True)
-        )
-
         online_revenue = self._calc_revenue_for_clients(online_client_ids, f)
         offline_revenue = self._calc_revenue_for_clients(offline_client_ids, f)
 
@@ -99,16 +92,12 @@ class StatisticsService(BaseService):
             client_id__in=client_ids, is_paid=True
         ).count()
 
-        closed_installment_plans = 0
-        for plan in InstallmentPlan.objects.filter(
+        # Load all plans once; count total and closed in Python (avoids a separate COUNT query).
+        all_plans = list(InstallmentPlan.objects.filter(
             client_id__in=client_ids
-        ).prefetch_related('payments'):
-            if plan.is_closed:
-                closed_installment_plans += 1
-
-        total_installment_plans = InstallmentPlan.objects.filter(
-            client_id__in=client_ids
-        ).count()
+        ).prefetch_related('payments'))
+        total_installment_plans = len(all_plans)
+        closed_installment_plans = sum(1 for plan in all_plans if plan.is_closed)
         partial_plans = total_installment_plans - closed_installment_plans
 
         total_absences_qs = Attendance.objects.filter(

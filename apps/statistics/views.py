@@ -246,6 +246,7 @@ class StatisticsViewSet(viewsets.GenericViewSet):
         GET /api/statistics/trash-data/
         Удалённые в корзине: клиенты, группы, менеджеры (soft delete).
         """
+        from django.db.models import Count, Q as _Q
         from apps.clients.models import Client
         from apps.groups.models import Group
         from apps.accounts.models import ManagerProfile
@@ -260,9 +261,14 @@ class StatisticsViewSet(viewsets.GenericViewSet):
             .select_related('group', 'trainer')
             .order_by('-deleted_at')
         )
+        # annotate active client count to avoid N+1 COUNT per group row
         groups = (
             Group.objects.filter(deleted_at__isnull=False)
             .select_related('trainer')
+            .annotate(active_clients_count=Count(
+                'clients',
+                filter=_Q(clients__deleted_at__isnull=True),
+            ))
             .order_by('-deleted_at')
         )
         managers = (
@@ -289,7 +295,7 @@ class StatisticsViewSet(viewsets.GenericViewSet):
                     'type':    g.group_type,
                     'trainer': g.trainer.full_name if g.trainer else '—',
                     'status':  g.status,
-                    'clients': g.clients.filter(deleted_at__isnull=True).count(),
+                    'clients': g.active_clients_count,
                 }
                 for g in groups
             ],
@@ -369,11 +375,13 @@ class StatisticsViewSet(viewsets.GenericViewSet):
                 obj.save(update_fields=['deleted_at'])
                 name = f'Группа {obj.number}'
             elif entity == 'manager':
+                from django.db import transaction as _tx
                 obj = ManagerProfile.objects.select_related('user').get(id=obj_id, deleted_at__isnull=False)
-                obj.deleted_at = None
-                obj.user.is_active = True
-                obj.user.save(update_fields=['is_active'])
-                obj.save(update_fields=['deleted_at'])
+                with _tx.atomic():
+                    obj.deleted_at = None
+                    obj.user.is_active = True
+                    obj.user.save(update_fields=['is_active'])
+                    obj.save(update_fields=['deleted_at'])
                 name = obj.user.username
             else:
                 return Response({'detail': f'Неизвестный тип: {entity}'}, status=400)

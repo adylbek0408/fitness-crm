@@ -100,17 +100,25 @@ class AttendanceViewSet(viewsets.GenericViewSet):
                 .filter(group=group)
                 .values_list('client_id', flat=True)
             )
+            date_filter = {'lesson_date__gte': group.start_date}
+            if group.end_date:
+                date_filter['lesson_date__lte'] = group.end_date
             records = (
                 Attendance.objects
-                .filter(client_id__in=client_ids)
+                .filter(client_id__in=client_ids, **date_filter)
                 .order_by('lesson_date', 'client_id')
                 .values('lesson_date', 'client_id', 'is_absent', 'note')
             )
         else:
             # ── Активный / набор: клиенты через FK ─────────────────────────
+            # Date filter prevents repeat clients from bringing attendance
+            # from previous groups into this group's view.
+            date_filter = {'lesson_date__gte': group.start_date}
+            if group.end_date:
+                date_filter['lesson_date__lte'] = group.end_date
             records = (
                 Attendance.objects
-                .filter(client__group_id=group_id)
+                .filter(client__group_id=group_id, **date_filter)
                 .order_by('lesson_date', 'client_id')
                 .values('lesson_date', 'client_id', 'is_absent', 'note')
             )

@@ -205,6 +205,7 @@ class CabinetAttendanceView(APIView):
 
     def get(self, request):
         from apps.attendance.models import Attendance
+        from django.db.models import Count, Q
         account = request.user
         try:
             limit = int(request.query_params.get('limit', 50))
@@ -212,11 +213,8 @@ class CabinetAttendanceView(APIView):
             limit = 50
         # Cap to prevent DoS via huge limit (~caller controls memory + DB load).
         limit = max(1, min(limit, 500))
-        records = (
-            Attendance.objects
-            .filter(client_id=account.client_id)
-            .order_by('-lesson_date')[:limit]
-        )
+        base_qs = Attendance.objects.filter(client_id=account.client_id)
+        records = list(base_qs.order_by('-lesson_date')[:limit])
         data = [
             {
                 'lesson_date': str(r.lesson_date),
@@ -225,14 +223,16 @@ class CabinetAttendanceView(APIView):
             }
             for r in records
         ]
-        total = Attendance.objects.filter(client_id=account.client_id).count()
-        absent = Attendance.objects.filter(client_id=account.client_id, is_absent=True).count()
-        present = Attendance.objects.filter(client_id=account.client_id, is_absent=False).count()
+        agg = base_qs.aggregate(
+            total=Count('id'),
+            absent=Count('id', filter=Q(is_absent=True)),
+            present=Count('id', filter=Q(is_absent=False)),
+        )
         return Response({
             'records': data,
-            'total': total,
-            'absent': absent,
-            'present': present,
+            'total': agg['total'],
+            'absent': agg['absent'],
+            'present': agg['present'],
         })
 
 
@@ -246,7 +246,9 @@ class CabinetMeView(APIView):
 
     def get(self, request):
         account = request.user  # ClientAccount from CabinetJWTAuthentication
-        client = Client.objects.select_related('group', 'second_group').filter(
+        client = Client.objects.select_related(
+            'group', 'group__trainer', 'second_group', 'second_group__trainer',
+        ).filter(
             pk=account.client_id, deleted_at__isnull=True,
         ).first()
         if not client:
@@ -270,15 +272,22 @@ class CabinetMeView(APIView):
         from .models import ClientGroupHistory
         completed_flows = [
             {'number': h.group_number, 'group_type': h.group_type}
-            for h in ClientGroupHistory.objects.filter(client=client).order_by('-ended_at')
+            for h in ClientGroupHistory.objects.filter(client=client).order_by('-ended_at')[:20]
         ]
 
         # Installment payment access check
         has_lesson_access = True
         if client.payment_type == 'installment':
-            from apps.payments.models import InstallmentPlan
+            from apps.payments.models import InstallmentPlan, InstallmentPayment
+            from django.db.models import Sum as _Sum
             plan = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()
-            has_lesson_access = bool(plan and plan.is_closed)
+            if plan:
+                paid = InstallmentPayment.objects.filter(plan=plan).aggregate(
+                    total=_Sum('amount')
+                )['total'] or 0
+                has_lesson_access = paid >= plan.total_cost
+            else:
+                has_lesson_access = False
 
         second_group = None
         if client.second_group_id:
