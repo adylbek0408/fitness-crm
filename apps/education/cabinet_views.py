@@ -12,6 +12,7 @@ import logging
 from datetime import timedelta
 
 from django.core.exceptions import ImproperlyConfigured
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Q, Subquery
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -337,35 +338,40 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         # last_watched_at is auto_now in the model — ensure update_or_create
         # actually bumps it even when nothing else changed.
         from django.utils import timezone as _tz
-        # get_or_create guards against duplicate INSERTs from two concurrent
-        # requests (e.g. two browser tabs), but if both requests race past the
-        # SELECT at the same millisecond, both attempt INSERT → IntegrityError.
-        # The except clause handles that edge case gracefully.
-        from django.db import IntegrityError as _IntegrityError
-        try:
-            progress, _ = LessonProgress.objects.get_or_create(
-                client=client,
-                lesson=lesson,
-                defaults={'last_position_sec': 0, 'percent_watched': 0},
-            )
-        except _IntegrityError:
-            progress = LessonProgress.objects.get(client=client, lesson=lesson)
-        now = _tz.now()
-        # Never let percent go backward (two-device race, seek-back, etc.)
-        new_percent = max(progress.percent_watched, percent)
-        # Once completed, stays completed — completion can't be un-rung.
-        new_completed = progress.is_completed or is_completed
-        # Record the first moment the lesson was completed.
-        if new_completed and not progress.is_completed and not progress.completed_at:
-            progress.completed_at = now
-        progress.last_position_sec = position
-        progress.percent_watched   = new_percent
-        progress.is_completed      = new_completed
-        progress.last_watched_at   = now
-        progress.save(update_fields=[
-            'last_position_sec', 'percent_watched', 'is_completed',
-            'completed_at', 'last_watched_at',
-        ])
+        # select_for_update inside atomic ensures only one concurrent request
+        # can update this progress row at a time, preventing the race where two
+        # tabs read stale percent=0 and one saves a lower value after the other.
+        with transaction.atomic():
+            try:
+                progress = LessonProgress.objects.select_for_update().get(
+                    client=client, lesson=lesson,
+                )
+            except LessonProgress.DoesNotExist:
+                try:
+                    progress = LessonProgress.objects.create(
+                        client=client, lesson=lesson,
+                        last_position_sec=0, percent_watched=0,
+                    )
+                except IntegrityError:
+                    progress = LessonProgress.objects.select_for_update().get(
+                        client=client, lesson=lesson,
+                    )
+            now = _tz.now()
+            # Never let percent go backward (two-device race, seek-back, etc.)
+            new_percent = max(progress.percent_watched, percent)
+            # Once completed, stays completed — completion can't be un-rung.
+            new_completed = progress.is_completed or is_completed
+            # Record the first moment the lesson was completed.
+            if new_completed and not progress.is_completed and not progress.completed_at:
+                progress.completed_at = now
+            progress.last_position_sec = position
+            progress.percent_watched   = new_percent
+            progress.is_completed      = new_completed
+            progress.last_watched_at   = now
+            progress.save(update_fields=[
+                'last_position_sec', 'percent_watched', 'is_completed',
+                'completed_at', 'last_watched_at',
+            ])
         return Response(LessonProgressSerializer(progress).data)
 
 

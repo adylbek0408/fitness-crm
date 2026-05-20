@@ -88,6 +88,7 @@ api.interceptors.response.use(
       const isCabinet = isCabinetUrl(originalRequest?.url)
       const isLoginUrl = originalRequest?.url?.includes?.('/accounts/token') ||
                          originalRequest?.url?.includes?.('cabinet/login') ||
+                         originalRequest?.url?.includes?.('cabinet/google-auth') ||
                          originalRequest?.url?.includes?.('cabinet/token/refresh')
 
       if (isLoginUrl) return Promise.reject(err)
