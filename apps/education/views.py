@@ -876,7 +876,7 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
                 try:
                     # Frontend sends ISO-8601 (e.g. "2026-05-08T19:30:00.123Z").
                     parsed = datetime.fromisoformat(after.replace('Z', '+00:00'))
-                    qs = qs.filter(created_at__gt=parsed)
+                    qs = qs.filter(created_at__gte=parsed)
                 except (ValueError, TypeError):
                     pass
             elif limit > 0:

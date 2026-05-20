@@ -723,7 +723,7 @@ class CabinetStreamChatView(APIView):
             from datetime import datetime
             try:
                 parsed = datetime.fromisoformat(after.replace('Z', '+00:00'))
-                qs = qs.filter(created_at__gt=parsed)
+                qs = qs.filter(created_at__gte=parsed)
             except (ValueError, TypeError):
                 pass
         elif limit > 0:

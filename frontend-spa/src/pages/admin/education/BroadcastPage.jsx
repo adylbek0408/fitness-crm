@@ -7,7 +7,6 @@ import {
 } from 'lucide-react'
 import api from '../../../api/axios'
 import StreamChat from '../../../components/education/StreamChat'
-import { pickList } from '../../../utils/format'
 import {
   createMixerCanvas, createAudioMixer,
   startTrainerP2P,
@@ -163,8 +162,8 @@ export default function BroadcastPage() {
   // ── data & polling ────────────────────────────────────────────────────────
 
   useEffect(() => {
-    api.get('/education/streams/')
-      .then(r => { const s = (pickList(r.data)).find(s => s.id === id); if (s) setStream(s); else setError('Эфир не найден') })
+    api.get(`/education/streams/${id}/`)
+      .then(r => { if (r.data?.id) setStream(r.data); else setError('Эфир не найден') })
       .catch(() => setError('Ошибка загрузки'))
     // Garbage-collect chunks from broadcasts that ended >24 h ago and never
     // got uploaded (closed tab, crashed browser, hard refresh). Without this,
@@ -219,9 +218,9 @@ export default function BroadcastPage() {
     // live input and our session needs to tear down. 12 s is fine — students
     // already see "stream ended" via their own poll if we're slow to notice.
     const t = setInterval(() => {
-      api.get('/education/streams/').then(r => {
+      api.get(`/education/streams/${id}/`).then(r => {
         if (!ok) return
-        const fresh = (pickList(r.data)).find(s => s.id === id)
+        const fresh = r.data
         if (fresh && fresh.status !== 'live') {
           whipRef.current = null
           // Stop recorder before tracks so the final chunk is flushed
