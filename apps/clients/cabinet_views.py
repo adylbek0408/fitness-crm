@@ -1,6 +1,9 @@
 """
 Cabinet API: login (username/password -> JWT), me (profile: first_name, last_name, balance).
 """
+import requests as http_requests
+
+from django.conf import settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -49,6 +52,86 @@ class CabinetLoginView(APIView):
             'access': tokens['access'],
             'refresh': tokens['refresh'],
         })
+
+
+class CabinetGoogleAuthView(APIView):
+    """
+    POST /api/cabinet/google-auth/
+    Body: { "credential": "<Google ID token>" }
+
+    Verify Google ID token, find matching ClientAccount by google_id or
+    google_email, return cabinet JWT pair.
+
+    Matching order:
+    1. google_id match  — fastest, immutable, most secure
+    2. google_email match — for first-time login after manager pre-filled email;
+       saves google_id so subsequent logins use rule #1
+    3. No match → 404 with instructions to contact manager
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [CabinetLoginThrottle]
+
+    def post(self, request):
+        credential = request.data.get('credential', '').strip()
+        if not credential:
+            return Response({'detail': 'credential required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        google_client_id = getattr(settings, 'GOOGLE_CLIENT_ID', '')
+        if not google_client_id:
+            return Response(
+                {'detail': 'Google login not configured on server.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Verify token with Google tokeninfo endpoint
+        try:
+            resp = http_requests.get(
+                'https://oauth2.googleapis.com/tokeninfo',
+                params={'id_token': credential},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                return Response({'detail': 'Invalid Google token.'}, status=status.HTTP_401_UNAUTHORIZED)
+            info = resp.json()
+        except Exception:
+            return Response({'detail': 'Could not verify Google token.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Verify audience matches our app
+        if info.get('aud') != google_client_id:
+            return Response({'detail': 'Token audience mismatch.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        google_id = info.get('sub', '')
+        google_email = info.get('email', '').lower()
+
+        if not google_id:
+            return Response({'detail': 'Invalid Google token payload.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # 1. Match by google_id (most common path after first login)
+        account = ClientAccount.objects.select_related('client').filter(
+            google_id=google_id,
+            client__deleted_at__isnull=True,
+        ).first()
+
+        if account is None and google_email:
+            # 2. Match by google_email (first login — manager pre-filled email)
+            account = ClientAccount.objects.select_related('client').filter(
+                google_email__iexact=google_email,
+                client__deleted_at__isnull=True,
+            ).first()
+            if account:
+                # Save google_id so future logins skip email lookup
+                account.google_id = google_id
+                account.save(update_fields=['google_id'])
+
+        if account is None:
+            return Response(
+                {'detail': 'Аккаунт не найден. Обратитесь к менеджеру.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        tokens = create_cabinet_tokens(account.client)
+        return Response({'access': tokens['access'], 'refresh': tokens['refresh']})
 
 
 class CabinetAttendanceView(APIView):
@@ -106,7 +189,11 @@ class CabinetMeView(APIView):
 
     def get(self, request):
         account = request.user  # ClientAccount from CabinetJWTAuthentication
-        client = Client.objects.select_related('group', 'second_group').get(pk=account.client_id)
+        client = Client.objects.select_related('group', 'second_group').filter(
+            pk=account.client_id, deleted_at__isnull=True,
+        ).first()
+        if not client:
+            return Response({'detail': 'Аккаунт не найден.'}, status=status.HTTP_404_NOT_FOUND)
         # Полный номер — свой кабинет, клиент видит свой номер
         phone = (client.phone or '').strip() or '—'
 

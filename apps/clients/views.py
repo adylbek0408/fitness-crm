@@ -266,6 +266,20 @@ class ClientViewSet(viewsets.ModelViewSet):
                 data.pop('group', None)
                 data.pop('trainer', None)
 
+        # Handle google_email separately (stored on ClientAccount, not Client)
+        if 'google_email' in data:
+            new_google_email = (data.pop('google_email') or '').strip().lower()
+            try:
+                acct = instance.cabinet_account
+                old_google_email = acct.google_email or ''
+                if old_google_email and old_google_email != new_google_email:
+                    # Email changed — clear cached google_id so next Google login re-links
+                    acct.google_id = ''
+                acct.google_email = new_google_email
+                acct.save(update_fields=['google_email', 'google_id'])
+            except Exception:
+                pass
+
         allowed = {'first_name', 'last_name', 'phone', 'group', 'second_group', 'trainer', 'telegram_link', 'notes', 'training_format', 'group_type'}
         filtered = {k: v for k, v in data.items() if k in allowed}
 

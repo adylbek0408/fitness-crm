@@ -59,6 +59,8 @@ JITSI_DOMAIN = config('JITSI_DOMAIN', default='')
 JITSI_APP_ID = config('JITSI_APP_ID', default='asylzada')
 JITSI_APP_SECRET = config('JITSI_APP_SECRET', default='')
 
+GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

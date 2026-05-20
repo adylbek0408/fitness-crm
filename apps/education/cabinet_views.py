@@ -185,9 +185,10 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
         qs = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(qs)
         client = request.user.client
+        lessons_subset = page if page is not None else qs
         progress_map = {
             p.lesson_id: p for p in LessonProgress.objects.filter(
-                client=client, lesson__in=page or qs,
+                client=client, lesson__in=lessons_subset,
             )
         }
 
@@ -201,7 +202,7 @@ class CabinetLessonViewSet(viewsets.ReadOnlyModelViewSet):
             }
             return data
 
-        items = [serialize(l) for l in (page or qs)]
+        items = [serialize(l) for l in lessons_subset]
         if page is not None:
             return self.get_paginated_response(items)
         return Response(items)

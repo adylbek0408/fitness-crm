@@ -25,6 +25,14 @@ class ClientAccount(models.Model):
         max_length=64, blank=True, default='',
         help_text='Rotating key embedded in JWT; new login rotates it to invalidate all old tokens',
     )
+    google_id = models.CharField(
+        max_length=128, blank=True, default='', db_index=True,
+        help_text='Google account sub (unique ID). Set automatically on first Google login.',
+    )
+    google_email = models.EmailField(
+        blank=True, default='',
+        help_text='Gmail адрес ученика — менеджер указывает при регистрации.',
+    )
 
     def set_password(self, raw_password):
         from django.contrib.auth.hashers import make_password

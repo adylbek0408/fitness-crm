@@ -52,6 +52,8 @@ class ClientReadSerializer(serializers.ModelSerializer):
     registered_by_name = serializers.SerializerMethodField()
     cabinet_username = serializers.SerializerMethodField()
     cabinet_password = serializers.SerializerMethodField()
+    google_email = serializers.SerializerMethodField()
+    google_linked = serializers.SerializerMethodField()
     active_reservation = serializers.SerializerMethodField()
 
     class Meta:
@@ -64,8 +66,9 @@ class ClientReadSerializer(serializers.ModelSerializer):
             'bonus_balance', 'bonus_percent', 'payment_type',
             'registered_at', 'registered_by_name',
             'full_payment', 'installment_plan',
-            'cabinet_username', 'cabinet_password', 'created_at',
-            'active_reservation',
+            'cabinet_username', 'cabinet_password',
+            'google_email', 'google_linked',
+            'created_at', 'active_reservation',
         ]
         read_only_fields = ['id', 'created_at']
 
@@ -99,6 +102,18 @@ class ClientReadSerializer(serializers.ModelSerializer):
             return obj.cabinet_account.password_plain or None
         except ClientAccount.DoesNotExist:
             return None
+
+    def get_google_email(self, obj):
+        try:
+            return obj.cabinet_account.google_email or ''
+        except ClientAccount.DoesNotExist:
+            return ''
+
+    def get_google_linked(self, obj):
+        try:
+            return bool(obj.cabinet_account.google_id)
+        except ClientAccount.DoesNotExist:
+            return False
 
     def get_active_reservation(self, obj):
         from .models import ClientGroupReservation

@@ -74,6 +74,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const [phone, setPhone] = useState(client.phone)
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
   const [notes, setNotes] = useState(client.notes || '')
+  const [googleEmail, setGoogleEmail] = useState(client.google_email || '')
   const [isTrial, setIsTrial] = useState(client.is_trial || false)
   const [trainingFormat, setTrainingFormat] = useState(client.training_format || 'offline')
   const [groupType, setGroupType] = useState(client.group_type || '')
@@ -83,7 +84,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const handleOpen = () => {
     setFirstName(client.first_name); setLastName(client.last_name)
     setPhone(client.phone); setTelegramLink(client.telegram_link || '')
-    setNotes(client.notes || ''); setIsTrial(client.is_trial || false)
+    setNotes(client.notes || ''); setGoogleEmail(client.google_email || ''); setIsTrial(client.is_trial || false)
     setTrainingFormat(client.training_format || 'offline')
     setGroupType(client.group_type || '')
     setErr('')
@@ -100,6 +101,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
         phone: phone.trim(),
         telegram_link: trainingFormat === 'online' ? (telegramLink || '').trim() : '',
         notes: (notes || '').trim(),
+        google_email: (googleEmail || '').trim().toLowerCase(),
         is_trial: isTrial,
         training_format: trainingFormat,
         group_type: trainingFormat === 'offline' ? groupType : '',
@@ -155,6 +157,17 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
             <textarea value={notes} onChange={e => setNotes(e.target.value)}
               className="crm-mobile-input w-full resize-none" rows={2}
               placeholder="Пометки для сотрудников..." />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1">
+              Gmail ученика {client.google_linked ? '✓' : '(для входа через Google)'}
+            </p>
+            <input value={googleEmail} onChange={e => setGoogleEmail(e.target.value)}
+              className="crm-mobile-input w-full" placeholder="example@gmail.com"
+              type="email" />
+            {client.google_linked && (
+              <p className="text-xs text-emerald-600 mt-1">✓ Google аккаунт привязан</p>
+            )}
           </div>
           {/* ── Формат обучения ── */}
           <div>

@@ -1,9 +1,56 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 import api from '../api/axios'
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+
+function GoogleButton({ onCredential, loading }) {
+  const btnRef = useRef(null)
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return
+    const scriptId = 'google-gsi'
+    if (!document.getElementById(scriptId)) {
+      const s = document.createElement('script')
+      s.id = scriptId; s.src = 'https://accounts.google.com/gsi/client'; s.async = true
+      document.head.appendChild(s)
+      s.onload = () => initGoogle()
+    } else if (window.google?.accounts) {
+      initGoogle()
+    }
+    function initGoogle() {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (resp) => onCredential(resp.credential),
+      })
+      if (btnRef.current) {
+        window.google.accounts.id.renderButton(btnRef.current, {
+          theme: 'outline', size: 'large', width: btnRef.current.offsetWidth || 340,
+          text: 'signin_with', shape: 'rectangular', logo_alignment: 'left',
+        })
+      }
+    }
+  }, [onCredential])
+
+  if (!GOOGLE_CLIENT_ID) return null
+
+  return (
+    <div className="flex flex-col items-center gap-3 mt-1">
+      <div className="flex items-center gap-3 w-full">
+        <div className="flex-1 h-px bg-slate-200" />
+        <span className="text-xs text-slate-400 whitespace-nowrap">или</span>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
+      <div ref={btnRef} className="w-full" style={{ minHeight: 44 }} />
+      {loading && (
+        <span className="text-xs text-slate-400">Входим через Google...</span>
+      )}
+    </div>
+  )
+}
 
 export default function Login({ defaultMode = 'staff' }) {
   const { login } = useAuth()
@@ -13,6 +60,7 @@ export default function Login({ defaultMode = 'staff' }) {
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const nav = useNavigate()
 
   useEffect(() => {
@@ -43,6 +91,18 @@ export default function Login({ defaultMode = 'staff' }) {
       const msg = e.response?.data?.detail || 'Неверный логин или пароль'
       setError(Array.isArray(msg) ? msg[0] : msg)
     } finally { setLoading(false) }
+  }
+
+  const handleGoogleCredential = async (credential) => {
+    setGoogleLoading(true); setError('')
+    try {
+      const r = await api.post('/cabinet/google-auth/', { credential })
+      localStorage.setItem('cabinet_access_token', r.data.access)
+      localStorage.setItem('cabinet_refresh_token', r.data.refresh)
+      nav('/cabinet/profile')
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Ошибка входа через Google')
+    } finally { setGoogleLoading(false) }
   }
 
   const isStaff = mode === 'staff'
@@ -133,6 +193,10 @@ export default function Login({ defaultMode = 'staff' }) {
               ) : isStaff ? 'Войти как сотрудник' : 'Войти в кабинет'}
             </button>
           </form>
+
+          {!isStaff && (
+            <GoogleButton onCredential={handleGoogleCredential} loading={googleLoading} />
+          )}
 
           <p className="text-center text-xs mt-8" style={{ color: 'var(--text-xs)' }}>
             {isStaff

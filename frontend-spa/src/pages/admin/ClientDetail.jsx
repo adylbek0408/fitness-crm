@@ -198,6 +198,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
   const [phone,        setPhone]        = useState(client.phone)
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
   const [notes,        setNotes]        = useState(client.notes || '')
+  const [googleEmail,  setGoogleEmail]  = useState(client.google_email || '')
   const [isTrial,        setIsTrial]        = useState(client.is_trial || false)
   const [trainingFormat, setTrainingFormat] = useState(client.training_format || 'offline')
   const [groupType,      setGroupType]      = useState(client.group_type || '')
@@ -215,6 +216,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
     setPhone(client.phone)
     setTelegramLink(client.telegram_link || '')
     setNotes(client.notes || '')
+    setGoogleEmail(client.google_email || '')
     setIsTrial(client.is_trial || false)
     setTrainingFormat(client.training_format || 'offline')
     setGroupType(client.group_type || '')
@@ -248,6 +250,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
         phone:            phone.trim(),
         telegram_link:    trainingFormat === 'online' ? (telegramLink || '').trim() : '',
         notes:            (notes || '').trim(),
+        google_email:     (googleEmail || '').trim().toLowerCase(),
         is_trial:         isTrial,
         training_format:  trainingFormat,
         group_type:       trainingFormat === 'offline' ? groupType : '',
@@ -373,6 +376,22 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
             <textarea value={notes} onChange={e => setNotes(e.target.value)}
               className="crm-input w-full resize-none" rows={3}
               placeholder="Любые пометки для сотрудников..." />
+          </div>
+          <div>
+            <label className="crm-label">Gmail ученика (для входа через Google)</label>
+            <div className="relative">
+              <input value={googleEmail} onChange={e => setGoogleEmail(e.target.value)}
+                className="crm-input w-full pr-8" placeholder="example@gmail.com"
+                type="email" />
+              {client.google_linked && (
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-500 text-xs font-semibold">✓</span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              {client.google_linked
+                ? '✓ Google аккаунт уже привязан — ученик может войти через Google'
+                : 'Укажите Gmail ученика — после этого он сможет войти через Google'}
+            </p>
           </div>
 
           {/* ── Тип клиента: Обычный / Пробный ── */}
