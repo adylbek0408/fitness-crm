@@ -398,6 +398,7 @@ class ClientService(BaseService):
         return client
 
     def reset_cabinet_password(self, client_id: str) -> str:
+        import secrets as _secrets
         client = self.get_client_or_raise(client_id)
         try:
             account = client.cabinet_account
@@ -405,6 +406,8 @@ class ClientService(BaseService):
             raise ValidationError("У клиента нет кабинета")
         plain = _generate_cabinet_password()
         account.set_password(plain)
+        # Rotate session_key so all existing JWT tokens are invalidated immediately.
+        ClientAccount.objects.filter(pk=account.pk).update(session_key=_secrets.token_urlsafe(32))
         return plain
 
     @transaction.atomic

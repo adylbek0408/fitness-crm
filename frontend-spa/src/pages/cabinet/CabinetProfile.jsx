@@ -65,6 +65,7 @@ export default function CabinetProfile() {
 
   useEffect(() => {
     if (!localStorage.getItem('cabinet_access_token')) { nav('/cabinet'); return }
+    let cancelled = false
     const load = async () => {
       setLoading(true); setError('')
       try {
@@ -73,23 +74,25 @@ export default function CabinetProfile() {
           api.get('/cabinet/attendance/?limit=200').catch(() => null),
           api.get('/cabinet/education/streams/active/').catch(() => null),
         ])
+        if (cancelled) return
         setProfile(pr.data)
         // Cache lesson access flag so LessonsList can show payment message
         localStorage.setItem('cabinet_lesson_access', pr.data.has_lesson_access ? '1' : '0')
         if (ar) setAttendance(ar.data)
         if (sr) setActiveStream(sr.data?.stream || null)
       } catch (e) {
+        if (cancelled) return
         if (e.response?.status === 401) { nav('/cabinet'); return }
         setError(e.response?.data?.detail ?? e.message ?? 'Ошибка загрузки')
-      } finally { setLoading(false) }
+      } finally { if (!cancelled) setLoading(false) }
     }
     load()
     const poll = setInterval(() => {
       api.get('/cabinet/education/streams/active/')
-        .then(r => setActiveStream(r.data?.stream || null))
+        .then(r => { if (!cancelled) setActiveStream(r.data?.stream || null) })
         .catch(() => {})
     }, 30000)
-    return () => clearInterval(poll)
+    return () => { cancelled = true; clearInterval(poll) }
   }, [nav])
 
   const logout = () => {

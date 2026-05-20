@@ -71,6 +71,7 @@ export default function StreamLive() {
   const streamRef        = useRef(null)
   const streamEndedRef   = useRef(false)
   const joinedRef        = useRef(false)
+  const mountedRef       = useRef(true)
   streamRef.current      = stream
   streamEndedRef.current = streamEnded
 
@@ -212,6 +213,10 @@ export default function StreamLive() {
       return
     }
 
+    if (!mountedRef.current) {
+      try { localStream.getTracks().forEach(t => t.stop()) } catch {}
+      return
+    }
     setOnStage(true)
     setStageState('connecting')
     setGuestInvite(null)
@@ -259,15 +264,15 @@ export default function StreamLive() {
         onConnected: () => {
           connected = true
           clearTimeout(timeoutId)
-          if (!timedOut) setStageState('live')
+          if (!timedOut && mountedRef.current) setStageState('live')
         },
         onFailed: () => {
           clearTimeout(timeoutId)
-          setStageState('failed')
+          if (mountedRef.current) setStageState('failed')
           // Auto-cleanup after 5 s so the backend guest row doesn't stay
           // in 'active' state forever when P2P dies mid-session. The student
           // sees the error briefly, then the stage UI is dismissed cleanly.
-          setTimeout(() => leaveStage(true), 5000)
+          setTimeout(() => { if (mountedRef.current) leaveStage(true) }, 5000)
         },
       })
       stagePcRef.current = session
@@ -323,6 +328,7 @@ export default function StreamLive() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      mountedRef.current = false
       clearTimeout(warningTimerRef.current)
       if (guestPollRef.current) clearInterval(guestPollRef.current)
       try { stagePcRef.current?.getSenders?.().forEach(s => { try { s.track?.stop() } catch {} }) } catch {}

@@ -88,7 +88,10 @@ class CabinetJWTAuthentication(authentication.BaseAuthentication):
         try:
             # Reject soft-deleted clients — even with a still-valid JWT they
             # must lose access the moment an admin deletes them.
-            client = Client.objects.get(id=client_id, deleted_at__isnull=True)
+            # select_related avoids separate queries for group/second_group in views.
+            client = Client.objects.select_related(
+                'cabinet_account', 'group', 'second_group',
+            ).get(id=client_id, deleted_at__isnull=True)
             account = client.cabinet_account
         except (Client.DoesNotExist, ClientAccount.DoesNotExist):
             raise exceptions.AuthenticationFailed('Client not found.')
