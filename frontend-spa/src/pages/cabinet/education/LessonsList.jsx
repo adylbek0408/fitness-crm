@@ -6,6 +6,7 @@ import {
 import api from '../../../api/axios'
 import LessonThumb from '../../../components/education/LessonThumb'
 import CabinetNav from '../../../components/CabinetNav'
+import LiveStreamBanner from '../../../components/LiveStreamBanner'
 import { pickList } from '../../../utils/format'
 
 const PAGE_SIZE = 12
@@ -66,10 +67,11 @@ export default function LessonsList() {
   const safePage = Math.min(page, totalPages)
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
-  useEffect(() => { setPage(1) }, [tab, debouncedSearch])
+  useEffect(() => { setPage(1); window.scrollTo({ top: 0, behavior: 'smooth' }) }, [tab, debouncedSearch])
 
   return (
     <div className="min-h-screen pb-20" style={{ background: '#fdf8fa' }}>
+      <LiveStreamBanner />
       <header className="bg-white border-b border-rose-100 sticky top-0 z-10">
         <div className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2">
           <Link to="/cabinet/profile" className="p-2 rounded-xl hover:bg-rose-50 active:bg-rose-100" aria-label="Назад">

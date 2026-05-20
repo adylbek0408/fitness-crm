@@ -7,6 +7,7 @@ import api from '../../../api/axios'
 import VodPlayer from '../../../components/education/VodPlayer'
 import AudioPlayer from '../../../components/education/AudioPlayer'
 import useContentProtection from '../../../components/education/useContentProtection'
+import LiveStreamBanner from '../../../components/LiveStreamBanner'
 
 export default function LessonView() {
   const { id } = useParams()
@@ -137,6 +138,7 @@ export default function LessonView() {
 
   return (
     <div className="min-h-screen" style={{ background: '#fdf8fa' }}>
+      <LiveStreamBanner />
       <header className="bg-white border-b border-rose-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
           <button onClick={() => location.key !== 'default' ? nav(-1) : nav('/cabinet/lessons')} className="p-2 rounded-lg hover:bg-rose-50">

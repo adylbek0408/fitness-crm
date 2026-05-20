@@ -5,6 +5,7 @@ import api from '../../../api/axios'
 import LessonThumb from '../../../components/education/LessonThumb'
 import { pickList } from '../../../utils/format'
 import CabinetNav from '../../../components/CabinetNav'
+import LiveStreamBanner from '../../../components/LiveStreamBanner'
 
 function formatDuration(sec) {
   if (!sec) return ''
@@ -18,6 +19,11 @@ export default function StreamArchive() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 250)
+    return () => clearTimeout(t)
+  }, [query])
   const nav = useNavigate()
 
   useEffect(() => {
@@ -37,15 +43,16 @@ export default function StreamArchive() {
   }, [nav])
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = debouncedQuery.trim().toLowerCase()
     return q ? lessons.filter(l => l.title?.toLowerCase().includes(q)) : lessons
-  }, [lessons, query])
+  }, [lessons, debouncedQuery])
 
   const completed = useMemo(() => lessons.filter(l => l.progress?.is_completed).length, [lessons])
   const totalMins = useMemo(() => Math.round(lessons.reduce((s, l) => s + (l.duration_sec || 0), 0) / 60), [lessons])
 
   return (
     <div className="min-h-screen pb-20" style={{ background: '#fdf8fa' }}>
+      <LiveStreamBanner />
       <header className="bg-white border-b border-rose-100 sticky top-0 z-10 shadow-sm">
         <div className="max-w-md sm:max-w-3xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-2">
           <Link to="/cabinet/profile" className="p-2 rounded-xl hover:bg-rose-50 active:bg-rose-100" aria-label="Назад">

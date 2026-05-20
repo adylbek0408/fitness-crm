@@ -8,6 +8,7 @@ import {
 import api from '../../api/axios'
 import { fmtMoney, fmtDate, GROUP_TYPE_LABEL } from '../../utils/format'
 import CabinetNav from '../../components/CabinetNav'
+import LiveStreamBanner from '../../components/LiveStreamBanner'
 
 const DAY_KEYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const DAY_LABELS = { Mon:'Пн',Tue:'Вт',Wed:'Ср',Thu:'Чт',Fri:'Пт',Sat:'Сб',Sun:'Вс' }
@@ -142,6 +143,8 @@ export default function CabinetProfile() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+
+      <LiveStreamBanner />
 
       {/* ── HERO ─────────────────────────────────────────────────── */}
       <div
