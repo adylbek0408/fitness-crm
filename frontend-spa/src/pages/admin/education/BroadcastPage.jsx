@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Radio, Mic, MicOff, Video, VideoOff, Square,
   Users, ChevronLeft, CheckCircle2, AlertCircle,
-  RefreshCcw, MessageCircle, UserPlus, X, PhoneOff,
+  RefreshCcw, MessageCircle, UserPlus, X, PhoneOff, Monitor, MonitorOff,
 } from 'lucide-react'
 import api from '../../../api/axios'
 import StreamChat from '../../../components/education/StreamChat'
@@ -53,6 +53,8 @@ export default function BroadcastPage() {
   // warn before quota fills.
   const [recBytes,       setRecBytes]       = useState(0)
   const [flipping,     setFlipping]     = useState(false)
+  const [screenSharing, setScreenSharing] = useState(false)
+  const screenStreamRef = useRef(null)  // active getDisplayMedia stream
   // When CF reports the live input is already connected (i.e. the trainer is
   // streaming from somewhere else), we ask before clobbering the other
   // session — so the other device's broadcast doesn't silently die.
@@ -364,6 +366,8 @@ export default function BroadcastPage() {
       const w = whipRef.current
       if (w) { try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
     }
+    screenStreamRef.current?.getTracks().forEach(t => { try { t.stop() } catch {} })
+    screenStreamRef.current = null
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     pcRef.current?.close()
     cleanupGuest()
@@ -678,6 +682,12 @@ export default function BroadcastPage() {
 
   const stopBroadcast = async () => {
     isIntentionalStopRef.current = true   // mark as intentional before any async work
+    // Stop screen share first so camera track is restored before we tear down
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(t => { try { t.stop() } catch {} })
+      screenStreamRef.current = null
+      setScreenSharing(false)
+    }
     cleanupGuest()
     const w = whipRef.current
     if (w) { whipRef.current = null; try { fetch(w, { method: 'DELETE' }).catch(() => {}) } catch {} }
@@ -744,6 +754,57 @@ export default function BroadcastPage() {
       const vt = ns.getVideoTracks()[0]; if (vt) { vt.enabled = camOn }
     } catch(e) { console.warn('flipCamera:', e) }
     finally { setFlipping(false) }
+  }
+
+  // ── Screen sharing ───────────────────────────────────────────────────────
+  const startScreenShare = async () => {
+    if (!broadcasting || screenSharing) return
+    try {
+      const ss = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30 } },
+        audio: false,
+      })
+      screenStreamRef.current = ss
+      const screenVt = ss.getVideoTracks()[0]
+      if (!screenVt) { ss.getTracks().forEach(t => t.stop()); return }
+
+      // Show screen in preview (no mirror — screen is never mirrored)
+      if (videoRef.current) {
+        videoRef.current.srcObject = ss
+        try { await videoRef.current.play() } catch {}
+      }
+
+      // Switch WHIP + canvas to screen track
+      if (whipVideoSenderRef.current) {
+        whipVideoSenderRef.current.replaceTrack(screenVt).catch(e => console.warn('[screen] replaceTrack:', e))
+      }
+      try { mixerRef.current?.setTrainerVideo(videoRef.current) } catch {}
+
+      setScreenSharing(true)
+
+      // Auto-stop when user clicks "Stop sharing" in the browser UI
+      screenVt.addEventListener('ended', () => { stopScreenShare() }, { once: true })
+    } catch(e) {
+      if (e.name !== 'NotAllowedError') console.warn('[screen] getDisplayMedia:', e)
+    }
+  }
+
+  const stopScreenShare = async () => {
+    const ss = screenStreamRef.current
+    screenStreamRef.current = null
+    ss?.getTracks().forEach(t => { try { t.stop() } catch {} })
+
+    // Restore camera
+    const camVt = localStreamRef.current?.getVideoTracks()[0]
+    if (camVt && whipVideoSenderRef.current) {
+      whipVideoSenderRef.current.replaceTrack(camVt).catch(e => console.warn('[screen-stop] replaceTrack:', e))
+    }
+    if (videoRef.current && localStreamRef.current) {
+      videoRef.current.srcObject = localStreamRef.current
+      try { await videoRef.current.play() } catch {}
+    }
+    try { mixerRef.current?.setTrainerVideo(videoRef.current) } catch {}
+    setScreenSharing(false)
   }
 
   // ── Guest invite ──────────────────────────────────────────────────────────
@@ -1075,6 +1136,11 @@ export default function BroadcastPage() {
               <div className="flex-1 min-w-0 rounded-xl bg-black/35 backdrop-blur-sm border border-white/10 px-3 py-2">
                 <p className="font-semibold text-white text-sm truncate">{stream?.title}</p>
               </div>
+              {screenSharing && (
+                <span className="flex items-center gap-1 bg-emerald-600/80 backdrop-blur px-2 py-1 rounded-lg text-[11px] text-white font-semibold shrink-0">
+                  <Monitor size={11} /> Экран
+                </span>
+              )}
               {cfStatus && (
                 <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfStatus.live_input_state === 'connected' ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-amber-400 animate-pulse'}`}
                   title={cfStatus.live_input_state === 'connected' ? 'CF получает видео' : 'CF не получает видео'} />
@@ -1172,10 +1238,19 @@ export default function BroadcastPage() {
                   <Square size={isMobile ? 18 : 22} fill="white" className="text-white" />
                 </button>
 
-                <button onClick={flipCamera} disabled={flipping} title="Сменить камеру"
+                <button onClick={flipCamera} disabled={flipping || screenSharing} title="Сменить камеру"
                   className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} rounded-full bg-white/12 border border-white/20 flex items-center justify-center text-white active:scale-90 disabled:opacity-40 hover:bg-white/20 transition`}>
                   <RefreshCcw size={isMobile ? 16 : 19} className={flipping ? 'animate-spin' : ''} />
                 </button>
+
+                {!isMobile && (
+                  <button
+                    onClick={screenSharing ? stopScreenShare : startScreenShare}
+                    title={screenSharing ? 'Остановить показ экрана' : 'Показать экран'}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center text-white active:scale-90 hover:opacity-80 transition border ${screenSharing ? 'bg-emerald-600 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.4)]' : 'bg-white/12 border-white/20'}`}>
+                    {screenSharing ? <MonitorOff size={19} /> : <Monitor size={19} />}
+                  </button>
+                )}
 
                 <button onClick={() => setShowChat(p => !p)} title="Чат"
                   className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} rounded-full flex items-center justify-center text-white active:scale-90 hover:opacity-80 transition border ${showChat ? 'bg-rose-600 border-rose-400' : 'bg-white/12 border-white/20'}`}>
