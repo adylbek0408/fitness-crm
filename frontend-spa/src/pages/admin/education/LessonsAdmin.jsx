@@ -341,7 +341,7 @@ export default function LessonsAdmin() {
   const safePage = Math.min(page, totalPages)
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
-  useEffect(() => { setPage(1) }, [search, typeFilter, groupFilter])
+  useEffect(() => { setPage(1); setSelectedIds(new Set()) }, [search, typeFilter, groupFilter])
 
   const groupById = Object.fromEntries(groups.map(g => [g.id, g]))
 

@@ -201,7 +201,7 @@ export default function ConsultationsAdmin() {
   }
 
   const copy = (text, key) => {
-    navigator.clipboard?.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(''), 2000) })
+    navigator.clipboard?.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(''), 2000) }).catch(() => {})
   }
 
   const roomUrl = uuid => `${window.location.origin}/room/${uuid}`
