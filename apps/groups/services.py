@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 
 from core.services import BaseService
@@ -77,6 +78,7 @@ class GroupService(BaseService):
         group.save()
         return group
 
+    @transaction.atomic
     def close_group(self, group_id: str) -> Group:
         from apps.clients.models import ClientGroupHistory
 
@@ -126,9 +128,11 @@ class GroupService(BaseService):
                 )
                 if ip:
                     p_amount = ip.total_cost
-                    p_paid   = ip.total_paid
-                    p_closed = ip.is_closed
-                    for i, payment in enumerate(ip.payments.all()):
+                    # Use prefetched payments to avoid N+1 (total_paid property hits DB)
+                    prefetched_payments = list(ip.payments.all())
+                    p_paid = sum(p.amount for p in prefetched_payments)
+                    p_closed = p_paid >= ip.total_cost
+                    for i, payment in enumerate(prefetched_payments):
                         receipt_url = _get_receipt_url(payment.receipt)
                         receipts.append({
                             'label':   f'Платёж {i + 1}',

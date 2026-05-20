@@ -754,15 +754,19 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
-        stream = self.get_object()
-        if stream.status != 'scheduled':
-            return Response(
-                {'detail': f'Cannot start from status={stream.status}'},
-                status=status.HTTP_400_BAD_REQUEST,
+        from django.db import transaction as _tx
+        with _tx.atomic():
+            stream = LiveStream.objects.select_for_update().get(
+                pk=self.get_object().pk, deleted_at__isnull=True,
             )
-        stream.status = 'live'
-        stream.started_at = timezone.now()
-        stream.save(update_fields=['status', 'started_at', 'updated_at'])
+            if stream.status != 'scheduled':
+                return Response(
+                    {'detail': f'Cannot start from status={stream.status}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            stream.status = 'live'
+            stream.started_at = timezone.now()
+            stream.save(update_fields=['status', 'started_at', 'updated_at'])
         return Response(LiveStreamAdminSerializer(stream).data)
 
     @action(detail=True, methods=['post'], url_path='whip-proxy')
@@ -810,15 +814,19 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def end(self, request, pk=None):
-        stream = self.get_object()
-        if stream.status != 'live':
-            return Response(
-                {'detail': f'Cannot end from status={stream.status}'},
-                status=status.HTTP_400_BAD_REQUEST,
+        from django.db import transaction as _tx
+        with _tx.atomic():
+            stream = LiveStream.objects.select_for_update().get(
+                pk=self.get_object().pk, deleted_at__isnull=True,
             )
-        stream.status = 'ended'
-        stream.ended_at = timezone.now()
-        stream.save(update_fields=['status', 'ended_at', 'updated_at'])
+            if stream.status != 'live':
+                return Response(
+                    {'detail': f'Cannot end from status={stream.status}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            stream.status = 'ended'
+            stream.ended_at = timezone.now()
+            stream.save(update_fields=['status', 'ended_at', 'updated_at'])
         # Mark all viewers as left
         from .models import StreamViewer, StreamGuest
         StreamViewer.objects.filter(stream=stream, is_active=True).update(
