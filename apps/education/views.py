@@ -832,17 +832,17 @@ class LiveStreamAdminViewSet(viewsets.ModelViewSet):
         ).update(status='ended', deleted_at=timezone.now())
 
         # Proxy WHIP DELETE to Cloudflare so recording is triggered reliably.
-        # Prefer the session URL (from whip-proxy response); fall back to the
-        # publish URL so CF at least gets *some* signal to finalize recording.
+        # Only send DELETE when we have the actual session resource URL returned
+        # by CF in the Location header — the publish URL is wrong for DELETE
+        # and CF will reject or ignore it, causing recording to not finalize.
         whip_resource_url = (request.data or {}).get('whip_resource_url', '')
-        whip_delete_url = whip_resource_url or stream.cf_webrtc_url
-        if whip_delete_url:
+        if whip_resource_url:
             try:
                 import requests as _req
-                del_resp = _req.delete(whip_delete_url, timeout=10)
+                del_resp = _req.delete(whip_resource_url, timeout=10)
                 logger.warning(
                     'WHIP DELETE stream=%s url=%s status=%s body=%s',
-                    stream.id, whip_delete_url[:80], del_resp.status_code, del_resp.text[:200],
+                    stream.id, whip_resource_url[:80], del_resp.status_code, del_resp.text[:200],
                 )
             except Exception:
                 logger.warning('WHIP DELETE failed for stream=%s', stream.id, exc_info=True)

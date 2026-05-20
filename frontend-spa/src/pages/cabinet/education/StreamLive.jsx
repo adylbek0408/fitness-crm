@@ -430,7 +430,7 @@ export default function StreamLive() {
                  ...(isCssFull ? { position: 'fixed', inset: 0, width: '100vw', height: '100vh', zIndex: 100, aspectRatio: 'auto' } : {}),
                  userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
                }}>
-            {!showStageVideo && (
+            {!showStageVideo && stableUid && (
               // Watermark is rendered INSIDE CloudflareStreamPlayer via
               // watermarkText prop — this keeps it in the same DOM subtree
               // as the video for any fullscreen path (shell or native).
@@ -441,6 +441,11 @@ export default function StreamLive() {
                 live
                 watermarkText={watermarkText}
               />
+            )}
+            {!showStageVideo && !stableUid && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black">
+                <span className="w-10 h-10 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              </div>
             )}
             {showStageVideo && (
               <>
