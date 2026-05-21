@@ -68,6 +68,10 @@ class InstallmentPlan(UUIDTimestampedModel):
 
     @property
     def total_paid(self):
+        # Use prefetch cache when available (avoids N+1 aggregate queries in list views).
+        cache = getattr(self, '_prefetched_objects_cache', None)
+        if cache is not None and 'payments' in cache:
+            return sum((p.amount for p in cache['payments']), Decimal('0.00'))
         from django.db.models import Sum
         result = self.payments.aggregate(total=Sum('amount'))['total']
         return result or Decimal('0.00')

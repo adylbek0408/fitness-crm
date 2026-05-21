@@ -100,11 +100,9 @@ class GroupService(BaseService):
             if p_type == 'full':
                 # У повторного клиента несколько FullPayment — нужна оплата текущего заезда,
                 # т.е. последняя по времени создания (как в PaymentService / ClientReadSerializer).
-                fp = (
-                    client.full_payments
-                    .order_by('-created_at', '-updated_at', '-id')
-                    .first()
-                )
+                # .all() uses prefetch cache; sort in Python to avoid bypassing it.
+                all_fps = sorted(client.full_payments.all(), key=lambda p: (p.created_at, p.id), reverse=True)
+                fp = all_fps[0] if all_fps else None
                 if fp:
                     # Сумма курса — номинал; оплачено — факт по счёту (после бонуса)
                     nominal = fp.course_amount if fp.course_amount is not None else fp.amount
@@ -121,14 +119,12 @@ class GroupService(BaseService):
                     })
 
             elif p_type == 'installment':
-                ip = (
-                    client.installment_plans
-                    .order_by('-created_at', '-updated_at', '-id')
-                    .first()
-                )
+                # .all() uses prefetch cache; each plan retains its sub-prefetch for payments.
+                all_ips = sorted(client.installment_plans.all(), key=lambda p: (p.created_at, p.id), reverse=True)
+                ip = all_ips[0] if all_ips else None
                 if ip:
                     p_amount = ip.total_cost
-                    # Use prefetched payments to avoid N+1 (total_paid property hits DB)
+                    # ip.payments.all() uses sub-prefetch cache (prefetch_related('installment_plans__payments'))
                     prefetched_payments = list(ip.payments.all())
                     p_paid = sum(p.amount for p in prefetched_payments)
                     p_closed = p_paid >= ip.total_cost

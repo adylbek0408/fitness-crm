@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
@@ -23,6 +24,7 @@ class PaymentService(BaseService):
     # Полная оплата
     # ─────────────────────────────────────────────────────────────
 
+    @transaction.atomic
     def mark_full_payment_paid(self, client_id: str, user=None) -> FullPayment:
         payment = FullPayment.objects.select_related('client').filter(
             client_id=client_id
@@ -36,6 +38,7 @@ class PaymentService(BaseService):
         self._apply_bonus_and_accrue_full(payment, user)
         return payment
 
+    @transaction.atomic
     def upload_full_payment_receipt(self, client_id: str, receipt_file,
                                     amount=None, user=None) -> FullPayment:
         payment = FullPayment.objects.select_related('client').filter(
@@ -99,6 +102,7 @@ class PaymentService(BaseService):
     # Рассрочка
     # ─────────────────────────────────────────────────────────────
 
+    @transaction.atomic
     def add_installment_payment(self, plan_id: str, data: dict,
                                 user=None) -> InstallmentPayment:
         """
@@ -109,7 +113,7 @@ class PaymentService(BaseService):
           2. Начисляет 10% от суммы живых денег
         """
         try:
-            plan = InstallmentPlan.objects.select_related('client').get(id=plan_id)
+            plan = InstallmentPlan.objects.select_related('client').select_for_update().get(id=plan_id)
         except InstallmentPlan.DoesNotExist:
             raise NotFoundError(f"InstallmentPlan {plan_id} not found")
 

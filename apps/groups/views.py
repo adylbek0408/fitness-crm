@@ -98,6 +98,15 @@ class GroupViewSet(viewsets.ModelViewSet):
         """
         group = self.service.get_group_or_raise(pk)
         from apps.clients.serializers import ClientReadSerializer
+        from django.db.models import Prefetch
+        from apps.payments.models import FullPayment, InstallmentPlan
+
+        def _prefetched_clients(qs):
+            return qs.select_related('trainer', 'cabinet_account', 'registered_by').prefetch_related(
+                Prefetch('full_payments', queryset=FullPayment.objects.order_by('-created_at')),
+                Prefetch('installment_plans',
+                         queryset=InstallmentPlan.objects.order_by('-created_at').prefetch_related('payments')),
+            )
 
         if group.status == 'completed':
             from apps.clients.models import ClientGroupHistory, Client
@@ -106,9 +115,9 @@ class GroupViewSet(viewsets.ModelViewSet):
                 .filter(group=group)
                 .values_list('client_id', flat=True)
             )
-            clients = Client.objects.filter(id__in=client_ids).select_related('trainer')
+            clients = _prefetched_clients(Client.objects.filter(id__in=client_ids))
         else:
-            clients = group.clients.select_related('trainer').all()
+            clients = _prefetched_clients(group.clients.all())
 
         return Response(ClientReadSerializer(clients, many=True).data)
 

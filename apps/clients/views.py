@@ -246,21 +246,23 @@ class ClientViewSet(viewsets.ModelViewSet):
             if not is_trial_val and instance.is_trial and instance.status == 'trial':
                 # Снимаем флаг пробного — переводим статус в 'new'
                 # И УДАЛЯЕМ пробный платёж — пользователь должен ввести новую оплату
-                FullPayment.objects.filter(client=instance).delete()
-                for ip in InstallmentPlan.objects.filter(client=instance):
-                    ip.payments.all().delete()
-                    ip.delete()
+                from django.db import transaction as _tx
+                with _tx.atomic():
+                    FullPayment.objects.filter(client=instance).delete()
+                    for ip in InstallmentPlan.objects.filter(client=instance):
+                        ip.payments.all().delete()
+                        ip.delete()
 
-                old_status = instance.status
-                instance.is_trial = False
-                instance.status = 'new'
-                instance.save(update_fields=['is_trial', 'status'])
+                    old_status = instance.status
+                    instance.is_trial = False
+                    instance.status = 'new'
+                    instance.save(update_fields=['is_trial', 'status'])
 
-                # Логируем смену статуса
-                self.service._record_status_change(
-                    instance, old_status=old_status, new_status='new',
-                    user=request.user, note='Конвертация: Пробный → Новый',
-                )
+                    # Логируем смену статуса
+                    self.service._record_status_change(
+                        instance, old_status=old_status, new_status='new',
+                        user=request.user, note='Конвертация: Пробный → Новый',
+                    )
 
                 data.pop('is_trial', None)
                 data.pop('group', None)

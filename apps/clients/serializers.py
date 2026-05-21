@@ -73,13 +73,19 @@ class ClientReadSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
     def get_full_payment(self, obj):
-        fp = obj.full_payments.order_by('-created_at').first()
+        # .all() uses prefetch cache; sort in Python so cache isn't bypassed.
+        fps = sorted(obj.full_payments.all(), key=lambda p: p.created_at, reverse=True)
+        fp = fps[0] if fps else None
         if fp:
             return FullPaymentReadSerializer(fp).data
         return None
 
     def get_installment_plan(self, obj):
-        ip = obj.installment_plans.order_by('-created_at').first()
+        # .all() uses prefetch cache; sort in Python so prefetch_related('payments')
+        # is retained on each plan (order_by().first() would bypass the cache and
+        # return a fresh object without the payments sub-prefetch).
+        ips = sorted(obj.installment_plans.all(), key=lambda p: p.created_at, reverse=True)
+        ip = ips[0] if ips else None
         if ip:
             return InstallmentPlanReadSerializer(ip).data
         return None
@@ -117,7 +123,9 @@ class ClientReadSerializer(serializers.ModelSerializer):
 
     def get_active_reservation(self, obj):
         from .models import ClientGroupReservation
-        res = ClientGroupReservation.objects.filter(client=obj, used_at__isnull=True).first()
+        res = ClientGroupReservation.objects.select_related('reserved_group').filter(
+            client=obj, used_at__isnull=True,
+        ).first()
         if not res:
             return None
         return {

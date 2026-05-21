@@ -123,11 +123,13 @@ class ManagerViewSet(viewsets.ModelViewSet):
             profile.save(update_fields=['password_plain'])
 
     def destroy(self, request, *args, **kwargs):
+        from django.db import transaction as _tx
         profile = self.get_object()
-        profile.deleted_at = timezone.now()
-        profile.user.is_active = False
-        profile.user.save(update_fields=['is_active'])
-        profile.save(update_fields=['deleted_at'])
+        with _tx.atomic():
+            profile.deleted_at = timezone.now()
+            profile.user.is_active = False
+            profile.user.save(update_fields=['is_active'])
+            profile.save(update_fields=['deleted_at'])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], url_path='deactivate')
