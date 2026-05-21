@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { User, Phone, BookOpen, CreditCard, ChevronRight, Check, FlaskConical } from 'lucide-react'
+import { User, Phone, BookOpen, CreditCard, ChevronRight, Check, FlaskConical, Mail } from 'lucide-react'
 import api from '../../api/axios'
 import MobileLayout from '../../components/MobileLayout'
 import MobileDateField from '../../components/MobileDateField'
@@ -74,7 +74,7 @@ export default function ClientRegister() {
   const [loading, setLoading] = useState(false)
   const [createdCredentials, setCreatedCredentials] = useState(null)
   const [form, setForm] = useState({
-    first_name: '', last_name: '', phone: '',
+    first_name: '', last_name: '', phone: '', google_email: '',
     notes: '',
     is_trial: false,
     training_format: '', group_type: '',
@@ -134,6 +134,7 @@ export default function ClientRegister() {
     const bonusPct = form.is_trial ? 0 : Math.round(Number(String(form.bonus_percent).replace(',', '.')))
     const body = {
       first_name: form.first_name, last_name: form.last_name, phone: form.phone,
+      google_email: (form.google_email || '').trim().toLowerCase(),
       notes: (form.notes || '').trim(),
       telegram_link: form.training_format === 'online' ? (form.telegram_link || '').trim() : '',
       training_format: form.training_format,
@@ -239,6 +240,14 @@ export default function ClientRegister() {
                      style={{ color: 'var(--text-xs)' }} />
               <input type="tel" placeholder="Телефон *" required value={form.phone}
                 onChange={e => set('phone', e.target.value)}
+                className="crm-mobile-input pl-11" />
+            </div>
+            <div className="relative">
+              <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2"
+                     style={{ color: 'var(--text-xs)' }} />
+              <input type="email" placeholder="Gmail ученика (для входа через Google)"
+                value={form.google_email}
+                onChange={e => set('google_email', e.target.value)}
                 className="crm-mobile-input pl-11" />
             </div>
             <textarea

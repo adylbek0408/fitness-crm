@@ -122,6 +122,8 @@ class ClientService(BaseService):
                 snap = (registered_by.get_full_name() or '').strip() or registered_by.username
             data['registered_by_name'] = snap
 
+        google_email = (data.pop('google_email', '') or '').strip().lower()
+
         client = Client.objects.create(**data, registered_by=registered_by)
 
         # Логируем начальный статус
@@ -139,6 +141,9 @@ class ClientService(BaseService):
             username = f"{base_username}_{counter}"
         account = ClientAccount.objects.create(client=client, username=username)
         account.set_password(plain_password)
+        if google_email:
+            account.google_email = google_email
+            account.save(update_fields=['google_email'])
 
         if payment_type == 'full':
             self._create_full_payment(client, payment_data)

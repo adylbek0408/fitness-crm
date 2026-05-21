@@ -156,6 +156,7 @@ class ClientCreateSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
     telegram_link = serializers.CharField(max_length=300, required=False, allow_blank=True, default='')
     notes = serializers.CharField(required=False, allow_blank=True, default='')
+    google_email = serializers.EmailField(required=False, allow_blank=True, default='')
 
     training_format = serializers.ChoiceField(choices=Client.TRAINING_FORMAT_CHOICES)
     group_type = serializers.CharField(max_length=10, allow_blank=True, required=False)
