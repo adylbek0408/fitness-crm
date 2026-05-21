@@ -120,10 +120,27 @@ export function UploadProvider({ children }) {
       if (!file || file.size === 0) throw new Error('Файл пустой или не выбран')
 
       const ALLOWED_VIDEO = ['video/mp4','video/quicktime','video/webm','video/x-matroska','video/x-m4v']
-      const ALLOWED_AUDIO = ['audio/mpeg','audio/wav','audio/webm','audio/mp4','audio/ogg']
-      const allowed = lesson_type === 'video' ? ALLOWED_VIDEO : ALLOWED_AUDIO
-      if (file.type && !allowed.includes(file.type))
-        throw new Error(`Недопустимый тип файла: ${file.type}`)
+      // Включаем все вендорные алиасы: iOS Safari отдаёт 'audio/x-m4a' для .m4a,
+      // некоторые Android — 'audio/aac'. Бэкенд всё равно маппит по расширению.
+      const ALLOWED_AUDIO = [
+        'audio/mpeg', 'audio/mp3',
+        'audio/wav', 'audio/x-wav', 'audio/wave',
+        'audio/webm',
+        'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/x-aac',
+        'audio/ogg', 'audio/x-ogg',
+      ]
+      const ALLOWED_EXT_AUDIO = ['mp3', 'wav', 'webm', 'mp4', 'm4a', 'aac', 'ogg', 'oga']
+      const ALLOWED_EXT_VIDEO = ['mp4', 'mov', 'webm', 'mkv', 'm4v']
+      const allowed    = lesson_type === 'video' ? ALLOWED_VIDEO    : ALLOWED_AUDIO
+      const allowedExt = lesson_type === 'video' ? ALLOWED_EXT_VIDEO : ALLOWED_EXT_AUDIO
+      const ext = (file.name.split('.').pop() || '').toLowerCase()
+      // Принимаем файл, если хотя бы расширение валидное ИЛИ MIME валидный.
+      // (Mobile-браузеры часто отдают нестандартные MIME — проверка только по
+      // MIME ложно блокировала бы валидные .m4a/.aac/.mp3 на iPhone.)
+      const mimeOk = !file.type || allowed.includes(file.type)
+      const extOk  = allowedExt.includes(ext)
+      if (!mimeOk && !extOk)
+        throw new Error(`Недопустимый тип файла: ${file.type || ext}`)
 
       update(id, { status: 'uploading', stage: 'init', progress: 5 })
 

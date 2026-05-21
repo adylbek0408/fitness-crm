@@ -302,7 +302,7 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
         # client place an object outside the intended prefix or with a
         # confusable Content-Type.
         ALLOWED_VIDEO_EXTS = {'mp4', 'mov', 'webm', 'mkv', 'm4v'}
-        ALLOWED_AUDIO_EXTS = {'mp3', 'wav', 'webm', 'm4a', 'ogg'}
+        ALLOWED_AUDIO_EXTS = {'mp3', 'wav', 'webm', 'm4a', 'ogg', 'aac', 'oga'}
 
         try:
             if lesson_type == 'video':
@@ -337,7 +337,8 @@ class LessonAdminViewSet(viewsets.ModelViewSet):
                 audio_content_types = {
                     'mp3': 'audio/mpeg', 'wav': 'audio/wav',
                     'webm': 'audio/webm', 'm4a': 'audio/mp4',
-                    'ogg': 'audio/ogg',
+                    'ogg': 'audio/ogg', 'oga': 'audio/ogg',
+                    'aac': 'audio/aac',
                 }
                 content_type = audio_content_types.get(ext, 'audio/mpeg')
                 url = R2StorageService.create_upload_presigned_url(
