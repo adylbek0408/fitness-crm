@@ -4,6 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db import transaction
 from django.db.models import Prefetch, Count
 from django.utils import timezone
 
@@ -423,6 +424,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         return Response(ClientEnrollmentReadSerializer(enrollments, many=True).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='enrollments/create')
+    @transaction.atomic
     def create_enrollment(self, request, pk=None):
         """Добавить клиента в параллельную группу."""
         try:
@@ -466,6 +468,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         except Exception as e:
             import traceback, logging
             logging.getLogger(__name__).error('create_enrollment error: %s\n%s', e, traceback.format_exc())
+            transaction.set_rollback(True)
             return Response({'detail': f'Ошибка записи: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         try:

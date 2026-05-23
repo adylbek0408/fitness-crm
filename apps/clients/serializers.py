@@ -238,7 +238,7 @@ class ClientEnrollmentReadSerializer(serializers.ModelSerializer):
     group_status          = serializers.CharField(source='group.status', read_only=True)
     amount_paid           = serializers.SerializerMethodField()
     is_fully_paid         = serializers.SerializerMethodField()
-    payments              = EnrollmentPaymentReadSerializer(many=True, read_only=True)
+    payments              = serializers.SerializerMethodField()
 
     class Meta:
         model = ClientEnrollment
@@ -262,6 +262,12 @@ class ClientEnrollmentReadSerializer(serializers.ModelSerializer):
 
     def get_is_fully_paid(self, obj):
         return obj.is_fully_paid
+
+    def get_payments(self, obj):
+        try:
+            return EnrollmentPaymentReadSerializer(obj.payments.all(), many=True).data
+        except Exception:
+            return []
 
 
 class EnrollmentCreateSerializer(serializers.Serializer):
