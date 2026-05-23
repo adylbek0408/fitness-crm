@@ -77,8 +77,6 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const [notes, setNotes] = useState(client.notes || '')
   const [googleEmail, setGoogleEmail] = useState(client.google_email || '')
   const [isTrial, setIsTrial] = useState(client.is_trial || false)
-  const [trainingFormat, setTrainingFormat] = useState(client.training_format || 'offline')
-  const [groupType, setGroupType] = useState(client.group_type || '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -86,8 +84,6 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
     setFirstName(client.first_name); setLastName(client.last_name)
     setPhone(client.phone); setTelegramLink(client.telegram_link || '')
     setNotes(client.notes || ''); setGoogleEmail(client.google_email || ''); setIsTrial(client.is_trial || false)
-    setTrainingFormat(client.training_format || 'offline')
-    setGroupType(client.group_type || '')
     setErr('')
     setOpen(v => !v)
   }
@@ -100,12 +96,10 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone: phone.trim(),
-        telegram_link: trainingFormat === 'online' ? (telegramLink || '').trim() : '',
+        telegram_link: client.training_format === 'online' ? (telegramLink || '').trim() : '',
         notes: (notes || '').trim(),
         google_email: (googleEmail || '').trim().toLowerCase(),
         is_trial: isTrial,
-        training_format: trainingFormat,
-        group_type: trainingFormat === 'offline' ? groupType : '',
       }
       await api.patch(`/clients/${clientId}/edit-info/`, body)
       setOpen(false); onSuccess()
@@ -170,62 +164,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
               <p className="text-xs text-emerald-600 mt-1">✓ Google аккаунт привязан</p>
             )}
           </div>
-          {/* ── Формат обучения ── */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-2">Формат обучения</p>
-            <div className="flex gap-2">
-              {[{ v: 'offline', l: 'Оффлайн' }, { v: 'online', l: 'Онлайн' }].map(({ v, l }) => (
-                <button key={v} type="button" onClick={() => setTrainingFormat(v)}
-                  className="flex-1 flex items-center justify-between px-3 py-3 rounded-xl transition-all"
-                  style={trainingFormat === v
-                    ? { background: '#ede9fe', border: '2px solid #7c3aed' }
-                    : { background: '#fafafa', border: '2px solid #e5e7eb' }
-                  }>
-                  <p className="text-sm font-semibold" style={{ color: trainingFormat === v ? '#7c3aed' : '#6b7280' }}>{l}</p>
-                  <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                    style={trainingFormat === v
-                      ? { borderColor: '#7c3aed', background: '#7c3aed' }
-                      : { borderColor: '#d1d5db', background: '#fff' }
-                    }>
-                    {trainingFormat === v && <Check size={9} className="text-white" strokeWidth={3} />}
-                  </div>
-                </button>
-              ))}
-            </div>
-            {trainingFormat !== client.training_format && (
-              <p className="text-xs mt-1.5 px-2 py-1.5 rounded-lg text-amber-700"
-                 style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
-                ⚠ Формат будет изменён. Группа с другим форматом будет несовместима.
-              </p>
-            )}
-          </div>
-
-          {trainingFormat === 'offline' && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 mb-2">Тип группы *</p>
-              <div className="flex gap-2">
-                {[{ v: '1.5h', l: '1.5 часа' }, { v: '2.5h', l: '2.5 часа' }].map(({ v, l }) => (
-                  <button key={v} type="button" onClick={() => setGroupType(v)}
-                    className="flex-1 flex items-center justify-between px-3 py-3 rounded-xl transition-all"
-                    style={groupType === v
-                      ? { background: '#ede9fe', border: '2px solid #7c3aed' }
-                      : { background: '#fafafa', border: '2px solid #e5e7eb' }
-                    }>
-                    <p className="text-sm font-semibold" style={{ color: groupType === v ? '#7c3aed' : '#6b7280' }}>{l}</p>
-                    <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                      style={groupType === v
-                        ? { borderColor: '#7c3aed', background: '#7c3aed' }
-                        : { borderColor: '#d1d5db', background: '#fff' }
-                      }>
-                      {groupType === v && <Check size={9} className="text-white" strokeWidth={3} />}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {trainingFormat === 'online' && (
+          {client.training_format === 'online' && (
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Ссылка Telegram (необяз.)</p>
               <input value={telegramLink} onChange={e => setTelegramLink(e.target.value)}
@@ -1013,6 +952,8 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
 // ── Бронь следующей группы ────────────────────────────────────────────────────
 function MobileReservationPanel({ client, clientId, onSuccess }) {
   const [open,          setOpen]          = useState(false)
+  const [format,        setFormat]        = useState('offline')
+  const [statusFilter,  setStatusFilter]  = useState('recruitment')
   const [groups,        setGroups]        = useState([])
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState(null)
@@ -1029,24 +970,21 @@ function MobileReservationPanel({ client, clientId, onSuccess }) {
 
   if (client.status !== 'active' || !client.group) return null
 
-  const loadGroups = async () => {
-    setGroupsLoading(true)
+  const loadGroups = async (fmt, st) => {
+    setGroupsLoading(true); setSelectedGroup(null)
     try {
-      const r  = await api.get('/groups/', { params: { page_size: 200, status: 'recruitment' } })
-      const r2 = await api.get('/groups/', { params: { page_size: 200, status: 'active' } })
-      const all = [...(r.data.results || []), ...(r2.data.results || [])]
-        .filter(g => g.id !== client.group?.id)
-      const seen = new Set()
-      setGroups(all.filter(g => { if (seen.has(g.id)) return false; seen.add(g.id); return true }))
+      const r = await api.get('/groups/', { params: { page_size: 100, status: st, training_format: fmt } })
+      setGroups((r.data.results || []).filter(g => g.id !== client.group?.id))
     } catch { setGroups([]) }
     finally { setGroupsLoading(false) }
   }
 
   const handleOpen = () => {
-    setOpen(v => !v); setErr(''); setSelectedGroup(null)
+    const next = !open
+    setOpen(next); setErr(''); setSelectedGroup(null)
     setPayAmount(''); setTotalCost(''); setDeadline('')
     setBonusPercent(String(client.bonus_percent ?? 10)); setPayType('full')
-    if (!open) loadGroups()
+    if (next) { setFormat('offline'); setStatusFilter('recruitment'); loadGroups('offline', 'recruitment') }
   }
 
   const handleSave = async () => {
@@ -1118,91 +1056,108 @@ function MobileReservationPanel({ client, clientId, onSuccess }) {
       )}
 
       {!res && open && (
-        <div className="border-t border-gray-100">
-          {/* Шаг 1 — список групп */}
-          <div className="px-4 pt-4 pb-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Шаг 1 — Выберите группу</p>
-            {groupsLoading ? (
-              <div className="flex justify-center py-4">
-                <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#7c3aed' }} />
-              </div>
-            ) : groups.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-3">Нет доступных групп</p>
-            ) : (
-              <div className="space-y-2 max-h-52 overflow-y-auto">
-                {groups.map(g => (
-                  <button key={g.id} type="button" onClick={() => setSelectedGroup(selectedGroup?.id === g.id ? null : g)}
-                    className="w-full text-left p-3 rounded-xl border-2 transition touch-manipulation"
-                    style={selectedGroup?.id === g.id
-                      ? { background: '#f3e8ff', borderColor: '#7c3aed' }
-                      : { background: '#fafafa', borderColor: '#e5e7eb' }}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-sm text-gray-800">
-                          {g.trainer?.full_name
-                            ? `Группа #${g.number} · ${g.trainer.full_name}`
-                            : `Группа #${g.number}`}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {GROUP_TYPE_LABEL[g.group_type] || g.group_type || '—'}
-                          {' · '}
-                          <span className={g.status === 'active' ? 'text-emerald-600' : 'text-amber-600'}>
-                            {g.status === 'active' ? 'Активный' : 'Набор'}
-                          </span>
-                        </p>
-                      </div>
-                      {selectedGroup?.id === g.id && <Check size={15} style={{ color: '#7c3aed' }} className="shrink-0" />}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+        <div className="p-4 space-y-3 border-t border-gray-100">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Выберите группу</p>
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 touch-manipulation p-1"><X size={16} /></button>
           </div>
 
-          {/* Шаг 2 — оплата (появляется только после выбора группы) */}
+          {/* Онлайн / Оффлайн */}
+          <div className="flex gap-2">
+            {[{ v: 'offline', icon: <Dumbbell size={15} />, l: 'Оффлайн' }, { v: 'online', icon: <Globe size={15} />, l: 'Онлайн' }].map(({ v, icon, l }) => (
+              <button key={v} type="button"
+                onClick={() => { setFormat(v); loadGroups(v, statusFilter) }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border-2 touch-manipulation transition"
+                style={format === v
+                  ? { background: '#ede9fe', borderColor: '#7c3aed', color: '#7c3aed' }
+                  : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
+                {icon} {l}
+              </button>
+            ))}
+          </div>
+
+          {/* Набор / Активный */}
+          <div className="flex gap-2">
+            {[{ v: 'recruitment', l: 'Набор' }, { v: 'active', l: 'Активный' }].map(({ v, l }) => (
+              <button key={v} type="button"
+                onClick={() => { setStatusFilter(v); loadGroups(format, v) }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 transition touch-manipulation ${
+                  statusFilter === v ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500'
+                }`}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {/* Список групп */}
+          {groupsLoading ? (
+            <div className="flex justify-center py-4">
+              <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#7c3aed' }} />
+            </div>
+          ) : groups.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-3">Нет доступных групп</p>
+          ) : (
+            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+              {groups.map(g => (
+                <button key={g.id} type="button"
+                  onClick={() => setSelectedGroup(selectedGroup?.id === g.id ? null : g)}
+                  className="w-full text-left p-3 rounded-xl border-2 transition touch-manipulation"
+                  style={selectedGroup?.id === g.id
+                    ? { background: '#f3e8ff', borderColor: '#7c3aed' }
+                    : { background: '#fafafa', borderColor: '#e5e7eb' }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm text-gray-800">
+                        Группа #{g.number}
+                        {g.trainer?.full_name && <span className="font-normal text-gray-500 text-xs ml-1">· {g.trainer.full_name}</span>}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {GROUP_TYPE_LABEL[g.group_type] || g.group_type || '—'}
+                        {' · '}
+                        <span className={g.status === 'active' ? 'text-emerald-600' : 'text-amber-600'}>
+                          {g.status === 'active' ? 'Активный' : 'Набор'}
+                        </span>
+                      </p>
+                    </div>
+                    {selectedGroup?.id === g.id && <Check size={15} style={{ color: '#7c3aed' }} className="shrink-0" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Оплата — появляется после выбора группы */}
           {selectedGroup && (
-            <div className="px-4 pb-5 pt-3 space-y-3 border-t border-dashed border-gray-200">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-5 h-5 rounded-full text-white flex items-center justify-center text-xs font-bold shrink-0"
-                     style={{ background: '#7c3aed' }}>2</div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Оплата за группу</p>
-              </div>
+            <div className="space-y-3 border-t border-dashed border-gray-200 pt-3">
               <div className="p-2.5 rounded-xl text-xs font-medium"
                    style={{ background: '#f3e8ff', color: '#6d28d9' }}>
                 {selectedGroup.trainer?.full_name
                   ? `Группа #${selectedGroup.number} · ${selectedGroup.trainer.full_name}`
                   : `Группа #${selectedGroup.number}`}
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Тип оплаты</p>
-                <div className="flex gap-2">
-                  {[{ v: 'full', l: 'Полная' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
-                    <button key={v} type="button" onClick={() => setPayType(v)}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
-                      style={payType === v
-                        ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
-                        : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex gap-2">
+                {[{ v: 'full', l: 'Полная' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+                  <button key={v} type="button" onClick={() => setPayType(v)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
+                    style={payType === v
+                      ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                      : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
+                    {l}
+                  </button>
+                ))}
               </div>
               {payType === 'full' ? (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Сумма курса</p>
-                  <input type="number" min="0" step="100" placeholder="Сумма (сом)"
-                    value={payAmount} onChange={e => setPayAmount(e.target.value)} className="crm-mobile-input w-full" />
-                </div>
+                <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                  value={payAmount} onChange={e => setPayAmount(e.target.value)} className="crm-mobile-input w-full" />
               ) : (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Рассрочка</p>
                   <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
                     value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-mobile-input w-full" />
                   <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
                 </div>
               )}
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Бонус (%)</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Бонус (%)</p>
                 <input type="number" min={0} max={100} step={1} value={bonusPercent}
                   onChange={e => setBonusPercent(e.target.value)} className="crm-mobile-input w-full" />
               </div>
@@ -1221,11 +1176,9 @@ function MobileReservationPanel({ client, clientId, onSuccess }) {
             </div>
           )}
           {!selectedGroup && err && (
-            <div className="px-4 pb-4">
-              <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
-                   style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
-                <AlertTriangle size={13} /> {err}
-              </div>
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+                 style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+              <AlertTriangle size={13} /> {err}
             </div>
           )}
         </div>
@@ -1276,16 +1229,57 @@ function MobileStreamsHistory({ client, clientId }) {
             <>
               {client.group && (
                 <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#fce7f3' }}>
-                  <span className="font-semibold text-sm" style={{ color: '#be185d' }}>
-                    Группа #{client.group.number}
-                    <span className="ml-1.5 font-normal text-xs" style={{ color: '#9d174d' }}>
-                      {GROUP_TYPE_SHORT[client.group.group_type] || client.group.group_type}
-                    </span>
-                  </span>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                  <div className="flex items-center gap-2 min-w-0">
+                    {client.group.training_format === 'online'
+                      ? <Globe size={14} style={{ color: '#059669', flexShrink: 0 }} />
+                      : <Dumbbell size={14} style={{ color: '#7c3aed', flexShrink: 0 }} />}
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm" style={{ color: '#be185d' }}>
+                        Группа #{client.group.number}
+                        <span className="ml-1.5 font-normal text-xs" style={{ color: '#9d174d' }}>
+                          {client.group.training_format === 'online' ? '· Онлайн' : '· Оффлайн'}
+                          {client.group.group_type ? ` · ${GROUP_TYPE_SHORT[client.group.group_type] || client.group.group_type}` : ''}
+                        </span>
+                      </p>
+                      {client.registered_at && (
+                        <p className="text-xs mt-0.5" style={{ color: '#9d174d' }}>
+                          с {new Date(client.registered_at + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0"
                     style={{ background: '#fce7f3', color: '#be185d', border: '1px solid #fca5a5' }}>Текущий</span>
                 </div>
               )}
+              {(client.parallel_enrollments || []).map(e => (
+                <div key={e.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#f3e8ff' }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {e.group_training_format === 'online'
+                      ? <Globe size={14} style={{ color: '#059669', flexShrink: 0 }} />
+                      : <Dumbbell size={14} style={{ color: '#7c3aed', flexShrink: 0 }} />}
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm" style={{ color: '#7c3aed' }}>
+                        Группа #{e.group_number}
+                        <span className="ml-1.5 font-normal text-xs" style={{ color: '#6d28d9' }}>
+                          {e.group_training_format === 'online' ? '· Онлайн' : '· Оффлайн'}
+                          {e.group_type ? ` · ${GROUP_TYPE_SHORT[e.group_type] || e.group_type}` : ''}
+                        </span>
+                      </p>
+                      {e.created_at && (
+                        <p className="text-xs mt-0.5" style={{ color: '#6d28d9' }}>
+                          с {new Date(e.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ background: '#ede9fe', color: '#7c3aed' }}>доп.</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                      style={{ background: '#f3e8ff', color: '#7c3aed', border: '1px solid #d8b4fe' }}>Текущий</span>
+                  </div>
+                </div>
+              ))}
               {history.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-3">Прошлых групп нет</p>
               ) : history.map(h => (
@@ -1450,8 +1444,13 @@ function MobileStatusHistory({ clientId }) {
 }
 
 // ── Основная группа — аккордеон ──────────────────────────────────────────────
-function PrimaryGroupBlock({ client, clientId, planId, onSuccess }) {
-  const [open, setOpen] = useState(true)
+function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick }) {
+  const [open,          setOpen]          = useState(true)
+  const [cancelOpen,    setCancelOpen]    = useState(false)
+  const [cancelConfirm, setCancelConfirm] = useState(false)
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelErr,     setCancelErr]     = useState('')
+
   const group = client.group
   const full  = client.full_payment
   const plan  = client.installment_plan
@@ -1459,6 +1458,17 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess }) {
   const pct = plan && Number(plan.total_cost) > 0
     ? Math.min(Math.round(Number(plan.total_paid) / Number(plan.total_cost) * 100), 100) : 0
   const trainerName = group.trainer?.full_name || ''
+  const hasCancelablePayment = !!(full || plan)
+
+  const handleCancelPayment = async () => {
+    setCancelLoading(true); setCancelErr('')
+    try {
+      await api.post(`/clients/${clientId}/cancel-payment/`)
+      setCancelOpen(false); setCancelConfirm(false); onSuccess()
+    } catch (e) {
+      setCancelErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setCancelLoading(false) }
+  }
 
   const receipts = []
   if (client.payment_type === 'full' && full)
@@ -1581,6 +1591,65 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess }) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Отменить оплату */}
+          {hasCancelablePayment && (
+            <div className="border-t border-gray-100 pt-3">
+              <button type="button"
+                onClick={() => { setCancelOpen(v => !v); setCancelConfirm(false); setCancelErr('') }}
+                className="flex items-center gap-2 text-sm font-medium touch-manipulation py-1"
+                style={{ color: '#ea580c' }}>
+                <Ban size={14} /> Отменить оплату
+                <ChevronRight size={14} className={`transition ${cancelOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {cancelOpen && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs text-gray-500">Деньги не возвращаются. Только для исправления ошибки ввода.</p>
+                  {!cancelConfirm ? (
+                    <button type="button" onClick={() => setCancelConfirm(true)}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold touch-manipulation"
+                      style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' }}>
+                      Отменить оплату
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                        <p className="text-xs font-semibold text-red-700">Уверены? Оплата будет удалена полностью.</p>
+                      </div>
+                      {cancelErr && <p className="text-xs text-red-600">{cancelErr}</p>}
+                      <div className="flex gap-2">
+                        <button type="button" onClick={handleCancelPayment} disabled={cancelLoading}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-60 touch-manipulation"
+                          style={{ background: '#dc2626' }}>
+                          {cancelLoading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Ban size={13} />}
+                          Да, удалить
+                        </button>
+                        <button type="button" onClick={() => setCancelConfirm(false)}
+                          className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm touch-manipulation">
+                          Назад
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Заморозить клиента */}
+          {onFreezeClick && (
+            <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Заморозить клиента</p>
+                <p className="text-xs text-gray-400">Удержание; остаток — клиенту. Статус → «Заморозка».</p>
+              </div>
+              <button type="button" onClick={onFreezeClick}
+                className="px-3 py-2 rounded-xl text-xs font-medium touch-manipulation"
+                style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
+                Заморозить
+              </button>
             </div>
           )}
         </div>
@@ -1811,11 +1880,16 @@ function AddEnrollmentPanel({ client, clientId, onSuccess }) {
   const [saving,        setSaving]        = useState(false)
   const [err,           setErr]           = useState('')
 
+  const enrolledGroupIds = new Set([
+    client.group?.id,
+    ...(client.parallel_enrollments || []).map(e => e.group),
+  ].filter(Boolean))
+
   const loadGroups = async (fmt, st) => {
     setGroupsLoading(true); setSelectedGroup(null)
     try {
       const r = await api.get('/groups/', { params: { status: st, page_size: 100, training_format: fmt } })
-      setGroups(r.data.results || [])
+      setGroups((r.data.results || []).filter(g => !enrolledGroupIds.has(g.id)))
     } catch { setGroups([]) } finally { setGroupsLoading(false) }
   }
 
@@ -2213,7 +2287,7 @@ export default function MobileClientDetail() {
         {/* Группы и оплата */}
         {client.group ? (
           <>
-            <PrimaryGroupBlock client={client} clientId={id} planId={planId} onSuccess={load} />
+            <PrimaryGroupBlock client={client} clientId={id} planId={planId} onSuccess={load} onFreezeClick={() => setRefundOpen(true)} />
             {(client.parallel_enrollments || []).map(e => (
               <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} />
             ))}
@@ -2316,8 +2390,8 @@ export default function MobileClientDetail() {
         {/* Редактировать (с переключателем Пробный/Обычный) */}
         <MobileEditInfoPanel client={client} clientId={id} onSuccess={load} />
 
-        {/* Отменить оплату */}
-        <MobileCancelPaymentPanel client={client} clientId={id} onSuccess={load} />
+        {/* Отменить оплату — только для клиентов без группы (с группой — внутри PrimaryGroupBlock) */}
+        {!client.group && <MobileCancelPaymentPanel client={client} clientId={id} onSuccess={load} />}
 
         {/* Добавить в группу: шаг1 выбрать группу, шаг2 оплата, submit в правильном порядке */}
         <MobileNewClientAddPanel client={client} clientId={id} onSuccess={load} />
@@ -2355,8 +2429,8 @@ export default function MobileClientDetail() {
         {/* Повторный клиент */}
         <MobileRepeatPanel client={client} clientId={id} onSuccess={load} />
 
-        {/* Возврат */}
-        {(client.group || client.status === 'active' || client.status === 'new' || client.status === 'trial') && (
+        {/* Заморозить — только для клиентов без группы (с группой — внутри PrimaryGroupBlock) */}
+        {!client.group && (client.status === 'active' || client.status === 'new' || client.status === 'trial') && (
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between">
               <div>
