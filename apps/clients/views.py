@@ -448,22 +448,32 @@ class ClientViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Клиент уже записан в эту группу.'}, status=status.HTTP_400_BAD_REQUEST)
 
         snap = f"{request.user.last_name} {request.user.first_name}".strip() or request.user.username
-        enrollment = ClientEnrollment.objects.create(
-            client=client,
-            group=group,
-            payment_type=data['payment_type'],
-            payment_amount=data.get('payment_amount'),
-            total_cost=data.get('total_cost'),
-            deadline=data.get('deadline'),
-            bonus_percent=data['bonus_percent'],
-            note=data.get('note', ''),
-            enrolled_by=request.user,
-            enrolled_by_name=snap,
-        )
-        client.second_group = group
-        client.save(update_fields=['second_group'])
+        try:
+            enrollment = ClientEnrollment.objects.create(
+                client=client,
+                group=group,
+                payment_type=data['payment_type'],
+                payment_amount=data.get('payment_amount'),
+                total_cost=data.get('total_cost'),
+                deadline=data.get('deadline'),
+                bonus_percent=data['bonus_percent'],
+                note=data.get('note', ''),
+                enrolled_by=request.user,
+                enrolled_by_name=snap,
+            )
+            client.second_group_id = group.pk
+            client.save(update_fields=['second_group_id'])
+        except Exception as e:
+            import traceback, logging
+            logging.getLogger(__name__).error('create_enrollment error: %s\n%s', e, traceback.format_exc())
+            return Response({'detail': f'Ошибка записи: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response(ClientEnrollmentReadSerializer(enrollment).data, status=status.HTTP_201_CREATED)
+        try:
+            data_out = ClientEnrollmentReadSerializer(enrollment).data
+        except Exception:
+            data_out = {'id': str(enrollment.id), 'group': str(group.pk)}
+
+        return Response(data_out, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar],
             url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/payment')
