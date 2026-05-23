@@ -123,8 +123,11 @@ class ClientReadSerializer(serializers.ModelSerializer):
             return False
 
     def get_parallel_enrollments(self, obj):
-        enrollments = obj.parallel_enrollments.filter(is_active=True).prefetch_related('payments').select_related('group', 'group__trainer')
-        return ClientEnrollmentReadSerializer(enrollments, many=True).data
+        try:
+            enrollments = obj.parallel_enrollments.filter(is_active=True).prefetch_related('payments').select_related('group', 'group__trainer')
+            return ClientEnrollmentReadSerializer(enrollments, many=True).data
+        except Exception:
+            return []
 
     def get_active_reservation(self, obj):
         from .models import ClientGroupReservation

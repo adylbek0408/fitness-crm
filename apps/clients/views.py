@@ -26,11 +26,18 @@ class ClientViewSet(viewsets.ModelViewSet):
     ordering_fields = ['registered_at', 'last_name', 'status']
 
     def get_queryset(self):
+        from .models import ClientEnrollment
         qs = Client.objects.filter(deleted_at__isnull=True).select_related(
-            'group', 'trainer', 'registered_by', 'cabinet_account'
+            'group', 'group__trainer', 'trainer', 'registered_by', 'cabinet_account'
         ).prefetch_related(
             Prefetch('full_payments', queryset=FullPayment.objects.order_by('-created_at')),
             Prefetch('installment_plans', queryset=InstallmentPlan.objects.order_by('-created_at').prefetch_related('payments')),
+            Prefetch(
+                'parallel_enrollments',
+                queryset=ClientEnrollment.objects.filter(is_active=True)
+                    .select_related('group', 'group__trainer')
+                    .prefetch_related('payments'),
+            ),
         ).order_by('-registered_at')
 
         user = self.request.user
