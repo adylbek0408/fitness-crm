@@ -9,8 +9,11 @@ from django.utils import timezone
 
 from core.permissions import IsAdmin, IsAdminOrRegistrar
 from core.exceptions import ValidationError, NotFoundError
-from .models import Client, ClientGroupHistory, ClientStatusHistory
-from .serializers import ClientReadSerializer, ClientCreateSerializer, ClientUpdateSerializer
+from .models import Client, ClientGroupHistory, ClientStatusHistory, ClientEnrollment, EnrollmentPayment
+from .serializers import (
+    ClientReadSerializer, ClientCreateSerializer, ClientUpdateSerializer,
+    ClientEnrollmentReadSerializer, EnrollmentCreateSerializer, EnrollmentAddPaymentSerializer,
+)
 from .services import ClientService
 from .filters import ClientFilter
 from apps.payments.models import FullPayment, InstallmentPlan
@@ -393,3 +396,117 @@ class ClientViewSet(viewsets.ModelViewSet):
         except ValidationError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
+
+    # ── Параллельные записи (enrollment) ───────────────────────────────────────
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAdminOrRegistrar], url_path='enrollments')
+    def list_enrollments(self, request, pk=None):
+        """Список активных параллельных записей клиента."""
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        enrollments = (
+            ClientEnrollment.objects
+            .filter(client=client, is_active=True)
+            .prefetch_related('payments')
+            .select_related('group', 'group__trainer')
+            .order_by('created_at')
+        )
+        return Response(ClientEnrollmentReadSerializer(enrollments, many=True).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='enrollments/create')
+    def create_enrollment(self, request, pk=None):
+        """Добавить клиента в параллельную группу."""
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        ser = EnrollmentCreateSerializer(data=request.data)
+        if not ser.is_valid():
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.groups.models import Group
+        data = ser.validated_data
+        try:
+            group = Group.objects.get(id=data['group_id'], deleted_at__isnull=True)
+        except Group.DoesNotExist:
+            return Response({'detail': 'Группа не найдена.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if group.status == 'completed':
+            return Response({'detail': 'Нельзя записать в завершённую группу.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if ClientEnrollment.objects.filter(client=client, group=group, is_active=True).exists():
+            return Response({'detail': 'Клиент уже записан в эту группу.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        snap = f"{request.user.last_name} {request.user.first_name}".strip() or request.user.username
+        enrollment = ClientEnrollment.objects.create(
+            client=client,
+            group=group,
+            payment_type=data['payment_type'],
+            payment_amount=data.get('payment_amount'),
+            total_cost=data.get('total_cost'),
+            deadline=data.get('deadline'),
+            bonus_percent=data['bonus_percent'],
+            note=data.get('note', ''),
+            enrolled_by=request.user,
+            enrolled_by_name=snap,
+        )
+        client.second_group = group
+        client.save(update_fields=['second_group'])
+
+        return Response(ClientEnrollmentReadSerializer(enrollment).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar],
+            url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/payment')
+    def add_enrollment_payment(self, request, pk=None, enrollment_id=None):
+        """Добавить платёж к параллельной записи."""
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            enrollment = ClientEnrollment.objects.get(id=enrollment_id, client=client, is_active=True)
+        except ClientEnrollment.DoesNotExist:
+            return Response({'detail': 'Запись не найдена.'}, status=status.HTTP_404_NOT_FOUND)
+
+        ser = EnrollmentAddPaymentSerializer(data=request.data)
+        if not ser.is_valid():
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = ser.validated_data
+        snap = f"{request.user.last_name} {request.user.first_name}".strip() or request.user.username
+        EnrollmentPayment.objects.create(
+            enrollment=enrollment,
+            amount=data['amount'],
+            receipt=data.get('receipt'),
+            note=data.get('note', ''),
+            created_by=request.user,
+            created_by_name=snap,
+        )
+        enrollment.refresh_from_db()
+        return Response(ClientEnrollmentReadSerializer(enrollment).data)
+
+    @action(detail=True, methods=['delete'], permission_classes=[IsAdminOrRegistrar],
+            url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/remove')
+    def remove_enrollment(self, request, pk=None, enrollment_id=None):
+        """Деактивировать параллельную запись."""
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            enrollment = ClientEnrollment.objects.get(id=enrollment_id, client=client, is_active=True)
+        except ClientEnrollment.DoesNotExist:
+            return Response({'detail': 'Запись не найдена.'}, status=status.HTTP_404_NOT_FOUND)
+
+        enrollment.is_active = False
+        enrollment.save(update_fields=['is_active'])
+        if client.second_group_id == enrollment.group_id:
+            client.second_group = None
+            client.save(update_fields=['second_group'])
+
+        return Response({'detail': 'Запись деактивирована.'})

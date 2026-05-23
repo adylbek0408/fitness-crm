@@ -287,3 +287,75 @@ class BonusTransaction(UUIDTimestampedModel):
 
     def __str__(self):
         return f"{self.client} | {self.transaction_type} | {self.amount}"
+
+
+class ClientEnrollment(UUIDTimestampedModel):
+    """
+    Параллельная запись клиента в группу с отдельной оплатой.
+    Используется для клиентов, которые одновременно учатся в нескольких группах
+    (например, онлайн + оффлайн). Первичная группа клиента (client.group)
+    продолжает работать через старую систему; дополнительные — через эту модель.
+    """
+    PAYMENT_TYPE_CHOICES = [('full', 'Полная'), ('installment', 'Рассрочка')]
+
+    client = models.ForeignKey(
+        'Client', on_delete=models.CASCADE, related_name='parallel_enrollments'
+    )
+    group = models.ForeignKey(
+        'groups.Group', on_delete=models.PROTECT, related_name='client_enrollments'
+    )
+    payment_type   = models.CharField(max_length=15, choices=PAYMENT_TYPE_CHOICES)
+    payment_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    total_cost     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    deadline       = models.DateField(null=True, blank=True)
+    bonus_percent  = models.PositiveSmallIntegerField(default=10)
+    is_active      = models.BooleanField(default=True)
+    enrolled_by    = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_enrollments'
+    )
+    enrolled_by_name = models.CharField(max_length=200, blank=True)
+    note             = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name        = 'Параллельная запись'
+        verbose_name_plural = 'Параллельные записи'
+        indexes = [models.Index(fields=['client', 'is_active'])]
+
+    def __str__(self):
+        return f"{self.client} → Группа #{self.group.number} (параллельно)"
+
+    @property
+    def amount_paid(self):
+        return sum(p.amount for p in self.payments.all())
+
+    @property
+    def is_fully_paid(self):
+        if self.payment_type == 'full':
+            return self.payment_amount and self.amount_paid >= self.payment_amount
+        return self.total_cost and self.amount_paid >= self.total_cost
+
+
+class EnrollmentPayment(UUIDTimestampedModel):
+    """Запись о конкретном платеже по параллельной записи."""
+
+    enrollment = models.ForeignKey(
+        ClientEnrollment, on_delete=models.CASCADE, related_name='payments'
+    )
+    amount          = models.DecimalField(max_digits=12, decimal_places=2)
+    receipt         = models.ImageField(upload_to='enrollment_receipts/', null=True, blank=True)
+    note            = models.CharField(max_length=300, blank=True)
+    created_by      = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='enrollment_payments'
+    )
+    created_by_name = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['created_at']
+        verbose_name        = 'Платёж по записи'
+        verbose_name_plural = 'Платежи по записям'
+
+    def __str__(self):
+        return f"{self.enrollment} | {self.amount} сом"

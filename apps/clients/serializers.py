@@ -6,7 +6,7 @@ from apps.trainers.models import Trainer
 from apps.trainers.serializers import TrainerSerializer
 from apps.payments.models import FullPayment, InstallmentPlan, InstallmentPayment
 
-from .models import Client, ClientAccount
+from .models import Client, ClientAccount, ClientEnrollment, EnrollmentPayment
 
 
 class FullPaymentReadSerializer(serializers.ModelSerializer):
@@ -54,7 +54,8 @@ class ClientReadSerializer(serializers.ModelSerializer):
     cabinet_password = serializers.SerializerMethodField()
     google_email = serializers.SerializerMethodField()
     google_linked = serializers.SerializerMethodField()
-    active_reservation = serializers.SerializerMethodField()
+    active_reservation    = serializers.SerializerMethodField()
+    parallel_enrollments  = serializers.SerializerMethodField()
 
     class Meta:
         model = Client
@@ -68,7 +69,7 @@ class ClientReadSerializer(serializers.ModelSerializer):
             'full_payment', 'installment_plan',
             'cabinet_username', 'cabinet_password',
             'google_email', 'google_linked',
-            'created_at', 'active_reservation',
+            'created_at', 'active_reservation', 'parallel_enrollments',
         ]
         read_only_fields = ['id', 'created_at']
 
@@ -120,6 +121,10 @@ class ClientReadSerializer(serializers.ModelSerializer):
             return bool(obj.cabinet_account.google_id)
         except ClientAccount.DoesNotExist:
             return False
+
+    def get_parallel_enrollments(self, obj):
+        enrollments = obj.parallel_enrollments.filter(is_active=True).prefetch_related('payments').select_related('group', 'group__trainer')
+        return ClientEnrollmentReadSerializer(enrollments, many=True).data
 
     def get_active_reservation(self, obj):
         from .models import ClientGroupReservation
@@ -214,6 +219,73 @@ class ClientCreateSerializer(serializers.Serializer):
             data['payment_data'] = s.validated_data
 
         return data
+
+
+class EnrollmentPaymentReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EnrollmentPayment
+        fields = ['id', 'amount', 'receipt', 'note', 'created_by_name', 'created_at']
+
+
+class ClientEnrollmentReadSerializer(serializers.ModelSerializer):
+    group_number          = serializers.IntegerField(source='group.number', read_only=True)
+    group_type            = serializers.CharField(source='group.group_type', read_only=True)
+    group_training_format = serializers.CharField(source='group.training_format', read_only=True)
+    trainer_name          = serializers.SerializerMethodField()
+    group_status          = serializers.CharField(source='group.status', read_only=True)
+    amount_paid           = serializers.SerializerMethodField()
+    is_fully_paid         = serializers.SerializerMethodField()
+    payments              = EnrollmentPaymentReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ClientEnrollment
+        fields = [
+            'id', 'group', 'group_number', 'group_type', 'group_training_format',
+            'trainer_name', 'group_status',
+            'payment_type', 'payment_amount', 'total_cost', 'deadline',
+            'bonus_percent', 'is_active', 'note',
+            'amount_paid', 'is_fully_paid', 'payments',
+            'enrolled_by_name', 'created_at',
+        ]
+
+    def get_trainer_name(self, obj):
+        try:
+            return obj.group.trainer.full_name
+        except Exception:
+            return ''
+
+    def get_amount_paid(self, obj):
+        return str(obj.amount_paid)
+
+    def get_is_fully_paid(self, obj):
+        return obj.is_fully_paid
+
+
+class EnrollmentCreateSerializer(serializers.Serializer):
+    group_id       = serializers.UUIDField()
+    payment_type   = serializers.ChoiceField(choices=[('full', 'full'), ('installment', 'installment')])
+    payment_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    total_cost     = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    deadline       = serializers.DateField(required=False, allow_null=True)
+    bonus_percent  = serializers.IntegerField(default=10, min_value=0, max_value=100)
+    note           = serializers.CharField(max_length=300, required=False, allow_blank=True, default='')
+
+    def validate(self, data):
+        if data['payment_type'] == 'full':
+            if not data.get('payment_amount') or data['payment_amount'] <= 0:
+                raise serializers.ValidationError({'payment_amount': 'Укажите сумму для полной оплаты.'})
+        else:
+            if not data.get('total_cost') or data['total_cost'] <= 0:
+                raise serializers.ValidationError({'total_cost': 'Укажите стоимость рассрочки.'})
+            if not data.get('deadline'):
+                raise serializers.ValidationError({'deadline': 'Укажите дедлайн рассрочки.'})
+        return data
+
+
+class EnrollmentAddPaymentSerializer(serializers.Serializer):
+    amount  = serializers.DecimalField(max_digits=12, decimal_places=2)
+    receipt = serializers.ImageField(required=False, allow_null=True)
+    note    = serializers.CharField(max_length=300, required=False, allow_blank=True, default='')
 
 
 class ClientListMinimalSerializer(serializers.ModelSerializer):

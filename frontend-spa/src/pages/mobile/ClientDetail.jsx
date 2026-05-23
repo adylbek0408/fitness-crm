@@ -24,14 +24,14 @@ function bonusPercentDisplay(bp) {
   return bp === null || bp === undefined ? 10 : bp
 }
 
-// ── Визуально заметный выбор даты (нативный пикер скрыт под стилизованной кнопкой) ──
+// ── Выбор даты — нативный input с кастомным оформлением (работает на desktop/mobile/ноутбук) ──
 function DatePickerInput({ value, onChange }) {
   const display = value
     ? new Date(value + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
     : null
   return (
-    <label className="block relative cursor-pointer touch-manipulation">
-      <div className={`flex items-center gap-3 px-3 py-3 rounded-xl border-2 transition ${
+    <div className="space-y-1">
+      <div className={`flex items-center gap-3 px-3 py-3 rounded-xl border-2 pointer-events-none transition ${
         value ? 'bg-violet-50' : 'bg-amber-50'
       }`} style={value
         ? { borderColor: '#7c3aed' }
@@ -43,7 +43,7 @@ function DatePickerInput({ value, onChange }) {
             Дата дедлайна {!value && '— обязательно'}
           </p>
           <p className="text-sm font-medium truncate" style={{ color: value ? '#5b21b6' : '#b45309' }}>
-            {display || 'Нажмите, чтобы выбрать дату'}
+            {display || 'Нажмите на поле ниже чтобы выбрать дату'}
           </p>
         </div>
         {value
@@ -52,8 +52,9 @@ function DatePickerInput({ value, onChange }) {
         }
       </div>
       <input type="date" value={value} onChange={onChange}
-        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" style={{ zIndex: 1 }} />
-    </label>
+        className="crm-mobile-input w-full"
+        style={{ colorScheme: 'light' }} />
+    </div>
   )
 }
 
@@ -1117,36 +1118,61 @@ function MobileReservationPanel({ client, clientId, onSuccess }) {
       )}
 
       {!res && open && (
-        <div className="px-4 pb-5 border-t border-gray-100 space-y-4 pt-4">
-          {groupsLoading ? (
-            <div className="flex justify-center py-4">
-              <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#7c3aed' }} />
-            </div>
-          ) : groups.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-3">Нет доступных групп</p>
-          ) : (
-            <div className="space-y-2 max-h-52 overflow-y-auto">
-              {groups.map(g => (
-                <button key={g.id} type="button" onClick={() => setSelectedGroup(selectedGroup?.id === g.id ? null : g)}
-                  className="w-full text-left p-3 rounded-xl border-2 transition touch-manipulation"
-                  style={selectedGroup?.id === g.id
-                    ? { background: '#f3e8ff', borderColor: '#7c3aed' }
-                    : { background: '#fafafa', borderColor: '#e5e7eb' }}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm text-gray-800">Группа #{g.number}
-                        <span className="ml-2 text-xs font-normal text-gray-400">{GROUP_TYPE_LABEL[g.group_type] || g.group_type}</span>
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{g.trainer?.full_name || '—'}</p>
+        <div className="border-t border-gray-100">
+          {/* Шаг 1 — список групп */}
+          <div className="px-4 pt-4 pb-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Шаг 1 — Выберите группу</p>
+            {groupsLoading ? (
+              <div className="flex justify-center py-4">
+                <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#7c3aed' }} />
+              </div>
+            ) : groups.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-3">Нет доступных групп</p>
+            ) : (
+              <div className="space-y-2 max-h-52 overflow-y-auto">
+                {groups.map(g => (
+                  <button key={g.id} type="button" onClick={() => setSelectedGroup(selectedGroup?.id === g.id ? null : g)}
+                    className="w-full text-left p-3 rounded-xl border-2 transition touch-manipulation"
+                    style={selectedGroup?.id === g.id
+                      ? { background: '#f3e8ff', borderColor: '#7c3aed' }
+                      : { background: '#fafafa', borderColor: '#e5e7eb' }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-sm text-gray-800">
+                          {g.trainer?.full_name
+                            ? `Группа #${g.number} · ${g.trainer.full_name}`
+                            : `Группа #${g.number}`}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {GROUP_TYPE_LABEL[g.group_type] || g.group_type || '—'}
+                          {' · '}
+                          <span className={g.status === 'active' ? 'text-emerald-600' : 'text-amber-600'}>
+                            {g.status === 'active' ? 'Активный' : 'Набор'}
+                          </span>
+                        </p>
+                      </div>
+                      {selectedGroup?.id === g.id && <Check size={15} style={{ color: '#7c3aed' }} className="shrink-0" />}
                     </div>
-                    {selectedGroup?.id === g.id && <Check size={15} style={{ color: '#7c3aed' }} className="shrink-0" />}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Шаг 2 — оплата (появляется только после выбора группы) */}
           {selectedGroup && (
-            <>
+            <div className="px-4 pb-5 pt-3 space-y-3 border-t border-dashed border-gray-200">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-5 h-5 rounded-full text-white flex items-center justify-center text-xs font-bold shrink-0"
+                     style={{ background: '#7c3aed' }}>2</div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Оплата за группу</p>
+              </div>
+              <div className="p-2.5 rounded-xl text-xs font-medium"
+                   style={{ background: '#f3e8ff', color: '#6d28d9' }}>
+                {selectedGroup.trainer?.full_name
+                  ? `Группа #${selectedGroup.number} · ${selectedGroup.trainer.full_name}`
+                  : `Группа #${selectedGroup.number}`}
+              </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Тип оплаты</p>
                 <div className="flex gap-2">
@@ -1169,7 +1195,7 @@ function MobileReservationPanel({ client, clientId, onSuccess }) {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Рассрочка</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Рассрочка</p>
                   <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
                     value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-mobile-input w-full" />
                   <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
@@ -1180,21 +1206,27 @@ function MobileReservationPanel({ client, clientId, onSuccess }) {
                 <input type="number" min={0} max={100} step={1} value={bonusPercent}
                   onChange={e => setBonusPercent(e.target.value)} className="crm-mobile-input w-full" />
               </div>
-            </>
-          )}
-          {err && (
-            <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
-                 style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
-              <AlertTriangle size={13} /> {err}
+              {err && (
+                <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+                     style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+                  <AlertTriangle size={13} /> {err}
+                </div>
+              )}
+              <button type="button" onClick={handleSave} disabled={saving}
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+                style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
+                {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+                Забронировать группу #{selectedGroup.number}
+              </button>
             </div>
           )}
-          {selectedGroup && (
-            <button type="button" onClick={handleSave} disabled={saving}
-              className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
-              style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
-              Забронировать группу #{selectedGroup.number}
-            </button>
+          {!selectedGroup && err && (
+            <div className="px-4 pb-4">
+              <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+                   style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+                <AlertTriangle size={13} /> {err}
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -1410,6 +1442,541 @@ function MobileStatusHistory({ clientId }) {
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Основная группа — аккордеон ──────────────────────────────────────────────
+function PrimaryGroupBlock({ client, clientId, planId, onSuccess }) {
+  const [open, setOpen] = useState(true)
+  const group = client.group
+  const full  = client.full_payment
+  const plan  = client.installment_plan
+  const rem = plan ? Number(plan.remaining) : 0
+  const pct = plan && Number(plan.total_cost) > 0
+    ? Math.min(Math.round(Number(plan.total_paid) / Number(plan.total_cost) * 100), 100) : 0
+  const trainerName = group.trainer?.full_name || ''
+
+  const receipts = []
+  if (client.payment_type === 'full' && full)
+    receipts.push({ id: full.id, date: full.created_at || full.paid_at, amount: full.amount, label: 'Полная оплата', receipt: full.receipt || null })
+  if (client.payment_type === 'installment' && plan?.payments?.length)
+    plan.payments.forEach((p, i) => receipts.push({
+      id: p.id, date: p.created_at || p.paid_at, amount: p.amount, label: `Платёж ${i + 1}`, receipt: p.receipt || null,
+    }))
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between p-4 touch-manipulation text-left">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+               style={{ background: group.training_format === 'online' ? '#ecfdf5' : '#ede9fe' }}>
+            {group.training_format === 'online'
+              ? <Globe size={18} style={{ color: '#059669' }} />
+              : <Dumbbell size={18} style={{ color: '#7c3aed' }} />}
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-800 text-sm truncate">
+              Группа #{group.number}
+              {trainerName && <span className="font-normal text-gray-500 ml-1.5 text-xs">· {trainerName}</span>}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {group.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
+              {group.group_type ? ` · ${GROUP_TYPE_LABEL[group.group_type] || group.group_type}` : ''}
+              {' · '}
+              {client.payment_type === 'full'
+                ? (full?.is_paid ? <span className="text-emerald-600">Оплачено</span> : <span className="text-amber-600">Не оплачено</span>)
+                : (rem <= 0 ? <span className="text-emerald-600">Закрыто</span> : <span className="text-amber-600">{pct}% оплачено</span>)
+              }
+            </p>
+          </div>
+        </div>
+        {open ? <ChevronUp size={18} className="text-gray-400 shrink-0" /> : <ChevronDown size={18} className="text-gray-400 shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-5 border-t border-gray-100 space-y-4 pt-3">
+          {client.payment_type === 'full' && full && (
+            <div className="space-y-2 text-sm">
+              {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Сумма курса</span>
+                  <span className="crm-money font-semibold">{fmtMoney(full.course_amount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-gray-500">{full.course_amount != null && Number(full.course_amount) !== Number(full.amount) ? 'К оплате' : 'Сумма'}</span>
+                <span className="crm-money font-semibold">{fmtMoney(full.amount)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Статус</span>
+                <span className={`font-medium flex items-center gap-1 ${full.is_paid ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {full.is_paid ? <><CheckCircle size={14} /> Оплачено</> : <><Clock size={14} /> Не оплачено</>}
+                </span>
+              </div>
+              {full.receipt && (
+                <a href={toAbsoluteUrl(full.receipt)} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1.5 text-blue-500 text-sm">
+                  <Receipt size={14} /> Открыть чек →
+                </a>
+              )}
+              {!full.is_paid && (
+                <div className="pt-2 border-t border-gray-100">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Подтвердить оплату</p>
+                  <ConfirmFullPaymentForm clientId={clientId} amount={full.amount} onSuccess={onSuccess} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {client.payment_type === 'installment' && plan && (
+            <div className="space-y-3 text-sm">
+              <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                <div className="flex justify-between"><span className="text-gray-500">Общая стоимость</span><span className="crm-money text-gray-800">{fmtMoney(plan.total_cost)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Оплачено</span><span className="crm-money text-emerald-600">{fmtMoney(plan.total_paid)}</span></div>
+                <div className="border-t border-gray-200 pt-2 flex justify-between">
+                  {rem < 0
+                    ? <><span className="text-gray-500">Переплата</span><span className="text-amber-600 font-semibold">+{fmtMoney(Math.abs(rem))}</span></>
+                    : <><span className="text-gray-500">Остаток</span><span className={`crm-money ${rem <= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{rem <= 0 ? '—' : fmtMoney(rem)}</span></>
+                  }
+                </div>
+              </div>
+              <div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5">
+                  <div className={`h-1.5 rounded-full transition-all ${rem < 0 ? 'bg-amber-400' : rem <= 0 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-xs text-gray-400">{pct}% оплачено</span>
+                  {rem <= 0 && rem >= 0 && <span className="text-xs text-emerald-600 font-medium">Полностью закрыто</span>}
+                </div>
+              </div>
+              <div className="flex justify-between"><span className="text-gray-500">Дедлайн</span><span className="text-gray-700">{plan.deadline}</span></div>
+              {rem > 0 && (
+                <div className="pt-2 border-t border-gray-100">
+                  <AddPaymentForm planId={planId} onSuccess={onSuccess} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {!full && !plan && <p className="text-sm text-gray-400 text-center py-2">Оплата не введена</p>}
+
+          {receipts.length > 0 && (
+            <div className="border-t border-gray-100 pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">История платежей</p>
+              <div className="space-y-1.5">
+                {receipts.map((r, i) => (
+                  <div key={`r-${r.id}-${i}`}
+                    className="flex items-center justify-between py-1.5 px-2 bg-gray-50 rounded-lg text-xs gap-2">
+                    <span className="text-gray-400 shrink-0">{r.date ? fmtDateTime(r.date) : '—'}</span>
+                    <span className="crm-money flex-1 text-right">{r.label} — {fmtMoney(r.amount)}</span>
+                    {r.receipt
+                      ? <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold shrink-0"><Receipt size={11} /> Чек</a>
+                      : <span className="text-gray-300 shrink-0">—</span>
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Параллельная группа — аккордеон ──────────────────────────────────────────
+function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess }) {
+  const [open,          setOpen]          = useState(false)
+  const [payOpen,       setPayOpen]       = useState(false)
+  const [payAmount,     setPayAmount]     = useState('')
+  const [payNote,       setPayNote]       = useState('')
+  const [payReceipt,    setPayReceipt]    = useState(null)
+  const [saving,        setSaving]        = useState(false)
+  const [removing,      setRemoving]      = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [err,           setErr]           = useState('')
+
+  const amountPaid = Number(enrollment.amount_paid || 0)
+  const total = enrollment.payment_type === 'full'
+    ? Number(enrollment.payment_amount || 0)
+    : Number(enrollment.total_cost || 0)
+  const rem = total - amountPaid
+  const pct = total > 0 ? Math.min(Math.round(amountPaid / total * 100), 100) : 0
+  const fmt = enrollment.group_training_format || 'offline'
+  const fmtLabel = fmt === 'online' ? 'Онлайн' : 'Оффлайн'
+
+  const handleAddPayment = async () => {
+    if (!payAmount || Number(payAmount) <= 0) { setErr('Укажите сумму'); return }
+    setSaving(true); setErr('')
+    try {
+      const fd = new FormData()
+      fd.append('amount', payAmount)
+      if (payNote.trim()) fd.append('note', payNote.trim())
+      if (payReceipt) fd.append('receipt', payReceipt)
+      await api.post(`/clients/${clientId}/enrollments/${enrollment.id}/payment/`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setPayOpen(false); setPayAmount(''); setPayNote(''); setPayReceipt(null)
+      onSuccess()
+    } catch (e) { setErr(e.response?.data?.detail || 'Ошибка') }
+    finally { setSaving(false) }
+  }
+
+  const handleRemove = async () => {
+    setRemoving(true); setErr('')
+    try {
+      await api.delete(`/clients/${clientId}/enrollments/${enrollment.id}/remove/`)
+      onSuccess()
+    } catch (e) { setErr(e.response?.data?.detail || 'Ошибка') }
+    finally { setRemoving(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ border: '1.5px solid #e9d5ff' }}>
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between p-4 touch-manipulation text-left">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+               style={{ background: fmt === 'online' ? '#ecfdf5' : '#f3e8ff' }}>
+            {fmt === 'online'
+              ? <Globe size={18} style={{ color: '#059669' }} />
+              : <Dumbbell size={18} style={{ color: '#7c3aed' }} />}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="font-semibold text-gray-800 text-sm">Группа #{enrollment.group_number}</p>
+              {enrollment.trainer_name && <span className="text-xs text-gray-500">· {enrollment.trainer_name}</span>}
+              <span className="text-xs font-medium px-1.5 py-0.5 rounded-full" style={{ background: '#f3e8ff', color: '#7c3aed' }}>доп.</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {fmtLabel}
+              {enrollment.group_type ? ` · ${GROUP_TYPE_LABEL[enrollment.group_type] || enrollment.group_type}` : ''}
+              {' · '}
+              {enrollment.is_fully_paid
+                ? <span className="text-emerald-600">Оплачено</span>
+                : total > 0
+                  ? <span className="text-amber-600">{pct}% оплачено</span>
+                  : <span className="text-gray-400">Без суммы</span>
+              }
+            </p>
+          </div>
+        </div>
+        {open ? <ChevronUp size={18} className="text-gray-400 shrink-0" /> : <ChevronDown size={18} className="text-gray-400 shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-5 border-t border-gray-100 space-y-3 pt-3">
+          <div className="bg-gray-50 rounded-xl p-3 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Тип оплаты</span>
+              <span className="text-gray-700">{enrollment.payment_type === 'full' ? 'Полная' : 'Рассрочка'}</span>
+            </div>
+            {enrollment.payment_type === 'full' && enrollment.payment_amount && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Сумма</span>
+                <span className="crm-money">{fmtMoney(enrollment.payment_amount)}</span>
+              </div>
+            )}
+            {enrollment.payment_type === 'installment' && (
+              <>
+                {enrollment.total_cost && <div className="flex justify-between"><span className="text-gray-500">Стоимость</span><span className="crm-money">{fmtMoney(enrollment.total_cost)}</span></div>}
+                {enrollment.deadline && <div className="flex justify-between"><span className="text-gray-500">Дедлайн</span><span className="text-gray-700">{enrollment.deadline}</span></div>}
+              </>
+            )}
+            <div className="flex justify-between border-t border-gray-200 pt-2">
+              <span className="text-gray-500">Оплачено</span>
+              <span className={`crm-money ${amountPaid > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>{fmtMoney(amountPaid)}</span>
+            </div>
+            {total > 0 && rem > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Остаток</span>
+                <span className="crm-money text-red-500">{fmtMoney(rem)}</span>
+              </div>
+            )}
+          </div>
+
+          {total > 0 && (
+            <div>
+              <div className="w-full bg-gray-100 rounded-full h-1.5">
+                <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: pct >= 100 ? '#10b981' : '#8b5cf6' }} />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{pct}% оплачено</p>
+            </div>
+          )}
+
+          {enrollment.payments?.length > 0 && (
+            <div className="border-t border-gray-100 pt-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">История платежей</p>
+              <div className="space-y-1.5">
+                {enrollment.payments.map(p => (
+                  <div key={p.id} className="flex items-center justify-between py-1.5 px-2 bg-gray-50 rounded-lg text-xs gap-2">
+                    <span className="text-gray-400 shrink-0">{p.created_at ? fmtDateTime(p.created_at) : '—'}</span>
+                    <span className="crm-money flex-1 text-right">{fmtMoney(p.amount)}</span>
+                    {p.receipt
+                      ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold shrink-0"><Receipt size={11} /> Чек</a>
+                      : <span className="text-gray-300 shrink-0">—</span>
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!enrollment.is_fully_paid && (
+            <div className="border-t border-gray-100 pt-3">
+              {!payOpen ? (
+                <button type="button" onClick={() => { setPayOpen(true); setErr('') }}
+                  className="w-full py-2.5 rounded-xl text-sm font-medium border-2 touch-manipulation"
+                  style={{ borderColor: '#7c3aed', color: '#7c3aed', background: '#faf5ff' }}>
+                  + Добавить платёж
+                </button>
+              ) : (
+                <div className="space-y-2.5">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Новый платёж</p>
+                  <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                    value={payAmount} onChange={e => setPayAmount(e.target.value)} className="crm-mobile-input w-full" />
+                  <input type="text" placeholder="Примечание (необяз.)"
+                    value={payNote} onChange={e => setPayNote(e.target.value)} className="crm-mobile-input w-full" />
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Чек (необяз.)</p>
+                    <input type="file" accept="image/*" onChange={e => setPayReceipt(e.target.files?.[0] || null)} className="text-xs text-gray-600 w-full" />
+                  </div>
+                  {err && <p className="text-xs text-red-600">{err}</p>}
+                  <div className="flex gap-2">
+                    <button type="button" onClick={handleAddPayment} disabled={saving}
+                      className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+                      style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
+                      {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+                      Сохранить
+                    </button>
+                    <button type="button" onClick={() => { setPayOpen(false); setErr('') }}
+                      className="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm touch-manipulation">
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="border-t border-gray-100 pt-2">
+            {!confirmRemove ? (
+              <button type="button" onClick={() => setConfirmRemove(true)}
+                className="text-xs text-red-500 touch-manipulation py-1">
+                Убрать из группы
+              </button>
+            ) : (
+              <div className="space-y-2 p-3 rounded-xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                <p className="text-xs text-red-700 font-semibold">Убрать из группы #{enrollment.group_number}?</p>
+                {err && <p className="text-xs text-red-600">{err}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleRemove} disabled={removing}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-60 touch-manipulation"
+                    style={{ background: '#dc2626' }}>
+                    {removing ? '...' : 'Убрать'}
+                  </button>
+                  <button type="button" onClick={() => setConfirmRemove(false)}
+                    className="px-4 py-2 rounded-xl border border-gray-300 text-xs text-gray-600 touch-manipulation">
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Добавить в параллельную группу ────────────────────────────────────────────
+function AddEnrollmentPanel({ client, clientId, onSuccess }) {
+  const [open,          setOpen]          = useState(false)
+  const [format,        setFormat]        = useState('offline')
+  const [statusFilter,  setStatusFilter]  = useState('recruitment')
+  const [groups,        setGroups]        = useState([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState(null)
+  const [payType,       setPayType]       = useState('full')
+  const [payAmount,     setPayAmount]     = useState('')
+  const [totalCost,     setTotalCost]     = useState('')
+  const [deadline,      setDeadline]      = useState('')
+  const [bonusPercent,  setBonusPercent]  = useState(String(bonusPercentDisplay(client.bonus_percent)))
+  const [note,          setNote]          = useState('')
+  const [saving,        setSaving]        = useState(false)
+  const [err,           setErr]           = useState('')
+
+  const loadGroups = async (fmt, st) => {
+    setGroupsLoading(true); setSelectedGroup(null)
+    try {
+      const r = await api.get('/groups/', { params: { status: st, page_size: 100, training_format: fmt } })
+      setGroups(r.data.results || [])
+    } catch { setGroups([]) } finally { setGroupsLoading(false) }
+  }
+
+  const handleOpen = () => {
+    setOpen(true); setFormat('offline'); setStatusFilter('recruitment')
+    setSelectedGroup(null); setPayType('full'); setPayAmount(''); setTotalCost('')
+    setDeadline(''); setBonusPercent(String(bonusPercentDisplay(client.bonus_percent))); setNote('')
+    setErr(''); loadGroups('offline', 'recruitment')
+  }
+
+  const handleSubmit = async () => {
+    if (!selectedGroup) { setErr('Выберите группу'); return }
+    if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) { setErr('Укажите сумму'); return }
+    if (payType === 'installment' && (!totalCost || !deadline)) { setErr('Укажите стоимость и дедлайн'); return }
+    const bp = parseInt(String(bonusPercent).trim(), 10)
+    if (Number.isNaN(bp) || bp < 0 || bp > 100) { setErr('Процент бонуса: 0–100'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.post(`/clients/${clientId}/enrollments/create/`, {
+        group_id: selectedGroup.id,
+        payment_type: payType,
+        ...(payType === 'full' ? { payment_amount: payAmount } : { total_cost: totalCost, deadline }),
+        bonus_percent: bp,
+        note: note.trim(),
+      })
+      setOpen(false); onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || JSON.stringify(e.response?.data) || 'Ошибка')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ border: '2px dashed #c4b5fd' }}>
+      {!open ? (
+        <button type="button" onClick={handleOpen}
+          className="w-full flex items-center justify-center gap-2 p-4 touch-manipulation">
+          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm font-bold"
+               style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>+</div>
+          <span className="font-semibold text-sm" style={{ color: '#7c3aed' }}>Добавить группу</span>
+        </button>
+      ) : (
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-800 text-sm">Добавить в группу</h3>
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 touch-manipulation p-1">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            {[{ v: 'offline', icon: <Dumbbell size={15} />, l: 'Оффлайн' }, { v: 'online', icon: <Globe size={15} />, l: 'Онлайн' }].map(({ v, icon, l }) => (
+              <button key={v} type="button"
+                onClick={() => { setFormat(v); setSelectedGroup(null); loadGroups(v, statusFilter) }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold border-2 touch-manipulation transition"
+                style={format === v
+                  ? { background: '#ede9fe', borderColor: '#7c3aed', color: '#7c3aed' }
+                  : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                }>
+                {icon} {l}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            {[{ v: 'recruitment', l: 'Набор' }, { v: 'active', l: 'Активный' }].map(({ v, l }) => (
+              <button key={v} type="button"
+                onClick={() => { setStatusFilter(v); setSelectedGroup(null); loadGroups(format, v) }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 transition touch-manipulation ${
+                  statusFilter === v ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500'
+                }`}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {groupsLoading ? (
+            <div className="flex justify-center py-4">
+              <span className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#7c3aed' }} />
+            </div>
+          ) : groups.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-3">Нет доступных групп</p>
+          ) : (
+            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+              {groups.map(g => (
+                <button key={g.id} type="button"
+                  onClick={() => setSelectedGroup(selectedGroup?.id === g.id ? null : g)}
+                  className="w-full text-left p-3 rounded-xl border-2 transition touch-manipulation"
+                  style={selectedGroup?.id === g.id
+                    ? { background: '#f3e8ff', borderColor: '#7c3aed' }
+                    : { background: '#fafafa', borderColor: '#e5e7eb' }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm text-gray-800">
+                        Группа #{g.number}
+                        {g.trainer?.full_name && <span className="font-normal text-gray-500 text-xs ml-1">· {g.trainer.full_name}</span>}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {GROUP_TYPE_LABEL[g.group_type] || g.group_type || '—'}
+                        {' · '}
+                        <span className={g.status === 'active' ? 'text-emerald-600' : 'text-amber-600'}>
+                          {g.status === 'active' ? 'Активный' : 'Набор'}
+                        </span>
+                      </p>
+                    </div>
+                    {selectedGroup?.id === g.id && <Check size={15} style={{ color: '#7c3aed' }} className="shrink-0" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {selectedGroup && (
+            <div className="space-y-3 border-t border-dashed border-gray-200 pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Оплата — Группа #{selectedGroup.number}
+              </p>
+              <div className="flex gap-2">
+                {[{ v: 'full', l: 'Полная' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+                  <button key={v} type="button" onClick={() => setPayType(v)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
+                    style={payType === v
+                      ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                      : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              {payType === 'full' ? (
+                <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                  value={payAmount} onChange={e => setPayAmount(e.target.value)} className="crm-mobile-input w-full" />
+              ) : (
+                <div className="space-y-2">
+                  <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+                    value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-mobile-input w-full" />
+                  <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1">Бонус (%)</p>
+                <input type="number" min={0} max={100} step={1} value={bonusPercent}
+                  onChange={e => setBonusPercent(e.target.value)} className="crm-mobile-input w-full" />
+              </div>
+              <input type="text" placeholder="Примечание (необяз.)"
+                value={note} onChange={e => setNote(e.target.value)} className="crm-mobile-input w-full" />
+            </div>
+          )}
+
+          {err && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs"
+                 style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+              <AlertTriangle size={13} /> {err}
+            </div>
+          )}
+
+          {selectedGroup && (
+            <button type="button" onClick={handleSubmit} disabled={saving}
+              className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+              style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+              Добавить в Группу #{selectedGroup.number}
+            </button>
           )}
         </div>
       )}
@@ -1643,7 +2210,19 @@ export default function MobileClientDetail() {
           </div>
         )}
 
-        {/* Оплата */}
+        {/* Группы и оплата */}
+        {client.group ? (
+          <>
+            <PrimaryGroupBlock client={client} clientId={id} planId={planId} onSuccess={load} />
+            {(client.parallel_enrollments || []).map(e => (
+              <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} />
+            ))}
+            <AddEnrollmentPanel client={client} clientId={id} onSuccess={load} />
+          </>
+        ) : (
+          <>
+
+        {/* Оплата (для клиентов без группы: trial/new) */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border">
           <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
             <CreditCard size={18} /> Оплата
@@ -1731,6 +2310,9 @@ export default function MobileClientDetail() {
           </div>
         )}
 
+          </>
+        )}
+
         {/* Редактировать (с переключателем Пробный/Обычный) */}
         <MobileEditInfoPanel client={client} clientId={id} onSuccess={load} />
 
@@ -1752,8 +2334,8 @@ export default function MobileClientDetail() {
         {/* История статусов */}
         <MobileStatusHistory clientId={id} />
 
-        {/* История платежей */}
-        {allReceipts.length > 0 && (
+        {/* История платежей (только для клиентов без основной группы) */}
+        {!client.group && allReceipts.length > 0 && (
           <div className="bg-white rounded-2xl p-5 shadow-sm border">
             <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2"><Receipt size={18} /> История платежей</h3>
             <div className="space-y-2">
