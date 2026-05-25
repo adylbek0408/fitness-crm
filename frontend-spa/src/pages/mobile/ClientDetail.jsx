@@ -1929,13 +1929,15 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
               {fmtLabel}
               {enrollment.group_type ? ` · ${GROUP_TYPE_LABEL[enrollment.group_type] || enrollment.group_type}` : ''}
               {' · '}
-              {needsConfigure
-                ? <span className="text-amber-500 font-medium">Нужна оплата</span>
-                : enrollment.is_fully_paid
-                  ? <span className="text-emerald-600">Оплачено</span>
-                  : total > 0
-                    ? <span className="text-amber-600">{pct}% оплачено</span>
-                    : <span className="text-gray-400">Без суммы</span>
+              {enrollment.frozen
+                ? <span className="text-sky-600 font-medium">Заморожена</span>
+                : needsConfigure
+                  ? <span className="text-amber-500 font-medium">Нужна оплата</span>
+                  : enrollment.is_fully_paid
+                    ? <span className="text-emerald-600">Оплачено</span>
+                    : total > 0
+                      ? <span className="text-amber-600">{pct}% оплачено</span>
+                      : <span className="text-gray-400">Без суммы</span>
               }
             </p>
           </div>
@@ -1945,7 +1947,13 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
 
       {open && (
         <div className="px-4 pb-5 border-t border-gray-100 space-y-3 pt-3">
-          {needsConfigure ? (
+          {enrollment.frozen ? (
+            /* ── Замороженное состояние ─────────────────────────────── */
+            <div className="rounded-xl p-4 text-center space-y-1" style={{ background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+              <p className="text-sky-700 font-semibold text-sm">Запись заморожена</p>
+              <p className="text-xs text-sky-500">Платежи по этой группе удалены. Клиент временно не посещает эту группу.</p>
+            </div>
+          ) : needsConfigure ? (
             <EnrollmentConfigureInline
               enrollment={enrollment}
               clientId={clientId}

@@ -313,6 +313,7 @@ class ClientEnrollment(UUIDTimestampedModel):
     deadline       = models.DateField(null=True, blank=True)
     bonus_percent  = models.PositiveSmallIntegerField(default=10)
     is_active      = models.BooleanField(default=True)
+    frozen         = models.BooleanField(default=False)
     enrolled_by    = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='created_enrollments'

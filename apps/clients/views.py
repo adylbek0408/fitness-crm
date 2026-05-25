@@ -693,9 +693,9 @@ class ClientViewSet(viewsets.ModelViewSet):
         # Remove all enrollment payments
         enrollment.payments.all().delete()
 
-        # Deactivate enrollment
-        enrollment.is_active = False
-        enrollment.save(update_fields=['is_active'])
+        # Mark as frozen (stays visible in UI); is_active stays True
+        enrollment.frozen = True
+        enrollment.save(update_fields=['frozen'])
         if client.second_group_id and str(client.second_group_id) == str(enrollment.group_id):
             client.second_group_id = None
             client.save(update_fields=['second_group_id'])
