@@ -123,11 +123,53 @@ class ClientReadSerializer(serializers.ModelSerializer):
             return False
 
     def get_parallel_enrollments(self, obj):
+        import logging
+        logger = logging.getLogger(__name__)
         try:
-            enrollments = obj.parallel_enrollments.filter(is_active=True).prefetch_related('payments').select_related('group', 'group__trainer')
-            return ClientEnrollmentReadSerializer(enrollments, many=True).data
-        except Exception:
+            qs = (
+                obj.parallel_enrollments
+                   .filter(is_active=True)
+                   .select_related('group', 'group__trainer')
+                   .prefetch_related('payments')
+            )
+            enrollments = list(qs)
+        except Exception as exc:
+            logger.error('parallel_enrollments query failed for client %s: %s', obj.pk, exc)
             return []
+
+        result = []
+        for enrollment in enrollments:
+            try:
+                result.append(ClientEnrollmentReadSerializer(enrollment).data)
+            except Exception as exc:
+                logger.error('enrollment %s serialization failed: %s', enrollment.pk, exc)
+                # fallback: minimal dict so frontend can still render the block
+                try:
+                    g = enrollment.group
+                    result.append({
+                        'id': str(enrollment.id),
+                        'group': str(enrollment.group_id),
+                        'group_number': g.number if g else 0,
+                        'group_type': getattr(g, 'group_type', ''),
+                        'group_training_format': getattr(g, 'training_format', 'offline'),
+                        'group_status': getattr(g, 'status', ''),
+                        'trainer_name': '',
+                        'payment_type': enrollment.payment_type,
+                        'payment_amount': str(enrollment.payment_amount or '0'),
+                        'total_cost': str(enrollment.total_cost or '0'),
+                        'deadline': str(enrollment.deadline) if enrollment.deadline else None,
+                        'bonus_percent': enrollment.bonus_percent,
+                        'is_active': enrollment.is_active,
+                        'note': enrollment.note,
+                        'amount_paid': '0',
+                        'is_fully_paid': False,
+                        'payments': [],
+                        'enrolled_by_name': enrollment.enrolled_by_name,
+                        'created_at': enrollment.created_at.isoformat(),
+                    })
+                except Exception:
+                    pass
+        return result
 
     def get_active_reservation(self, obj):
         from .models import ClientGroupReservation
