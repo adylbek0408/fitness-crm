@@ -1702,7 +1702,7 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
 }
 
 // ── Параллельная группа — аккордеон ──────────────────────────────────────────
-function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess }) {
+function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onFreezeClick }) {
   const [open,          setOpen]          = useState(false)
   const [payOpen,       setPayOpen]       = useState(false)
   const [payAmount,     setPayAmount]     = useState('')
@@ -1730,8 +1730,10 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess }) {
       fd.append('amount', payAmount)
       if (payNote.trim()) fd.append('note', payNote.trim())
       if (payReceipt) fd.append('receipt', payReceipt)
+      // Content-Type must be undefined so axios/browser sets multipart boundary automatically.
+      // Manually setting 'multipart/form-data' omits the boundary → Django can't parse body.
       await api.post(`/clients/${clientId}/enrollments/${enrollment.id}/payment/`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': undefined },
       })
       setPayOpen(false); setPayAmount(''); setPayNote(''); setPayReceipt(null)
       onSuccess()
@@ -1880,6 +1882,22 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess }) {
             </div>
           )}
 
+          {/* Заморозить клиента */}
+          {onFreezeClick && (
+            <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Заморозить клиента</p>
+                <p className="text-xs text-gray-400">Удержание; остаток — клиенту. Статус → «Заморозка».</p>
+              </div>
+              <button type="button" onClick={onFreezeClick}
+                className="px-3 py-2 rounded-xl text-xs font-medium touch-manipulation"
+                style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
+                Заморозить
+              </button>
+            </div>
+          )}
+
+          {/* Убрать из группы */}
           <div className="border-t border-gray-100 pt-2">
             {!confirmRemove ? (
               <button type="button" onClick={() => setConfirmRemove(true)}
@@ -2336,7 +2354,7 @@ export default function MobileClientDetail() {
           <>
             <PrimaryGroupBlock client={client} clientId={id} planId={planId} onSuccess={load} onFreezeClick={() => setRefundOpen(true)} />
             {(client.parallel_enrollments || []).map(e => (
-              <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} />
+              <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} onFreezeClick={() => setRefundOpen(true)} />
             ))}
             <AddEnrollmentPanel client={client} clientId={id} onSuccess={load} />
           </>
