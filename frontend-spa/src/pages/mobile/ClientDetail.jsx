@@ -1726,15 +1726,18 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onFreezeClic
     if (!payAmount || Number(payAmount) <= 0) { setErr('Укажите сумму'); return }
     setSaving(true); setErr('')
     try {
-      const fd = new FormData()
-      fd.append('amount', payAmount)
-      if (payNote.trim()) fd.append('note', payNote.trim())
-      if (payReceipt) fd.append('receipt', payReceipt)
-      // Content-Type must be undefined so axios/browser sets multipart boundary automatically.
-      // Manually setting 'multipart/form-data' omits the boundary → Django can't parse body.
-      await api.post(`/clients/${clientId}/enrollments/${enrollment.id}/payment/`, fd, {
-        headers: { 'Content-Type': undefined },
-      })
+      const url = `/clients/${clientId}/enrollments/${enrollment.id}/payment/`
+      if (payReceipt) {
+        // With file: FormData. Let browser set Content-Type + boundary (same as AddPaymentForm).
+        const fd = new FormData()
+        fd.append('amount', payAmount)
+        if (payNote.trim()) fd.append('note', payNote.trim())
+        fd.append('receipt', payReceipt)
+        await api.post(url, fd, { headers: { 'Content-Type': undefined } })
+      } else {
+        // Without file: plain JSON — no multipart issues, works with axios default Content-Type.
+        await api.post(url, { amount: payAmount, note: payNote.trim() })
+      }
       setPayOpen(false); setPayAmount(''); setPayNote(''); setPayReceipt(null)
       onSuccess()
     } catch (e) {
@@ -1849,30 +1852,43 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onFreezeClic
             <div className="border-t border-gray-100 pt-3">
               {!payOpen ? (
                 <button type="button" onClick={() => { setPayOpen(true); setErr('') }}
-                  className="w-full py-2.5 rounded-xl text-sm font-medium border-2 touch-manipulation"
-                  style={{ borderColor: '#7c3aed', color: '#7c3aed', background: '#faf5ff' }}>
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-emerald-700 touch-manipulation"
+                  style={{ background: '#ecfdf5', border: '1px solid #6ee7b7' }}>
                   + Добавить платёж
                 </button>
               ) : (
-                <div className="space-y-2.5">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Новый платёж</p>
-                  <input type="number" min="0" step="100" placeholder="Сумма (сом)"
-                    value={payAmount} onChange={e => setPayAmount(e.target.value)} className="crm-mobile-input w-full" />
-                  <input type="text" placeholder="Примечание (необяз.)"
-                    value={payNote} onChange={e => setPayNote(e.target.value)} className="crm-mobile-input w-full" />
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Новый платёж</p>
+                  {err && <div className="bg-red-50 text-red-600 text-sm rounded-xl p-3">{err}</div>}
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">Чек (необяз.)</p>
-                    <input type="file" accept="image/*" onChange={e => setPayReceipt(e.target.files?.[0] || null)} className="text-xs text-gray-600 w-full" />
+                    <label className="block text-xs text-gray-500 mb-1">Сумма *</label>
+                    <input type="number" min="1" step="1" placeholder="Сумма (сом)" required
+                      value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                      className="crm-mobile-input w-full" />
                   </div>
-                  {err && <p className="text-xs text-red-600">{err}</p>}
-                  <div className="flex gap-2">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Примечание (необяз.)</label>
+                    <input type="text" placeholder="Примечание"
+                      value={payNote} onChange={e => setPayNote(e.target.value)}
+                      className="crm-mobile-input w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Чек (необяз.)</label>
+                    <input type="file" accept="image/*,.pdf"
+                      onChange={e => setPayReceipt(e.target.files?.[0] || null)}
+                      className="crm-mobile-input w-full bg-white text-sm" />
+                    {payReceipt && <span className="block mt-1 text-xs text-gray-400 truncate">{payReceipt.name}</span>}
+                  </div>
+                  <div className="flex gap-2 pt-1">
                     <button type="button" onClick={handleAddPayment} disabled={saving}
                       className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
-                      style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
-                      {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
-                      Сохранить
+                      style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
+                      {saving
+                        ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        : <CheckCircle size={16} />}
+                      {saving ? 'Сохранение...' : 'Подтвердить платёж'}
                     </button>
-                    <button type="button" onClick={() => { setPayOpen(false); setErr('') }}
+                    <button type="button" onClick={() => { setPayOpen(false); setErr(''); setPayAmount(''); setPayNote(''); setPayReceipt(null) }}
                       className="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm touch-manipulation">
                       Отмена
                     </button>
