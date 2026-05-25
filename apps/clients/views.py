@@ -523,7 +523,31 @@ class ClientViewSet(viewsets.ModelViewSet):
             data_out = ClientEnrollmentReadSerializer(enrollment).data
         except Exception as e:
             _logger.error('EnrollmentReadSerializer failed after payment: %s', e)
-            data_out = {'id': str(enrollment.id), 'detail': 'ok'}
+            try:
+                g = enrollment.group
+                data_out = {
+                    'id': str(enrollment.id),
+                    'group': str(enrollment.group_id),
+                    'group_number': g.number if g else '',
+                    'group_type': getattr(g, 'group_type', ''),
+                    'group_training_format': getattr(g, 'training_format', 'offline'),
+                    'group_status': getattr(g, 'status', ''),
+                    'trainer_name': '',
+                    'payment_type': enrollment.payment_type,
+                    'payment_amount': str(enrollment.payment_amount or '0'),
+                    'total_cost': str(enrollment.total_cost or '0'),
+                    'deadline': str(enrollment.deadline) if enrollment.deadline else None,
+                    'bonus_percent': enrollment.bonus_percent,
+                    'is_active': enrollment.is_active,
+                    'note': enrollment.note,
+                    'amount_paid': str(sum(p.amount for p in enrollment.payments.all())),
+                    'is_fully_paid': False,
+                    'payments': [],
+                    'enrolled_by_name': enrollment.enrolled_by_name,
+                    'created_at': enrollment.created_at.isoformat(),
+                }
+            except Exception:
+                data_out = {'id': str(enrollment.id), 'detail': 'ok'}
         return Response(data_out)
 
     @action(detail=True, methods=['delete'], permission_classes=[IsAdminOrRegistrar],

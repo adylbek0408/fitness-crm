@@ -149,7 +149,7 @@ class ClientReadSerializer(serializers.ModelSerializer):
                     result.append({
                         'id': str(enrollment.id),
                         'group': str(enrollment.group_id),
-                        'group_number': g.number if g else 0,
+                        'group_number': g.number if g else '',
                         'group_type': getattr(g, 'group_type', ''),
                         'group_training_format': getattr(g, 'training_format', 'offline'),
                         'group_status': getattr(g, 'status', ''),
@@ -273,7 +273,7 @@ class EnrollmentPaymentReadSerializer(serializers.ModelSerializer):
 
 
 class ClientEnrollmentReadSerializer(serializers.ModelSerializer):
-    group_number          = serializers.IntegerField(source='group.number', read_only=True)
+    group_number          = serializers.CharField(source='group.number', read_only=True)
     group_type            = serializers.CharField(source='group.group_type', read_only=True)
     group_training_format = serializers.CharField(source='group.training_format', read_only=True)
     trainer_name          = serializers.SerializerMethodField()
