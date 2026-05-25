@@ -1702,7 +1702,7 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
 }
 
 // ── Параллельная группа — аккордеон ──────────────────────────────────────────
-function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onFreezeClick }) {
+function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, onFreezeClick }) {
   const [open,          setOpen]          = useState(false)
   const [payOpen,       setPayOpen]       = useState(false)
   const [payAmount,     setPayAmount]     = useState('')
@@ -1726,20 +1726,19 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onFreezeClic
     if (!payAmount || Number(payAmount) <= 0) { setErr('Укажите сумму'); return }
     setSaving(true); setErr('')
     try {
-      const url = `/clients/${clientId}/enrollments/${enrollment.id}/payment/`
-      if (payReceipt) {
-        // With file: FormData. Let browser set Content-Type + boundary (same as AddPaymentForm).
-        const fd = new FormData()
-        fd.append('amount', payAmount)
-        if (payNote.trim()) fd.append('note', payNote.trim())
-        fd.append('receipt', payReceipt)
-        await api.post(url, fd, { headers: { 'Content-Type': undefined } })
-      } else {
-        // Without file: plain JSON — no multipart issues, works with axios default Content-Type.
-        await api.post(url, { amount: payAmount, note: payNote.trim() })
-      }
+      const fd = new FormData()
+      fd.append('amount', payAmount)
+      if (payNote.trim()) fd.append('note', payNote.trim())
+      if (payReceipt) fd.append('receipt', payReceipt)
+      const res = await api.post(
+        `/clients/${clientId}/enrollments/${enrollment.id}/payment/`,
+        fd,
+        { headers: { 'Content-Type': undefined } },
+      )
       setPayOpen(false); setPayAmount(''); setPayNote(''); setPayReceipt(null)
-      setTimeout(() => onSuccess(), 150)
+      // Use server response directly — no re-fetch needed, no timing issues.
+      // Backend returns ClientEnrollmentReadSerializer with fresh amount_paid.
+      if (onUpdate) onUpdate(res.data)
     } catch (e) {
       const d = e.response?.data
       setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка сохранения')
@@ -2174,6 +2173,15 @@ export default function MobileClientDetail() {
   useEffect(() => { load() }, [id])
   useEffect(() => setNewPassword(null), [id])
 
+  const handleEnrollmentUpdate = (updated) => {
+    setClient(prev => !prev ? prev : {
+      ...prev,
+      parallel_enrollments: (prev.parallel_enrollments || []).map(e =>
+        e.id === updated.id ? updated : e
+      ),
+    })
+  }
+
   const STATUS_OPTIONS = [
     { value: 'expelled', label: 'Отчислен', dot: 'bg-red-500' },
   ]
@@ -2370,7 +2378,7 @@ export default function MobileClientDetail() {
           <>
             <PrimaryGroupBlock client={client} clientId={id} planId={planId} onSuccess={load} onFreezeClick={() => setRefundOpen(true)} />
             {(client.parallel_enrollments || []).map(e => (
-              <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} onFreezeClick={() => setRefundOpen(true)} />
+              <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} onUpdate={handleEnrollmentUpdate} onFreezeClick={() => setRefundOpen(true)} />
             ))}
             <AddEnrollmentPanel client={client} clientId={id} onSuccess={load} />
           </>
