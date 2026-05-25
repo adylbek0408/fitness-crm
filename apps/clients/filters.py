@@ -11,8 +11,8 @@ class ClientFilter(django_filters.FilterSet):
     group = django_filters.UUIDFilter(field_name='group__id')
     trainer = django_filters.CharFilter(method='filter_trainer')
     registered_by = django_filters.CharFilter(method='filter_registered_by')
-    status = django_filters.ChoiceFilter(choices=Client.STATUS_CHOICES)
-    training_format = django_filters.ChoiceFilter(choices=Client.TRAINING_FORMAT_CHOICES)
+    status = django_filters.CharFilter(method='filter_status')
+    training_format = django_filters.CharFilter(method='filter_training_format')
     group_type = django_filters.ChoiceFilter(choices=Client.GROUP_TYPE_CHOICES)
     is_repeat = django_filters.BooleanFilter()
     is_trial = django_filters.BooleanFilter()
@@ -35,6 +35,53 @@ class ClientFilter(django_filters.FilterSet):
             'group', 'trainer', 'status', 'training_format',
             'group_type', 'is_repeat', 'is_trial', 'online_subscription',
         ]
+
+    def filter_status(self, queryset, name, value):
+        """
+        active  → active + active_frozen
+        frozen  → frozen + active_frozen
+        others  → exact match
+        """
+        if not value:
+            return queryset
+        if value == 'active':
+            return queryset.filter(status__in=['active', 'active_frozen'])
+        if value == 'frozen':
+            return queryset.filter(status__in=['frozen', 'active_frozen'])
+        return queryset.filter(status=value)
+
+    def filter_training_format(self, queryset, name, value):
+        """
+        online  → primary online OR has active parallel enrollment in online group
+        offline → primary offline OR has active parallel enrollment in offline group
+        mixed   → has BOTH online AND offline groups (primary + parallel combined)
+        """
+        if not value:
+            return queryset
+        from django.db.models import Exists, OuterRef
+        from .models import ClientEnrollment
+
+        parallel_online = Exists(
+            ClientEnrollment.objects.filter(
+                client=OuterRef('pk'), is_active=True, group__training_format='online'
+            )
+        )
+        parallel_offline = Exists(
+            ClientEnrollment.objects.filter(
+                client=OuterRef('pk'), is_active=True, group__training_format='offline'
+            )
+        )
+
+        has_online  = Q(training_format='online')  | parallel_online
+        has_offline = Q(training_format='offline') | parallel_offline
+
+        if value == 'mixed':
+            return queryset.filter(has_online & has_offline)
+        if value == 'online':
+            return queryset.filter(has_online)
+        if value == 'offline':
+            return queryset.filter(has_offline)
+        return queryset.filter(training_format=value)
 
     def filter_trainer(self, queryset, name, value):
         """

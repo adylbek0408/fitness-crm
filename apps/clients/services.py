@@ -198,9 +198,9 @@ class ClientService(BaseService):
         return client
 
     def change_status(self, client_id: str, new_status: str, user=None) -> Client:
-        valid_statuses = ['expelled']
+        valid_statuses = ['frozen', 'active_frozen', 'expelled']
         if new_status not in valid_statuses:
-            raise ValidationError(f"Ручная смена статуса доступна только для «Отчислен». Остальные статусы меняются автоматически.")
+            raise ValidationError("Ручная смена доступна только для: Заморозка, Активный+Заморозка.")
         client = self.get_client_or_raise(client_id)
         if new_status == 'active' and not client.group_id:
             raise ValidationError('Статус «Активный» доступен только у клиента, записанного в группу.')
@@ -231,7 +231,7 @@ class ClientService(BaseService):
         if group.trainer_id:
             client.trainer = group.trainer
             fields.append('trainer')
-        if client.status in ('new', 'frozen'):
+        if client.status in ('new', 'frozen'):  # active_frozen is intentional — don't override
             client.status = 'active'
             fields.append('status')
         client.save(update_fields=fields)

@@ -1347,12 +1347,13 @@ function MobileStreamsHistory({ client, clientId }) {
 
 // ── История статусов ─────────────────────────────────────────────────────────
 const STATUS_DOT = {
-  new:       'bg-violet-400',
-  trial:     'bg-orange-400',
-  active:    'bg-emerald-400',
-  completed: 'bg-slate-400',
-  expelled:  'bg-red-400',
-  frozen:    'bg-sky-400',
+  new:           'bg-violet-400',
+  trial:         'bg-orange-400',
+  active:        'bg-emerald-400',
+  active_frozen: 'bg-teal-400',
+  completed:     'bg-slate-400',
+  expelled:      'bg-red-400',
+  frozen:        'bg-sky-400',
 }
 
 function MobileStatusHistory({ clientId }) {
@@ -1414,11 +1415,12 @@ function MobileStatusHistory({ clientId }) {
                           </>
                         ) : null}
                         <span className={`text-xs font-bold ${
-                          r.new_status === 'active'    ? 'text-emerald-600' :
-                          r.new_status === 'trial'     ? 'text-orange-600' :
-                          r.new_status === 'frozen'    ? 'text-sky-600' :
-                          r.new_status === 'expelled'  ? 'text-red-600' :
-                          r.new_status === 'completed' ? 'text-slate-500' :
+                          r.new_status === 'active'        ? 'text-emerald-600' :
+                          r.new_status === 'active_frozen' ? 'text-teal-600' :
+                          r.new_status === 'trial'         ? 'text-orange-600' :
+                          r.new_status === 'frozen'        ? 'text-sky-600' :
+                          r.new_status === 'expelled'      ? 'text-red-600' :
+                          r.new_status === 'completed'     ? 'text-slate-500' :
                           'text-violet-600'
                         }`}>{r.new_status_label}</span>
                       </div>
@@ -2331,12 +2333,14 @@ export default function MobileClientDetail() {
   }
 
   const STATUS_OPTIONS = [
-    { value: 'expelled', label: 'Отчислен', dot: 'bg-red-500' },
+    { value: 'frozen',        label: 'Заморозка',       dot: 'bg-sky-500'  },
+    { value: 'active_frozen', label: 'Акт.+Заморозка',  dot: 'bg-teal-500' },
   ]
 
   const STATUS_ALL_LABELS = {
     active: 'Активный', frozen: 'Заморозка', completed: 'Завершил',
-    expelled: 'Отчислен', new: 'Новый', trial: 'Пробный',
+    active_frozen: 'Акт.+Заморозка', new: 'Новый', trial: 'Пробный',
+    expelled: 'Отчислен',
   }
 
   const changeStatus = async (newStatus) => {

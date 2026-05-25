@@ -54,8 +54,11 @@ class Client(UUIDTimestampedModel):
     STATUS_CHOICES = [
         ('new', 'New'),
         ('trial', 'Trial'),
-        ('active', 'Active'), ('completed', 'Completed'),
-        ('expelled', 'Expelled'), ('frozen', 'Frozen'),
+        ('active', 'Active'),
+        ('active_frozen', 'Активный+Заморозка'),
+        ('completed', 'Completed'),
+        ('expelled', 'Expelled'),
+        ('frozen', 'Frozen'),
     ]
     PAYMENT_TYPE_CHOICES = [('full', 'Full Payment'), ('installment', 'Installment')]
 
@@ -344,6 +347,7 @@ class EnrollmentPayment(UUIDTimestampedModel):
         ClientEnrollment, on_delete=models.CASCADE, related_name='payments'
     )
     amount          = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_at         = models.DateField(null=True, blank=True)
     receipt         = models.ImageField(upload_to='enrollment_receipts/', null=True, blank=True)
     note            = models.CharField(max_length=300, blank=True)
     created_by      = models.ForeignKey(

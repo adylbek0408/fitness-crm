@@ -1440,14 +1440,14 @@ const STATUS_CONFIG = [
     dot:       'bg-slate-400',
   },
   {
-    value:     'expelled',
-    label:     'Отчислен',
-    desc:      'Отчислен / возврат',
-    Icon:      ShieldOff,
-    activeBg:  'bg-red-50 border-red-300',
-    activeText:'text-red-700',
-    iconColor: 'text-red-500',
-    dot:       'bg-red-500',
+    value:     'active_frozen',
+    label:     'Акт.+Заморозка',
+    desc:      'Активен в части групп',
+    Icon:      Layers,
+    activeBg:  'bg-teal-50 border-teal-300',
+    activeText:'text-teal-700',
+    iconColor: 'text-teal-500',
+    dot:       'bg-teal-500',
   },
 ]
 
@@ -1563,7 +1563,7 @@ export default function ClientDetail() {
   }
 
   const changeStatus = (newStatus) => {
-    if (client.group && ['completed', 'expelled'].includes(newStatus)) {
+    if (client.group && ['completed'].includes(newStatus)) {
       setConfirmModal({
         title: 'Клиент в группе!',
         message: `${client.full_name} сейчас в группе #${client.group.number}.\n\nЛучше закрыть группу целиком через страницу группы — тогда все клиенты обработаются автоматически.`,
@@ -1624,15 +1624,17 @@ export default function ClientDetail() {
     : null
 
   const STATUS_GRADIENT = {
-    new:       'linear-gradient(135deg,#ede9fe,#fdf4ff)',
-    trial:     'linear-gradient(135deg,#fff7ed,#ffedd5)',
-    active:    'linear-gradient(135deg,#d1fae5,#ecfdf5)',
-    frozen:    'linear-gradient(135deg,#e0f2fe,#f0f9ff)',
-    completed: 'linear-gradient(135deg,#f1f5f9,#f8fafc)',
-    expelled:  'linear-gradient(135deg,#ffe4e6,#fff1f2)',
+    new:           'linear-gradient(135deg,#ede9fe,#fdf4ff)',
+    trial:         'linear-gradient(135deg,#fff7ed,#ffedd5)',
+    active:        'linear-gradient(135deg,#d1fae5,#ecfdf5)',
+    active_frozen: 'linear-gradient(135deg,#ccfbf1,#e0f2fe)',
+    frozen:        'linear-gradient(135deg,#e0f2fe,#f0f9ff)',
+    completed:     'linear-gradient(135deg,#f1f5f9,#f8fafc)',
+    expelled:      'linear-gradient(135deg,#ffe4e6,#fff1f2)',
   }
   const STATUS_LINE_COLOR = {
-    new: '#7c3aed', trial: '#ea580c', active: '#059669', frozen: '#0284c7', completed: '#94a3b8', expelled: '#e11d48',
+    new: '#7c3aed', trial: '#ea580c', active: '#059669',
+    active_frozen: '#0d9488', frozen: '#0284c7', completed: '#94a3b8', expelled: '#e11d48',
   }
 
   return (
@@ -1975,35 +1977,35 @@ export default function ClientDetail() {
         <h3 className="font-bold text-slate-800 mb-1">Изменить статус</h3>
         <p className="text-xs text-slate-400 mb-4">
           Статусы меняются автоматически при оплате, добавлении в группу и закрытии группы.
-          Единственный доступный ручной перевод — «Отчислен».
+          Ручная смена: Заморозка, Активный+Заморозка.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {STATUS_CONFIG.map(s => {
             const isActive = client.status === s.value
-            const isExpelled = s.value === 'expelled'
-            const canClick = isExpelled && !isActive
+            const canManuallySet = ['frozen', 'active_frozen'].includes(s.value)
+            const canClick = canManuallySet && !isActive
             return (
               <button key={s.value} type="button"
                 onClick={() => canClick && changeStatus(s.value)}
                 disabled={!canClick || statusLoading}
-                title={!isExpelled && !isActive ? 'Меняется автоматически' : undefined}
+                title={!canManuallySet && !isActive ? 'Меняется автоматически' : undefined}
                 className={`
                 relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border-2 text-sm
                 font-medium transition-all duration-150 text-center
                 ${isActive
                   ? `${s.activeBg} ${s.activeText} shadow-sm`
                   : canClick
-                    ? 'bg-white border-slate-200 text-slate-500 hover:border-red-300 hover:bg-red-50 cursor-pointer'
+                    ? 'bg-white border-slate-200 text-slate-500 hover:border-teal-300 hover:bg-teal-50 cursor-pointer'
                     : 'bg-white border-slate-100 text-slate-300 cursor-not-allowed opacity-50'
                 }
                 ${statusLoading ? 'opacity-50 cursor-not-allowed' : ''}
               `}
               >
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isActive ? 'bg-white/60' : 'bg-slate-100'}`}>
-                  <s.Icon size={18} className={isActive ? s.iconColor : canClick ? 'text-red-400' : 'text-slate-300'} />
+                  <s.Icon size={18} className={isActive ? s.iconColor : canClick ? 'text-teal-500' : 'text-slate-300'} />
                 </div>
                 <span className="font-semibold leading-tight">{s.label}</span>
-                <span className="text-xs opacity-60 font-normal leading-tight">{isActive ? s.desc : (!isExpelled ? 'Авто' : s.desc)}</span>
+                <span className="text-xs opacity-60 font-normal leading-tight">{isActive ? s.desc : (canManuallySet ? s.desc : 'Авто')}</span>
                 {isActive && (
                   <span className="absolute top-2 right-2 text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 opacity-80">✓</span>
                 )}

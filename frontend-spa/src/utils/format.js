@@ -39,23 +39,25 @@ export const fmtDateTime = dt => {
 }
 
 export const STATUS_BADGE = {
-  new:         'bg-violet-50 text-violet-700 border border-violet-200',
-  trial:       'bg-orange-50 text-orange-700 border border-orange-200',
-  active:      'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  completed:   'bg-slate-100 text-slate-600 border border-slate-200',
-  expelled:    'bg-red-50 text-red-600 border border-red-200',
-  frozen:      'bg-sky-50 text-sky-700 border border-sky-200',
-  recruitment: 'bg-amber-50 text-amber-700 border border-amber-200',
+  new:           'bg-violet-50 text-violet-700 border border-violet-200',
+  trial:         'bg-orange-50 text-orange-700 border border-orange-200',
+  active:        'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  active_frozen: 'bg-teal-50 text-teal-700 border border-teal-200',
+  completed:     'bg-slate-100 text-slate-600 border border-slate-200',
+  expelled:      'bg-red-50 text-red-600 border border-red-200',
+  frozen:        'bg-sky-50 text-sky-700 border border-sky-200',
+  recruitment:   'bg-amber-50 text-amber-700 border border-amber-200',
 }
 
 export const STATUS_LABEL = {
-  new:         'Новый',
-  trial:       'Пробный',
-  active:      'Активный',
-  completed:   'Завершил',
-  expelled:    'Отчислен',
-  frozen:      'Заморозка',
-  recruitment: 'Набор',
+  new:           'Новый',
+  trial:         'Пробный',
+  active:        'Активный',
+  active_frozen: 'Акт.+Заморозка',
+  completed:     'Завершил',
+  expelled:      'Отчислен',
+  frozen:        'Заморозка',
+  recruitment:   'Набор',
 }
 
 export const GROUP_TYPE_LABEL = {

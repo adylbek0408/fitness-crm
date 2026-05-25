@@ -17,12 +17,12 @@ import AppSelect from '../../components/ui/AppSelect'
 // STATUS DROPDOWN
 // ─────────────────────────────────────────────────────────────────────────────
 const STATUS_OPTIONS = [
-  { value: 'new',       label: 'Новый',     dot: 'bg-violet-500'  },
-  { value: 'trial',     label: 'Пробный',   dot: 'bg-orange-500'  },
-  { value: 'active',    label: 'Активный',  dot: 'bg-emerald-500' },
-  { value: 'frozen',    label: 'Заморозка', dot: 'bg-blue-500'    },
-  { value: 'completed', label: 'Завершил',  dot: 'bg-slate-400'   },
-  { value: 'expelled',  label: 'Отчислен',  dot: 'bg-red-500'     },
+  { value: 'new',           label: 'Новый',              dot: 'bg-violet-500'  },
+  { value: 'trial',         label: 'Пробный',            dot: 'bg-orange-500'  },
+  { value: 'active',        label: 'Активный',           dot: 'bg-emerald-500' },
+  { value: 'active_frozen', label: 'Акт.+Заморозка',     dot: 'bg-teal-500'    },
+  { value: 'frozen',        label: 'Заморозка',          dot: 'bg-blue-500'    },
+  { value: 'completed',     label: 'Завершил',           dot: 'bg-slate-400'   },
 ]
 
 function StatusDropdown({ clientId, currentStatus, onChanged }) {
@@ -100,12 +100,13 @@ function PayBadge({ c }) {
 // PDF GENERATION
 // ─────────────────────────────────────────────────────────────────────────────
 const PDF_STATUS_RGB = {
-  new:       [109, 40, 217],
-  trial:     [234, 88,  12],
-  active:    [5,   150, 105],
-  frozen:    [2,   132, 199],
-  completed: [71,  85,  105],
-  expelled:  [220, 38,  38 ],
+  new:           [109, 40,  217],
+  trial:         [234, 88,   12],
+  active:        [5,   150, 105],
+  active_frozen: [20,  184, 166],
+  frozen:        [2,   132, 199],
+  completed:     [71,  85,  105],
+  expelled:      [220, 38,   38],
 }
 
 async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
@@ -680,9 +681,9 @@ export default function Clients() {
               <option value="new">Новые</option>
               <option value="trial">Пробные</option>
               <option value="active">Активные</option>
+              <option value="active_frozen">Акт.+Заморозка</option>
               <option value="frozen">Заморозка</option>
               <option value="completed">Завершили</option>
-              <option value="expelled">Отчислены</option>
             </AppSelect>
           </div>
 
@@ -696,6 +697,7 @@ export default function Clients() {
               <option value="">Все</option>
               <option value="online">Онлайн</option>
               <option value="offline">Оффлайн</option>
+              <option value="mixed">Смешанный</option>
             </AppSelect>
           </div>
 

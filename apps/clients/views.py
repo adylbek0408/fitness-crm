@@ -163,7 +163,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         STATUS_LABEL = {
             '': '—', 'new': 'Новый', 'trial': 'Пробный',
             'active': 'Активный', 'completed': 'Завершил',
-            'expelled': 'Отчислен', 'frozen': 'Заморозка',
+            'expelled': 'Отчислен', 'frozen': 'Заморозка', 'active_frozen': 'Активный+Заморозка',
         }
         data = [
             {
@@ -502,10 +502,13 @@ class ClientViewSet(viewsets.ModelViewSet):
 
         data = ser.validated_data
         snap = f"{request.user.last_name} {request.user.first_name}".strip() or request.user.username
+        from datetime import date as _date
+        paid_at = data.get('paid_at') or _date.today()
         try:
             EnrollmentPayment.objects.create(
                 enrollment=enrollment,
                 amount=data['amount'],
+                paid_at=paid_at,
                 receipt=data.get('receipt'),
                 note=data.get('note', ''),
                 created_by=request.user,
@@ -564,11 +567,69 @@ class ClientViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Запись не найдена.'}, status=status.HTTP_404_NOT_FOUND)
 
         enrollment.payments.all().delete()
+        enrollment.payment_amount = None
+        enrollment.total_cost = None
+        enrollment.deadline = None
+        enrollment.save(update_fields=['payment_amount', 'total_cost', 'deadline'])
         enrollment.refresh_from_db()
         try:
             data_out = ClientEnrollmentReadSerializer(enrollment).data
         except Exception:
-            data_out = {'id': str(enrollment.id), 'amount_paid': '0', 'payments': []}
+            data_out = {'id': str(enrollment.id), 'amount_paid': '0', 'payments': [],
+                        'payment_amount': None, 'total_cost': None, 'deadline': None}
+        return Response(data_out)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar],
+            url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/configure')
+    def configure_enrollment_payment(self, request, pk=None, enrollment_id=None):
+        """Установить/изменить тип и сумму оплаты для параллельной записи."""
+        from decimal import Decimal as _D, InvalidOperation
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            enrollment = ClientEnrollment.objects.get(id=enrollment_id, client=client, is_active=True)
+        except ClientEnrollment.DoesNotExist:
+            return Response({'detail': 'Запись не найдена.'}, status=status.HTTP_404_NOT_FOUND)
+
+        payment_type = request.data.get('payment_type')
+        if payment_type not in ('full', 'installment'):
+            return Response({'detail': 'payment_type должен быть full или installment.'}, status=400)
+
+        if payment_type == 'full':
+            try:
+                amount = _D(str(request.data.get('payment_amount', 0)))
+                if amount <= 0:
+                    raise ValueError
+            except (InvalidOperation, ValueError):
+                return Response({'detail': 'Укажите корректную сумму.'}, status=400)
+            enrollment.payment_type = 'full'
+            enrollment.payment_amount = amount
+            enrollment.total_cost = None
+            enrollment.deadline = None
+            enrollment.save(update_fields=['payment_type', 'payment_amount', 'total_cost', 'deadline'])
+        else:
+            try:
+                total = _D(str(request.data.get('total_cost', 0)))
+                if total <= 0:
+                    raise ValueError
+            except (InvalidOperation, ValueError):
+                return Response({'detail': 'Укажите корректную стоимость.'}, status=400)
+            deadline = request.data.get('deadline')
+            if not deadline:
+                return Response({'detail': 'Укажите дедлайн.'}, status=400)
+            enrollment.payment_type = 'installment'
+            enrollment.total_cost = total
+            enrollment.deadline = deadline
+            enrollment.payment_amount = None
+            enrollment.save(update_fields=['payment_type', 'payment_amount', 'total_cost', 'deadline'])
+
+        enrollment.refresh_from_db()
+        try:
+            data_out = ClientEnrollmentReadSerializer(enrollment).data
+        except Exception:
+            data_out = {'id': str(enrollment.id), 'detail': 'ok'}
         return Response(data_out)
 
     @action(detail=True, methods=['delete'], permission_classes=[IsAdminOrRegistrar],
