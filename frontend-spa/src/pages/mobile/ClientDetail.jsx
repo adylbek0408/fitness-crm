@@ -15,6 +15,7 @@ import {
 } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPaymentForm'
+import EnrollmentPaymentForm from '../../components/payments/EnrollmentPaymentForm'
 import ConfirmModal from '../../components/ConfirmModal'
 import RefundModal from '../../components/RefundModal'
 
@@ -1705,10 +1706,6 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
 function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, onFreezeClick }) {
   const [open,          setOpen]          = useState(false)
   const [payOpen,       setPayOpen]       = useState(false)
-  const [payAmount,     setPayAmount]     = useState('')
-  const [payNote,       setPayNote]       = useState('')
-  const [payReceipt,    setPayReceipt]    = useState(null)
-  const [saving,        setSaving]        = useState(false)
   const [removing,      setRemoving]      = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [err,           setErr]           = useState('')
@@ -1721,29 +1718,6 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
   const pct = total > 0 ? Math.min(Math.round(amountPaid / total * 100), 100) : 0
   const fmt = enrollment.group_training_format || 'offline'
   const fmtLabel = fmt === 'online' ? 'Онлайн' : 'Оффлайн'
-
-  const handleAddPayment = async () => {
-    if (!payAmount || Number(payAmount) <= 0) { setErr('Укажите сумму'); return }
-    setSaving(true); setErr('')
-    try {
-      const fd = new FormData()
-      fd.append('amount', payAmount)
-      if (payNote.trim()) fd.append('note', payNote.trim())
-      if (payReceipt) fd.append('receipt', payReceipt)
-      const res = await api.post(
-        `/clients/${clientId}/enrollments/${enrollment.id}/payment/`,
-        fd,
-        { headers: { 'Content-Type': undefined } },
-      )
-      setPayOpen(false); setPayAmount(''); setPayNote(''); setPayReceipt(null)
-      // Use server response directly — no re-fetch needed, no timing issues.
-      // Backend returns ClientEnrollmentReadSerializer with fresh amount_paid.
-      if (onUpdate) onUpdate(res.data)
-    } catch (e) {
-      const d = e.response?.data
-      setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка сохранения')
-    } finally { setSaving(false) }
-  }
 
   const handleRemove = async () => {
     setRemoving(true); setErr('')
@@ -1850,48 +1824,28 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
           {!enrollment.is_fully_paid && (
             <div className="border-t border-gray-100 pt-3">
               {!payOpen ? (
-                <button type="button" onClick={() => { setPayOpen(true); setErr('') }}
+                <button type="button" onClick={() => setPayOpen(true)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold text-emerald-700 touch-manipulation"
                   style={{ background: '#ecfdf5', border: '1px solid #6ee7b7' }}>
                   + Добавить платёж
                 </button>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Новый платёж</p>
-                  {err && <div className="bg-red-50 text-red-600 text-sm rounded-xl p-3">{err}</div>}
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Сумма *</label>
-                    <input type="number" min="1" step="1" placeholder="Сумма (сом)" required
-                      value={payAmount} onChange={e => setPayAmount(e.target.value)}
-                      className="crm-mobile-input w-full" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Примечание (необяз.)</label>
-                    <input type="text" placeholder="Примечание"
-                      value={payNote} onChange={e => setPayNote(e.target.value)}
-                      className="crm-mobile-input w-full" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Чек (необяз.)</label>
-                    <input type="file" accept="image/*,.pdf"
-                      onChange={e => setPayReceipt(e.target.files?.[0] || null)}
-                      className="crm-mobile-input w-full bg-white text-sm" />
-                    {payReceipt && <span className="block mt-1 text-xs text-gray-400 truncate">{payReceipt.name}</span>}
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={handleAddPayment} disabled={saving}
-                      className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
-                      style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
-                      {saving
-                        ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                        : <CheckCircle size={16} />}
-                      {saving ? 'Сохранение...' : enrollment.payment_type === 'full' ? 'Подтвердить оплату' : 'Добавить платёж'}
-                    </button>
-                    <button type="button" onClick={() => { setPayOpen(false); setErr(''); setPayAmount(''); setPayNote(''); setPayReceipt(null) }}
-                      className="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm touch-manipulation">
-                      Отмена
-                    </button>
-                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    {enrollment.payment_type === 'full' ? 'Подтвердить оплату' : 'Новый платёж'}
+                  </p>
+                  <EnrollmentPaymentForm
+                    enrollment={enrollment}
+                    clientId={clientId}
+                    onDone={updated => {
+                      setPayOpen(false)
+                      if (onUpdate) onUpdate(updated)
+                    }}
+                  />
+                  <button type="button" onClick={() => setPayOpen(false)}
+                    className="w-full py-2 text-sm text-gray-500 touch-manipulation text-center">
+                    Отмена
+                  </button>
                 </div>
               )}
             </div>
