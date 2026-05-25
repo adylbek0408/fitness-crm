@@ -269,7 +269,7 @@ class ClientCreateSerializer(serializers.Serializer):
 class EnrollmentPaymentReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = EnrollmentPayment
-        fields = ['id', 'amount', 'receipt', 'note', 'created_by_name', 'created_at']
+        fields = ['id', 'amount', 'paid_at', 'receipt', 'note', 'created_by_name', 'created_at']
 
 
 class ClientEnrollmentReadSerializer(serializers.ModelSerializer):
@@ -335,6 +335,7 @@ class EnrollmentCreateSerializer(serializers.Serializer):
 
 class EnrollmentAddPaymentSerializer(serializers.Serializer):
     amount  = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_at = serializers.DateField(required=False, allow_null=True)
     receipt = serializers.ImageField(required=False, allow_null=True)
     note    = serializers.CharField(max_length=300, required=False, allow_blank=True, default='')
 
