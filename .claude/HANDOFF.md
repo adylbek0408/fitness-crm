@@ -1,45 +1,32 @@
-# HANDOFF — 2026-05-23 (сессия — enrollment accordion + registration wizard)
+# HANDOFF — 2026-05-25 (сессия — parallel enrollment UX полировка)
 
 ## Что сделано в этой сессии
 
-### Commit `7e67784` — clients: parallel enrollment accordion + 2-step registration
+### Commit `a3e6744` — clients: cancel-payment redesign + UI header cleanup
+- `cancel_payment` (основной блок) больше **не выгоняет** клиента из группы — только сбрасывает платёжные записи
+- `enter_payment_for_client` убрана проверка статуса — активные клиенты тоже могут ввести оплату заново
+- `ReenterPaymentInline` компонент в PrimaryGroupBlock: после отмены оплаты — форма ввода типа+суммы прямо в блоке
+- `cancel_enrollment_payment` endpoint: сбрасывает `payment_amount / total_cost / deadline → null` + удаляет платежи
+- `configure_enrollment_payment` endpoint (POST `enrollments/{eid}/configure/`): устанавливает тип + сумму
+- Дубль бейджа «Активный» в заголовке убран
+- Строка формат/тип-группы в заголовке приведена в порядок
 
-#### Backend
-- **`ClientEnrollment` + `EnrollmentPayment`** модели добавлены в `apps/clients/models.py`
-- **Migration `0027_add_client_enrollment`** применена
-- **4 новых API endpoint** в `ClientViewSet`:
-  - `GET  /clients/{id}/enrollments/` — список параллельных записей
-  - `POST /clients/{id}/enrollments/create/` — добавить в паралл. группу
-  - `POST /clients/{id}/enrollments/{eid}/payment/` — добавить платёж
-  - `DELETE /clients/{id}/enrollments/{eid}/remove/` — деактивировать
-- **`group_training_format`** добавлен в `ClientEnrollmentReadSerializer`
-- **`parallel_enrollments`** в `ClientReadSerializer` (prefetch через API)
-
-#### Frontend — ClientDetail (mobile)
-- **`PrimaryGroupBlock`**: аккордеон для основной группы клиента
-  - Заголовок: иконка формата + Группа #N · Тренер · Онлайн/Оффлайн · статус оплаты
-  - Контент: полная оплата или рассрочка с прогрессом + AddPaymentForm + история чеков
-- **`ParallelEnrollmentBlock`**: аккордеон для каждой параллельной группы
-  - Бейдж «доп.», payment summary, прогресс, история платежей
-  - «+ Добавить платёж» форма (inline, с файлом-чеком)
-  - «Убрать из группы» кнопка с подтверждением
-- **`AddEnrollmentPanel`**: кнопка «+ Добавить группу» → форма
-  - Оффлайн/Онлайн → Набор/Активный → список групп → тип оплаты + сумма/рассрочка + бонус
-- Клиенты **с группой** видят новые аккордеоны; без группы — старый блок «Оплата»
-- Блок «История платежей» скрыт для клиентов с группой (теперь внутри PrimaryGroupBlock)
-
-#### Frontend — ClientRegister (mobile)
-- **2-шаговая регистрация** (было 3 шага):
-  - Шаг 1: Данные (ФИО, телефон, email, заметки, тип клиента)
-  - Шаг 2: Группа + Оплата (Онлайн/Оффлайн → Набор/Активный → список → тип оплаты)
-  - Для пробного клиента шаг 2 = только оплата
-
-#### Bug fixes
-- DatePickerInput: нативный `<input type="date">` теперь виден и кликабелен на ноутбуках
-- ReservationPanel: список групп и блок оплаты в разных секциях (шаг 1 / шаг 2)
+### Commit `b109762` — clients: parallel block — configure form after cancel + date field for installment
+- **`EnrollmentPaymentForm.jsx`**:
+  - Рассрочка: добавлен Дата-field (как в `AddPaymentForm`) — Сумма | Дата | Чек | Добавить
+  - Полная: без даты — Сумма | Чек | Подтвердить оплату
+  - `paid_at` передаётся на сервер (поле добавлено в модель/сериализатор/view ранее)
+- **`ParallelEnrollmentBlock`**:
+  - `needsConfigure = !payment_amount && !total_cost` — детектирует состояние "оплата сброшена"
+  - В этом состоянии показывает `EnrollmentConfigureInline` — форма выбора типа + суммы/рассрочки
+  - После configure → `onUpdate(res.data)` → блок переходит в обычный режим
+  - Заголовок: «Нужна оплата» (amber) вместо «Без суммы»
+  - «Убрать из группы» видна всегда (в обоих режимах)
+  - История платежей: показывает `paid_at` вместо `created_at`
+- Новый компонент **`EnrollmentConfigureInline`**: тип-тогл + поля + DatePickerInput + кнопка Сохранить
 
 ## Незакоммиченные изменения
-Нет. Всё в коммите `7e67784`.
+Нет. Всё запушено.
 
 ## Следующие шаги
 
@@ -47,18 +34,18 @@
    ```bash
    bash /var/www/fitness-crm/deploy/update.sh
    ```
+   *(включает migrate — нужна migration 0028_enrollmentpayment_paid_at)*
 
-2. **Проверить после деплоя:**
-   - Клиент с группой → видит PrimaryGroupBlock (аккордеон с данными группы + оплатой)
-   - Клиент без группы → видит старый блок «Оплата»
-   - Кнопка «+ Добавить группу» → форма открывается, позволяет выбрать онлайн/оффлайн, записать и сохранить оплату
-   - Параллельная группа → «+ Добавить платёж» + «Убрать из группы» работают
-   - 2-шаговая регистрация: данные → группа+оплата, форма сабмитится корректно
+2. **Проверить сценарий "сброс и повторный ввод":**
+   - Открыть клиента с параллельной записью
+   - В доп. блоке нажать «Отменить оплату» → «Сбросить»
+   - Блок должен показать форму: тип (Полная/Рассрочка) + сумма/дедлайн + кнопка «Сохранить»
+   - После сохранения блок переходит в обычный режим с «+ Добавить платёж»
+   - Для рассрочки — в форме платежа появилось поле Дата
 
-3. **Опционально — аналогичные изменения в admin-версии ClientDetail:**
-   Файл: `frontend-spa/src/pages/ClientDetail.jsx` (desktop версия)
-   Та же логика: PrimaryGroupBlock + ParallelEnrollmentBlock + AddEnrollmentPanel
+3. **Опционально — desktop версия ClientDetail:**
+   `frontend-spa/src/pages/ClientDetail.jsx` — ParallelEnrollmentBlock там пока без этих улучшений
 
-## Открытые задачи (из PROGRESS.md)
-- Education module задачи (1.2, 1.3, 1.4–1.5, 3.7, 9.6) — без изменений
+## Открытые задачи
+- Education module (Sprint 1.2–1.5, 3.7, 9.6) — без изменений
 - Frontend: ClientDetail **admin** (desktop) — enrollment accordion — не сделан
