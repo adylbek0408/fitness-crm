@@ -288,7 +288,7 @@ class ClientEnrollmentReadSerializer(serializers.ModelSerializer):
             'id', 'group', 'group_number', 'group_type', 'group_training_format',
             'trainer_name', 'group_status',
             'payment_type', 'payment_amount', 'total_cost', 'deadline',
-            'bonus_percent', 'is_active', 'frozen', 'note',
+            'bonus_percent', 'is_active', 'frozen', 'frozen_at', 'note',
             'amount_paid', 'is_fully_paid', 'payments',
             'enrolled_by_name', 'created_at',
         ]

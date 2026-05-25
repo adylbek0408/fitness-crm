@@ -693,9 +693,11 @@ class ClientViewSet(viewsets.ModelViewSet):
         # Remove all enrollment payments
         enrollment.payments.all().delete()
 
-        # Mark as frozen (stays visible in UI); is_active stays True
+        # Mark as frozen (visible in history, hidden from active blocks); is_active stays True
+        from django.utils.timezone import now as _now
         enrollment.frozen = True
-        enrollment.save(update_fields=['frozen'])
+        enrollment.frozen_at = _now().date()
+        enrollment.save(update_fields=['frozen', 'frozen_at'])
         if client.second_group_id and str(client.second_group_id) == str(enrollment.group_id):
             client.second_group_id = None
             client.save(update_fields=['second_group_id'])

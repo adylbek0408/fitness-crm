@@ -1254,30 +1254,38 @@ function MobileStreamsHistory({ client, clientId }) {
                 </div>
               )}
               {(client.parallel_enrollments || []).map(e => (
-                <div key={e.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#f3e8ff' }}>
+                <div key={e.id} className="flex items-center justify-between p-3 rounded-xl"
+                  style={{ background: e.frozen ? '#f0f9ff' : '#f3e8ff' }}>
                   <div className="flex items-center gap-2 min-w-0">
                     {e.group_training_format === 'online'
                       ? <Globe size={14} style={{ color: '#059669', flexShrink: 0 }} />
-                      : <Dumbbell size={14} style={{ color: '#7c3aed', flexShrink: 0 }} />}
+                      : <Dumbbell size={14} style={{ color: e.frozen ? '#0369a1' : '#7c3aed', flexShrink: 0 }} />}
                     <div className="min-w-0">
-                      <p className="font-semibold text-sm" style={{ color: '#7c3aed' }}>
+                      <p className="font-semibold text-sm" style={{ color: e.frozen ? '#0369a1' : '#7c3aed' }}>
                         Группа #{e.group_number}
-                        <span className="ml-1.5 font-normal text-xs" style={{ color: '#6d28d9' }}>
+                        <span className="ml-1.5 font-normal text-xs" style={{ color: e.frozen ? '#075985' : '#6d28d9' }}>
                           {e.group_training_format === 'online' ? '· Онлайн' : '· Оффлайн'}
                           {e.group_type ? ` · ${GROUP_TYPE_SHORT[e.group_type] || e.group_type}` : ''}
                         </span>
                       </p>
-                      {e.created_at && (
-                        <p className="text-xs mt-0.5" style={{ color: '#6d28d9' }}>
-                          с {new Date(e.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        </p>
-                      )}
+                      <p className="text-xs mt-0.5" style={{ color: e.frozen ? '#0284c7' : '#6d28d9' }}>
+                        {e.frozen && e.frozen_at
+                          ? `Заморожен с ${new Date(e.frozen_at + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`
+                          : e.created_at
+                            ? `с ${new Date(e.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`
+                            : ''
+                        }
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ background: '#ede9fe', color: '#7c3aed' }}>доп.</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                      style={{ background: '#f3e8ff', color: '#7c3aed', border: '1px solid #d8b4fe' }}>Текущий</span>
+                    {e.frozen
+                      ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                          style={{ background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd' }}>Заморожен</span>
+                      : <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                          style={{ background: '#f3e8ff', color: '#7c3aed', border: '1px solid #d8b4fe' }}>Текущий</span>
+                    }
                   </div>
                 </div>
               ))}
@@ -2600,7 +2608,7 @@ export default function MobileClientDetail() {
         {client.group ? (
           <>
             <PrimaryGroupBlock client={client} clientId={id} planId={planId} onSuccess={load} onFreezeClick={() => setRefundOpen(true)} />
-            {(client.parallel_enrollments || []).map(e => (
+            {(client.parallel_enrollments || []).filter(e => !e.frozen).map(e => (
               <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} onUpdate={handleEnrollmentUpdate} />
             ))}
             <AddEnrollmentPanel client={client} clientId={id} onSuccess={load} />
