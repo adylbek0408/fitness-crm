@@ -482,6 +482,9 @@ class ClientViewSet(viewsets.ModelViewSet):
             url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/payment')
     def add_enrollment_payment(self, request, pk=None, enrollment_id=None):
         """Добавить платёж к параллельной записи."""
+        import traceback as _tb, logging as _log
+        _logger = _log.getLogger(__name__)
+
         try:
             client = self.service.get_client_or_raise(pk)
         except NotFoundError as e:
@@ -494,20 +497,34 @@ class ClientViewSet(viewsets.ModelViewSet):
 
         ser = EnrollmentAddPaymentSerializer(data=request.data)
         if not ser.is_valid():
-            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+            first_error = next(iter(ser.errors.values()), ['Ошибка валидации'])[0]
+            return Response({'detail': str(first_error)}, status=status.HTTP_400_BAD_REQUEST)
 
         data = ser.validated_data
         snap = f"{request.user.last_name} {request.user.first_name}".strip() or request.user.username
-        EnrollmentPayment.objects.create(
-            enrollment=enrollment,
-            amount=data['amount'],
-            receipt=data.get('receipt'),
-            note=data.get('note', ''),
-            created_by=request.user,
-            created_by_name=snap,
-        )
+        try:
+            EnrollmentPayment.objects.create(
+                enrollment=enrollment,
+                amount=data['amount'],
+                receipt=data.get('receipt'),
+                note=data.get('note', ''),
+                created_by=request.user,
+                created_by_name=snap,
+            )
+        except Exception as e:
+            _logger.error('EnrollmentPayment.create failed: %s\n%s', e, _tb.format_exc())
+            return Response(
+                {'detail': f'Ошибка сохранения платежа: {e}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
         enrollment.refresh_from_db()
-        return Response(ClientEnrollmentReadSerializer(enrollment).data)
+        try:
+            data_out = ClientEnrollmentReadSerializer(enrollment).data
+        except Exception as e:
+            _logger.error('EnrollmentReadSerializer failed after payment: %s', e)
+            data_out = {'id': str(enrollment.id), 'detail': 'ok'}
+        return Response(data_out)
 
     @action(detail=True, methods=['delete'], permission_classes=[IsAdminOrRegistrar],
             url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/remove')
@@ -526,7 +543,25 @@ class ClientViewSet(viewsets.ModelViewSet):
         enrollment.is_active = False
         enrollment.save(update_fields=['is_active'])
         if client.second_group_id == enrollment.group_id:
-            client.second_group = None
-            client.save(update_fields=['second_group'])
+            client.second_group_id = None
+            client.save(update_fields=['second_group_id'])
 
         return Response({'detail': 'Запись деактивирована.'})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='leave-group')
+    def leave_group(self, request, pk=None):
+        """Убрать клиента из основной группы без возврата денег."""
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        if not client.group_id:
+            return Response({'detail': 'Клиент не состоит в группе.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        client.group_id = None
+        client.group_type = ''
+        client.save(update_fields=['group_id', 'group_type'])
+
+        client.refresh_from_db()
+        return Response(ClientReadSerializer(client).data)

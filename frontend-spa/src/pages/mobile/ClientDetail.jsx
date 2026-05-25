@@ -1450,6 +1450,9 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
   const [cancelConfirm, setCancelConfirm] = useState(false)
   const [cancelLoading, setCancelLoading] = useState(false)
   const [cancelErr,     setCancelErr]     = useState('')
+  const [leaveConfirm,  setLeaveConfirm]  = useState(false)
+  const [leaveLoading,  setLeaveLoading]  = useState(false)
+  const [leaveErr,      setLeaveErr]      = useState('')
 
   const group = client.group
   const full  = client.full_payment
@@ -1468,6 +1471,17 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
     } catch (e) {
       setCancelErr(e.response?.data?.detail || 'Ошибка')
     } finally { setCancelLoading(false) }
+  }
+
+  const handleLeaveGroup = async () => {
+    setLeaveLoading(true); setLeaveErr('')
+    try {
+      await api.post(`/clients/${clientId}/leave-group/`)
+      onSuccess()
+    } catch (e) {
+      setLeaveErr(e.response?.data?.detail || 'Ошибка')
+      setLeaveLoading(false)
+    }
   }
 
   const receipts = []
@@ -1652,6 +1666,35 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
               </button>
             </div>
           )}
+
+          {/* Убрать из группы */}
+          <div className="border-t border-gray-100 pt-2">
+            {!leaveConfirm ? (
+              <button type="button" onClick={() => { setLeaveConfirm(true); setLeaveErr('') }}
+                className="text-xs text-red-500 touch-manipulation py-1">
+                Убрать из группы
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="p-3 rounded-xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <p className="text-xs font-semibold text-red-700">Убрать клиента из основной группы? Оплата не отменяется.</p>
+                </div>
+                {leaveErr && <p className="text-xs text-red-600">{leaveErr}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleLeaveGroup} disabled={leaveLoading}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-60 touch-manipulation"
+                    style={{ background: '#dc2626' }}>
+                    {leaveLoading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+                    Да, убрать
+                  </button>
+                  <button type="button" onClick={() => { setLeaveConfirm(false); setLeaveErr('') }}
+                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm touch-manipulation">
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1692,8 +1735,10 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess }) {
       })
       setPayOpen(false); setPayAmount(''); setPayNote(''); setPayReceipt(null)
       onSuccess()
-    } catch (e) { setErr(e.response?.data?.detail || 'Ошибка') }
-    finally { setSaving(false) }
+    } catch (e) {
+      const d = e.response?.data
+      setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка сохранения')
+    } finally { setSaving(false) }
   }
 
   const handleRemove = async () => {
@@ -1701,8 +1746,10 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess }) {
     try {
       await api.delete(`/clients/${clientId}/enrollments/${enrollment.id}/remove/`)
       onSuccess()
-    } catch (e) { setErr(e.response?.data?.detail || 'Ошибка') }
-    finally { setRemoving(false) }
+    } catch (e) {
+      const d = e.response?.data
+      setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
+    } finally { setRemoving(false) }
   }
 
   return (
