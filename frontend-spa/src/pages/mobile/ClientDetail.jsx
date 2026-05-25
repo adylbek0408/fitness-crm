@@ -1769,6 +1769,69 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
   )
 }
 
+// ── Ввод/сброс типа оплаты для параллельной записи ───────────────────────────
+function EnrollmentConfigureInline({ enrollment, clientId, onUpdate }) {
+  const [payType,   setPayType]   = useState(enrollment.payment_type || 'full')
+  const [amount,    setAmount]    = useState('')
+  const [totalCost, setTotalCost] = useState('')
+  const [deadline,  setDeadline]  = useState('')
+  const [saving,    setSaving]    = useState(false)
+  const [err,       setErr]       = useState('')
+
+  const handleSave = async () => {
+    if (payType === 'full' && (!amount || Number(amount) <= 0)) { setErr('Укажите сумму'); return }
+    if (payType === 'installment' && (!totalCost || Number(totalCost) <= 0)) { setErr('Укажите стоимость'); return }
+    if (payType === 'installment' && !deadline) { setErr('Укажите дедлайн'); return }
+    setSaving(true); setErr('')
+    try {
+      const res = await api.post(`/clients/${clientId}/enrollments/${enrollment.id}/configure/`, {
+        payment_type: payType,
+        ...(payType === 'full' ? { payment_amount: amount } : { total_cost: totalCost, deadline }),
+      })
+      if (onUpdate) onUpdate(res.data)
+    } catch (e) {
+      const d = e.response?.data
+      setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Введите тип и сумму оплаты</p>
+      <div className="flex gap-2">
+        {[{ v: 'full', l: 'Полная' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+          <button key={v} type="button" onClick={() => setPayType(v)}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
+            style={payType === v
+              ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+              : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {payType === 'full' ? (
+        <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+          value={amount} onChange={e => setAmount(e.target.value)} className="crm-mobile-input w-full" />
+      ) : (
+        <div className="space-y-2">
+          <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+            value={totalCost} onChange={e => setTotalCost(e.target.value)} className="crm-mobile-input w-full" />
+          <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
+        </div>
+      )}
+      {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
+      <button type="button" onClick={handleSave} disabled={saving}
+        className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+        style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
+        {saving
+          ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          : <Check size={16} />}
+        {saving ? 'Сохранение...' : 'Сохранить'}
+      </button>
+    </div>
+  )
+}
+
 // ── Параллельная группа — аккордеон ──────────────────────────────────────────
 function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, onFreezeClick }) {
   const [open,              setOpen]              = useState(false)
@@ -1787,6 +1850,7 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
   const pct = total > 0 ? Math.min(Math.round(amountPaid / total * 100), 100) : 0
   const fmt = enrollment.group_training_format || 'offline'
   const fmtLabel = fmt === 'online' ? 'Онлайн' : 'Оффлайн'
+  const needsConfigure = !enrollment.payment_amount && !enrollment.total_cost
 
   const handleRemove = async () => {
     setRemoving(true); setErr('')
@@ -1832,11 +1896,13 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
               {fmtLabel}
               {enrollment.group_type ? ` · ${GROUP_TYPE_LABEL[enrollment.group_type] || enrollment.group_type}` : ''}
               {' · '}
-              {enrollment.is_fully_paid
-                ? <span className="text-emerald-600">Оплачено</span>
-                : total > 0
-                  ? <span className="text-amber-600">{pct}% оплачено</span>
-                  : <span className="text-gray-400">Без суммы</span>
+              {needsConfigure
+                ? <span className="text-amber-500 font-medium">Нужна оплата</span>
+                : enrollment.is_fully_paid
+                  ? <span className="text-emerald-600">Оплачено</span>
+                  : total > 0
+                    ? <span className="text-amber-600">{pct}% оплачено</span>
+                    : <span className="text-gray-400">Без суммы</span>
               }
             </p>
           </div>
@@ -1846,137 +1912,147 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
 
       {open && (
         <div className="px-4 pb-5 border-t border-gray-100 space-y-3 pt-3">
-          <div className="bg-gray-50 rounded-xl p-3 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Тип оплаты</span>
-              <span className="text-gray-700">{enrollment.payment_type === 'full' ? 'Полная' : 'Рассрочка'}</span>
-            </div>
-            {enrollment.payment_type === 'full' && enrollment.payment_amount && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Сумма</span>
-                <span className="crm-money">{fmtMoney(enrollment.payment_amount)}</span>
-              </div>
-            )}
-            {enrollment.payment_type === 'installment' && (
-              <>
-                {enrollment.total_cost && <div className="flex justify-between"><span className="text-gray-500">Стоимость</span><span className="crm-money">{fmtMoney(enrollment.total_cost)}</span></div>}
-                {enrollment.deadline && <div className="flex justify-between"><span className="text-gray-500">Дедлайн</span><span className="text-gray-700">{enrollment.deadline}</span></div>}
-              </>
-            )}
-            <div className="flex justify-between border-t border-gray-200 pt-2">
-              <span className="text-gray-500">Оплачено</span>
-              <span className={`crm-money ${amountPaid > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>{fmtMoney(amountPaid)}</span>
-            </div>
-            {total > 0 && rem > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Остаток</span>
-                <span className="crm-money text-red-500">{fmtMoney(rem)}</span>
-              </div>
-            )}
-          </div>
-
-          {total > 0 && (
-            <div>
-              <div className="w-full bg-gray-100 rounded-full h-1.5">
-                <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: pct >= 100 ? '#10b981' : '#8b5cf6' }} />
-              </div>
-              <p className="text-xs text-gray-400 mt-1">{pct}% оплачено</p>
-            </div>
-          )}
-
-          {enrollment.payments?.length > 0 && (
-            <div className="border-t border-gray-100 pt-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">История платежей</p>
-              <div className="space-y-1.5">
-                {enrollment.payments.map(p => (
-                  <div key={p.id} className="flex items-center justify-between py-1.5 px-2 bg-gray-50 rounded-lg text-xs gap-2">
-                    <span className="text-gray-400 shrink-0">{p.created_at ? fmtDateTime(p.created_at) : '—'}</span>
-                    <span className="crm-money flex-1 text-right">{fmtMoney(p.amount)}</span>
-                    {p.receipt
-                      ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold shrink-0"><Receipt size={11} /> Чек</a>
-                      : <span className="text-gray-300 shrink-0">—</span>
-                    }
+          {needsConfigure ? (
+            <EnrollmentConfigureInline
+              enrollment={enrollment}
+              clientId={clientId}
+              onUpdate={onUpdate}
+            />
+          ) : (
+            <>
+              <div className="bg-gray-50 rounded-xl p-3 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Тип оплаты</span>
+                  <span className="text-gray-700">{enrollment.payment_type === 'full' ? 'Полная' : 'Рассрочка'}</span>
+                </div>
+                {enrollment.payment_type === 'full' && enrollment.payment_amount && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Сумма</span>
+                    <span className="crm-money">{fmtMoney(enrollment.payment_amount)}</span>
                   </div>
-                ))}
+                )}
+                {enrollment.payment_type === 'installment' && (
+                  <>
+                    {enrollment.total_cost && <div className="flex justify-between"><span className="text-gray-500">Стоимость</span><span className="crm-money">{fmtMoney(enrollment.total_cost)}</span></div>}
+                    {enrollment.deadline && <div className="flex justify-between"><span className="text-gray-500">Дедлайн</span><span className="text-gray-700">{enrollment.deadline}</span></div>}
+                  </>
+                )}
+                <div className="flex justify-between border-t border-gray-200 pt-2">
+                  <span className="text-gray-500">Оплачено</span>
+                  <span className={`crm-money ${amountPaid > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>{fmtMoney(amountPaid)}</span>
+                </div>
+                {total > 0 && rem > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Остаток</span>
+                    <span className="crm-money text-red-500">{fmtMoney(rem)}</span>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
 
-          {!enrollment.is_fully_paid && (
-            <div className="border-t border-gray-100 pt-3">
-              {!payOpen ? (
-                <button type="button" onClick={() => setPayOpen(true)}
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-emerald-700 touch-manipulation"
-                  style={{ background: '#ecfdf5', border: '1px solid #6ee7b7' }}>
-                  + Добавить платёж
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                    {enrollment.payment_type === 'full' ? 'Подтвердить оплату' : 'Новый платёж'}
-                  </p>
-                  <EnrollmentPaymentForm
-                    enrollment={enrollment}
-                    clientId={clientId}
-                    onDone={updated => {
-                      setPayOpen(false)
-                      if (onUpdate) onUpdate(updated)
-                    }}
-                  />
-                  <button type="button" onClick={() => setPayOpen(false)}
-                    className="w-full py-2 text-sm text-gray-500 touch-manipulation text-center">
-                    Отмена
+              {total > 0 && (
+                <div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: pct >= 100 ? '#10b981' : '#8b5cf6' }} />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">{pct}% оплачено</p>
+                </div>
+              )}
+
+              {enrollment.payments?.length > 0 && (
+                <div className="border-t border-gray-100 pt-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">История платежей</p>
+                  <div className="space-y-1.5">
+                    {enrollment.payments.map(p => (
+                      <div key={p.id} className="flex items-center justify-between py-1.5 px-2 bg-gray-50 rounded-lg text-xs gap-2">
+                        <span className="text-gray-400 shrink-0">{p.paid_at || (p.created_at ? fmtDateTime(p.created_at) : '—')}</span>
+                        <span className="crm-money flex-1 text-right">{fmtMoney(p.amount)}</span>
+                        {p.receipt
+                          ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold shrink-0"><Receipt size={11} /> Чек</a>
+                          : <span className="text-gray-300 shrink-0">—</span>
+                        }
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!enrollment.is_fully_paid && (
+                <div className="border-t border-gray-100 pt-3">
+                  {!payOpen ? (
+                    <button type="button" onClick={() => setPayOpen(true)}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold text-emerald-700 touch-manipulation"
+                      style={{ background: '#ecfdf5', border: '1px solid #6ee7b7' }}>
+                      + Добавить платёж
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        {enrollment.payment_type === 'full' ? 'Подтвердить оплату' : 'Новый платёж'}
+                      </p>
+                      <EnrollmentPaymentForm
+                        enrollment={enrollment}
+                        clientId={clientId}
+                        onDone={updated => {
+                          setPayOpen(false)
+                          if (onUpdate) onUpdate(updated)
+                        }}
+                      />
+                      <button type="button" onClick={() => setPayOpen(false)}
+                        className="w-full py-2 text-sm text-gray-500 touch-manipulation text-center">
+                        Отмена
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Заморозить клиента */}
+              {onFreezeClick && (
+                <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700">Заморозить клиента</p>
+                    <p className="text-xs text-gray-400">Удержание; остаток — клиенту. Статус → «Заморозка».</p>
+                  </div>
+                  <button type="button" onClick={onFreezeClick}
+                    className="px-3 py-2 rounded-xl text-xs font-medium touch-manipulation"
+                    style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
+                    Заморозить
                   </button>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Заморозить клиента */}
-          {onFreezeClick && (
-            <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-700">Заморозить клиента</p>
-                <p className="text-xs text-gray-400">Удержание; остаток — клиенту. Статус → «Заморозка».</p>
-              </div>
-              <button type="button" onClick={onFreezeClick}
-                className="px-3 py-2 rounded-xl text-xs font-medium touch-manipulation"
-                style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
-                Заморозить
-              </button>
-            </div>
-          )}
-
-          {/* Отменить оплату (для доп. группы) */}
-          {Number(enrollment.amount_paid || 0) > 0 && (
-            <div className="border-t border-gray-100 pt-2">
-              {!cancelPayConfirm ? (
-                <button type="button" onClick={() => setCancelPayConfirm(true)}
-                  className="text-xs text-amber-600 touch-manipulation py-1">
-                  Отменить оплату
-                </button>
-              ) : (
-                <div className="space-y-2 p-3 rounded-xl" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
-                  <p className="text-xs text-amber-800 font-semibold">Сбросить все платежи по этой группе?</p>
-                  <p className="text-xs text-amber-700">Платежи будут удалены, можно ввести заново.</p>
-                  {err && <p className="text-xs text-red-600">{err}</p>}
-                  <div className="flex gap-2">
-                    <button type="button" onClick={handleCancelEnrollmentPayment} disabled={cancelPayLoading}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-60 touch-manipulation"
-                      style={{ background: '#d97706' }}>
-                      {cancelPayLoading ? '...' : 'Сбросить'}
+              {/* Отменить оплату — только когда есть платежи */}
+              {Number(enrollment.amount_paid || 0) > 0 && (
+                <div className="border-t border-gray-100 pt-2">
+                  {!cancelPayConfirm ? (
+                    <button type="button" onClick={() => setCancelPayConfirm(true)}
+                      className="text-xs text-amber-600 touch-manipulation py-1">
+                      Отменить оплату
                     </button>
-                    <button type="button" onClick={() => { setCancelPayConfirm(false); setErr('') }}
-                      className="px-4 py-2 rounded-xl border border-gray-300 text-xs text-gray-600 touch-manipulation">
-                      Отмена
-                    </button>
-                  </div>
+                  ) : (
+                    <div className="space-y-2 p-3 rounded-xl" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+                      <p className="text-xs text-amber-800 font-semibold">Сбросить все платежи по этой группе?</p>
+                      <p className="text-xs text-amber-700">Платежи будут удалены, можно ввести заново.</p>
+                      {err && <p className="text-xs text-red-600">{err}</p>}
+                      <div className="flex gap-2">
+                        <button type="button" onClick={handleCancelEnrollmentPayment} disabled={cancelPayLoading}
+                          className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-60 touch-manipulation"
+                          style={{ background: '#d97706' }}>
+                          {cancelPayLoading ? '...' : 'Сбросить'}
+                        </button>
+                        <button type="button" onClick={() => { setCancelPayConfirm(false); setErr('') }}
+                          className="px-4 py-2 rounded-xl border border-gray-300 text-xs text-gray-600 touch-manipulation">
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
           )}
 
-          {/* Убрать из группы */}
+          {/* Убрать из группы — всегда */}
           <div className="border-t border-gray-100 pt-2">
             {!confirmRemove ? (
               <button type="button" onClick={() => setConfirmRemove(true)}
