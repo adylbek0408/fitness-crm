@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('clients', '0028_enrollmentpayment_paid_at'),
+        ('clients', '0027_add_client_enrollment'),
     ]
 
     operations = [
