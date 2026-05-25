@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
-from django.db.models import Prefetch, Count
+from django.db.models import Prefetch, Count, Sum
 from django.utils import timezone
 
 from core.permissions import IsAdmin, IsAdminOrRegistrar
@@ -653,6 +653,95 @@ class ClientViewSet(viewsets.ModelViewSet):
             client.save(update_fields=['second_group_id'])
 
         return Response({'detail': 'Запись деактивирована.'})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar],
+            url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/freeze')
+    def freeze_enrollment(self, request, pk=None, enrollment_id=None):
+        """Заморозить параллельную запись: удержать сумму, вернуть остаток, сменить статус."""
+        from apps.payments.models import RefundLog
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            enrollment = ClientEnrollment.objects.get(id=enrollment_id, client=client, is_active=True)
+        except ClientEnrollment.DoesNotExist:
+            return Response({'detail': 'Запись не найдена.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            from decimal import Decimal as _D, InvalidOperation as _Inv
+            raw = request.data.get('retention_amount', '0') or '0'
+            retention_amount = _D(str(raw).replace(',', '.'))
+        except (_Inv, ValueError):
+            return Response({'detail': 'Некорректная сумма удержания.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if retention_amount < _D('0'):
+            return Response({'detail': 'Удержание не может быть отрицательным.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        total_paid = enrollment.payments.aggregate(s=Sum('amount'))['s'] or _D('0')
+
+        if retention_amount > total_paid:
+            return Response(
+                {'detail': f'Удержание ({retention_amount} сом) превышает оплаченную сумму ({total_paid} сом).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        refund_to_client = total_paid - retention_amount
+        group_number = enrollment.group.number if enrollment.group_id else '?'
+
+        # Remove all enrollment payments
+        enrollment.payments.all().delete()
+
+        # Deactivate enrollment
+        enrollment.is_active = False
+        enrollment.save(update_fields=['is_active'])
+        if client.second_group_id and str(client.second_group_id) == str(enrollment.group_id):
+            client.second_group_id = None
+            client.save(update_fields=['second_group_id'])
+
+        # Determine client status: primary group still active → active_frozen, else frozen
+        old_status = client.status
+        new_status = 'active_frozen' if client.group_id else 'frozen'
+        client.status = new_status
+        client.save(update_fields=['status'])
+        self.service._record_status_change(
+            client, old_status, new_status, user=request.user,
+            note=f'Заморозка доп. группы #{group_number}',
+        )
+
+        note = (
+            f'Заморозка доп. группы #{group_number}. '
+            f'Оплачено: {total_paid} сом; удержание: {retention_amount} сом; '
+            f'к возврату: {refund_to_client} сом.'
+        )
+        RefundLog.objects.create(
+            client_name=client.full_name,
+            client_id=str(client.id),
+            amount=refund_to_client,
+            retention_amount=retention_amount,
+            total_paid=total_paid,
+            payment_type='enrollment',
+            note=note,
+            created_by=request.user,
+        )
+
+        STATUS_LABEL = {'active_frozen': 'Акт.+Заморозка', 'frozen': 'Заморозка'}
+        detail = (
+            f'Доп. группа #{group_number} заморожена.'
+            + (f' К возврату клиенту: {refund_to_client} сом.' if refund_to_client > 0 else '')
+            + (f' Удержано: {retention_amount} сом.' if retention_amount > 0 else '')
+            + f' Статус клиента → «{STATUS_LABEL.get(new_status, new_status)}».'
+        )
+
+        return Response({
+            'detail': detail,
+            'refund_to_client': str(refund_to_client),
+            'retention_amount': str(retention_amount),
+            'total_paid': str(total_paid),
+            'new_status': new_status,
+            'client': ClientReadSerializer(client).data,
+        })
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='leave-group')
     def leave_group(self, request, pk=None):

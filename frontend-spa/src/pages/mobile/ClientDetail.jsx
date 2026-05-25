@@ -1835,7 +1835,7 @@ function EnrollmentConfigureInline({ enrollment, clientId, onUpdate }) {
 }
 
 // ── Параллельная группа — аккордеон ──────────────────────────────────────────
-function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, onFreezeClick }) {
+function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) {
   const [open,              setOpen]              = useState(false)
   const [payOpen,           setPayOpen]           = useState(false)
   const [removing,          setRemoving]          = useState(false)
@@ -1844,6 +1844,10 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
   const [cancelPayLoading,  setCancelPayLoading]  = useState(false)
   const [showConfigure,     setShowConfigure]     = useState(false)
   const [err,               setErr]               = useState('')
+  const [freezeOpen,        setFreezeOpen]        = useState(false)
+  const [freezeRetention,   setFreezeRetention]   = useState('')
+  const [freezeLoading,     setFreezeLoading]     = useState(false)
+  const [freezeErr,         setFreezeErr]         = useState('')
 
   const amountPaid = Number(enrollment.amount_paid || 0)
   const total = enrollment.payment_type === 'full'
@@ -1883,6 +1887,25 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
   const handleConfigureDone = (updated) => {
     setShowConfigure(false)
     if (onUpdate) onUpdate(updated)
+  }
+
+  const totalPaidForFreeze = Number(enrollment.amount_paid || 0)
+
+  const handleFreeze = async () => {
+    const r = parseFloat(String(freezeRetention).replace(',', '.')) || 0
+    if (r < 0 || r > totalPaidForFreeze + 1e-9) { setFreezeErr('Некорректная сумма удержания'); return }
+    setFreezeLoading(true); setFreezeErr('')
+    try {
+      await api.post(
+        `/clients/${clientId}/enrollments/${enrollment.id}/freeze/`,
+        { retention_amount: String(r) }
+      )
+      setFreezeOpen(false)
+      if (onSuccess) onSuccess()
+    } catch (e) {
+      const d = e.response?.data
+      setFreezeErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
+    } finally { setFreezeLoading(false) }
   }
 
   return (
@@ -2016,20 +2039,60 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
                 </div>
               )}
 
-              {/* Заморозить клиента */}
-              {onFreezeClick && (
-                <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-700">Заморозить клиента</p>
-                    <p className="text-xs text-gray-400">Удержание; остаток — клиенту. Статус → «Заморозка».</p>
+              {/* Заморозить эту запись */}
+              <div className="border-t border-gray-100 pt-3">
+                {!freezeOpen ? (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">Заморозить эту запись</p>
+                      <p className="text-xs text-gray-400">Удержание за посещения; остаток — клиенту. Статус → «Акт.+Заморозка».</p>
+                    </div>
+                    <button type="button" onClick={() => { setFreezeOpen(true); setFreezeRetention(''); setFreezeErr('') }}
+                      className="px-3 py-2 rounded-xl text-xs font-medium touch-manipulation shrink-0 ml-2"
+                      style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
+                      Заморозить
+                    </button>
                   </div>
-                  <button type="button" onClick={onFreezeClick}
-                    className="px-3 py-2 rounded-xl text-xs font-medium touch-manipulation"
-                    style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
-                    Заморозить
-                  </button>
-                </div>
-              )}
+                ) : (
+                  <div className="space-y-3 p-3 rounded-xl" style={{ background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+                    <p className="text-sm font-semibold text-sky-800">Заморозить запись в группе #{enrollment.group_number}</p>
+                    {totalPaidForFreeze > 0 && (
+                      <div className="flex justify-between text-xs py-1 border-b border-sky-100">
+                        <span className="text-sky-700">Оплачено по этой группе</span>
+                        <span className="font-semibold text-sky-900">{fmtMoney(totalPaidForFreeze)}</span>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-medium text-sky-700 mb-1">Сумма удержания (за посещённые занятия)</label>
+                      <input type="number" min="0" max={totalPaidForFreeze} step="0.01"
+                        value={freezeRetention} onChange={e => setFreezeRetention(e.target.value)}
+                        placeholder="0 — всё вернуть"
+                        className="crm-mobile-input w-full" />
+                    </div>
+                    {freezeRetention !== '' && !isNaN(parseFloat(freezeRetention)) && (
+                      <div className="flex justify-between text-xs py-1.5 px-3 rounded-lg"
+                        style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                        <span className="text-emerald-800">К возврату клиенту</span>
+                        <span className="font-bold text-emerald-700">
+                          {fmtMoney(Math.max(0, totalPaidForFreeze - (parseFloat(freezeRetention) || 0)))}
+                        </span>
+                      </div>
+                    )}
+                    {freezeErr && <p className="text-xs text-red-600">{freezeErr}</p>}
+                    <div className="flex gap-2">
+                      <button type="button" onClick={handleFreeze} disabled={freezeLoading}
+                        className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-white disabled:opacity-60 touch-manipulation"
+                        style={{ background: '#0369a1' }}>
+                        {freezeLoading ? '...' : 'Заморозить'}
+                      </button>
+                      <button type="button" onClick={() => setFreezeOpen(false)}
+                        className="flex-1 py-2.5 rounded-xl border border-gray-300 text-xs text-gray-600 touch-manipulation">
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Отменить оплату — только когда есть платежи */}
               {Number(enrollment.amount_paid || 0) > 0 && (
@@ -2530,7 +2593,7 @@ export default function MobileClientDetail() {
           <>
             <PrimaryGroupBlock client={client} clientId={id} planId={planId} onSuccess={load} onFreezeClick={() => setRefundOpen(true)} />
             {(client.parallel_enrollments || []).map(e => (
-              <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} onUpdate={handleEnrollmentUpdate} onFreezeClick={() => setRefundOpen(true)} />
+              <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} onUpdate={handleEnrollmentUpdate} />
             ))}
             <AddEnrollmentPanel client={client} clientId={id} onSuccess={load} />
           </>
