@@ -1840,6 +1840,7 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
   const [confirmRemove,     setConfirmRemove]     = useState(false)
   const [cancelPayConfirm,  setCancelPayConfirm]  = useState(false)
   const [cancelPayLoading,  setCancelPayLoading]  = useState(false)
+  const [showConfigure,     setShowConfigure]     = useState(false)
   const [err,               setErr]               = useState('')
 
   const amountPaid = Number(enrollment.amount_paid || 0)
@@ -1850,7 +1851,8 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
   const pct = total > 0 ? Math.min(Math.round(amountPaid / total * 100), 100) : 0
   const fmt = enrollment.group_training_format || 'offline'
   const fmtLabel = fmt === 'online' ? 'Онлайн' : 'Оффлайн'
-  const needsConfigure = !enrollment.payment_amount && !enrollment.total_cost
+  // showConfigure — explicitly set by cancel action; also true when backend nulled out config
+  const needsConfigure = showConfigure || (!enrollment.payment_amount && !enrollment.total_cost)
 
   const handleRemove = async () => {
     setRemoving(true); setErr('')
@@ -1868,11 +1870,17 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
     try {
       const res = await api.post(`/clients/${clientId}/enrollments/${enrollment.id}/cancel-payment/`)
       setCancelPayConfirm(false)
+      setShowConfigure(true)   // immediately show configure form, like primary block
       if (onUpdate) onUpdate(res.data)
     } catch (e) {
       const d = e.response?.data
       setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
     } finally { setCancelPayLoading(false) }
+  }
+
+  const handleConfigureDone = (updated) => {
+    setShowConfigure(false)
+    if (onUpdate) onUpdate(updated)
   }
 
   return (
@@ -1916,7 +1924,7 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
             <EnrollmentConfigureInline
               enrollment={enrollment}
               clientId={clientId}
-              onUpdate={onUpdate}
+              onUpdate={handleConfigureDone}
             />
           ) : (
             <>
