@@ -1444,6 +1444,71 @@ function MobileStatusHistory({ clientId }) {
   )
 }
 
+// ── Ввести оплату заново внутри блока группы (после отмены) ─────────────────
+function ReenterPaymentInline({ clientId, client, onSuccess }) {
+  const [payType,   setPayType]   = useState(client.payment_type || 'full')
+  const [amount,    setAmount]    = useState('')
+  const [totalCost, setTotalCost] = useState('')
+  const [deadline,  setDeadline]  = useState('')
+  const [loading,   setLoading]   = useState(false)
+  const [err,       setErr]       = useState('')
+
+  const handleSubmit = async () => {
+    if (payType === 'full' && (!amount || Number(amount) <= 0)) { setErr('Укажите сумму'); return }
+    if (payType === 'installment' && (!totalCost || !deadline)) { setErr('Укажите стоимость и дедлайн'); return }
+    setLoading(true); setErr('')
+    try {
+      await api.post(`/clients/${clientId}/enter-payment/`, {
+        payment_type: payType,
+        payment_data: payType === 'full' ? { amount } : { total_cost: totalCost, deadline },
+        bonus_percent: client.bonus_percent ?? 10,
+      })
+      onSuccess()
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Ошибка')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="border-t border-amber-100 pt-3 space-y-3">
+      <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide flex items-center gap-1.5">
+        <AlertTriangle size={12} /> Оплата не введена — выберите тип
+      </p>
+      <div className="flex gap-2">
+        {[{ v: 'full', l: 'Полная оплата' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+          <button key={v} type="button" onClick={() => setPayType(v)}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition touch-manipulation"
+            style={payType === v
+              ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+              : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {payType === 'full' && (
+        <input type="number" min="1" placeholder="Сумма (сом)"
+          value={amount} onChange={e => setAmount(e.target.value)}
+          className="crm-mobile-input w-full" />
+      )}
+      {payType === 'installment' && (
+        <div className="space-y-2">
+          <input type="number" min="1" placeholder="Общая стоимость (сом)"
+            value={totalCost} onChange={e => setTotalCost(e.target.value)}
+            className="crm-mobile-input w-full" />
+          <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
+        </div>
+      )}
+      {err && <p className="text-xs text-red-600 bg-red-50 rounded-xl p-2">{err}</p>}
+      <button type="button" onClick={handleSubmit} disabled={loading}
+        className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+        style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
+        {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+        Сохранить оплату
+      </button>
+    </div>
+  )
+}
+
 // ── Основная группа — аккордеон ──────────────────────────────────────────────
 function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick }) {
   const [open,          setOpen]          = useState(true)
@@ -1588,7 +1653,9 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
             </div>
           )}
 
-          {!full && !plan && <p className="text-sm text-gray-400 text-center py-2">Оплата не введена</p>}
+          {!full && !plan && (
+            <ReenterPaymentInline clientId={clientId} client={client} onSuccess={onSuccess} />
+          )}
 
           {receipts.length > 0 && (
             <div className="border-t border-gray-100 pt-3">
@@ -1704,11 +1771,13 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
 
 // ── Параллельная группа — аккордеон ──────────────────────────────────────────
 function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, onFreezeClick }) {
-  const [open,          setOpen]          = useState(false)
-  const [payOpen,       setPayOpen]       = useState(false)
-  const [removing,      setRemoving]      = useState(false)
-  const [confirmRemove, setConfirmRemove] = useState(false)
-  const [err,           setErr]           = useState('')
+  const [open,              setOpen]              = useState(false)
+  const [payOpen,           setPayOpen]           = useState(false)
+  const [removing,          setRemoving]          = useState(false)
+  const [confirmRemove,     setConfirmRemove]     = useState(false)
+  const [cancelPayConfirm,  setCancelPayConfirm]  = useState(false)
+  const [cancelPayLoading,  setCancelPayLoading]  = useState(false)
+  const [err,               setErr]               = useState('')
 
   const amountPaid = Number(enrollment.amount_paid || 0)
   const total = enrollment.payment_type === 'full'
@@ -1728,6 +1797,18 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
       const d = e.response?.data
       setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
     } finally { setRemoving(false) }
+  }
+
+  const handleCancelEnrollmentPayment = async () => {
+    setCancelPayLoading(true); setErr('')
+    try {
+      const res = await api.post(`/clients/${clientId}/enrollments/${enrollment.id}/cancel-payment/`)
+      setCancelPayConfirm(false)
+      if (onUpdate) onUpdate(res.data)
+    } catch (e) {
+      const d = e.response?.data
+      setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
+    } finally { setCancelPayLoading(false) }
   }
 
   return (
@@ -1863,6 +1944,35 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate, on
                 style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
                 Заморозить
               </button>
+            </div>
+          )}
+
+          {/* Отменить оплату (для доп. группы) */}
+          {Number(enrollment.amount_paid || 0) > 0 && (
+            <div className="border-t border-gray-100 pt-2">
+              {!cancelPayConfirm ? (
+                <button type="button" onClick={() => setCancelPayConfirm(true)}
+                  className="text-xs text-amber-600 touch-manipulation py-1">
+                  Отменить оплату
+                </button>
+              ) : (
+                <div className="space-y-2 p-3 rounded-xl" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+                  <p className="text-xs text-amber-800 font-semibold">Сбросить все платежи по этой группе?</p>
+                  <p className="text-xs text-amber-700">Платежи будут удалены, можно ввести заново.</p>
+                  {err && <p className="text-xs text-red-600">{err}</p>}
+                  <div className="flex gap-2">
+                    <button type="button" onClick={handleCancelEnrollmentPayment} disabled={cancelPayLoading}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-60 touch-manipulation"
+                      style={{ background: '#d97706' }}>
+                      {cancelPayLoading ? '...' : 'Сбросить'}
+                    </button>
+                    <button type="button" onClick={() => { setCancelPayConfirm(false); setErr('') }}
+                      className="px-4 py-2 rounded-xl border border-gray-300 text-xs text-gray-600 touch-manipulation">
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2261,10 +2371,13 @@ export default function MobileClientDetail() {
                   </div>
                 )}
               </div>
-              <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                {client.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
-                {client.training_format === 'online' ? 'Онлайн' : 'Оффлайн'} · {client.group_type}
-              </p>
+              {!client.group && (
+                <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                  {client.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
+                  {client.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
+                  {client.group_type ? ` · ${GROUP_TYPE_LABEL[client.group_type] || client.group_type}` : ''}
+                </p>
+              )}
               {client.training_format === 'online' && client.telegram_link && (
                 <p className="text-xs mt-1 flex items-center gap-1 break-all">
                   <Send size={12} style={{ color: '#0ea5e9' }} />
@@ -2313,9 +2426,6 @@ export default function MobileClientDetail() {
                 </div>
               )}
             </div>
-            <span className={`text-xs px-3 py-1 rounded-full ${STATUS_BADGE[client.status] || 'bg-gray-100 text-gray-600'}`}>
-              {STATUS_LABEL[client.status] || client.status}
-            </span>
           </div>
         </div>
 

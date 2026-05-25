@@ -322,26 +322,13 @@ class ClientService(BaseService):
                 ip.payments.all().delete()
                 ip.delete()
 
-        # Статус: пробный остаётся пробным, остальные → new
-        new_status = 'trial' if client.is_trial else 'new'
-        old_status = client.status
-        client.group = None
-        client.status = new_status
-        client.save(update_fields=['group', 'status'])
-
-        if old_status != new_status:
-            self._record_status_change(
-                client, old_status=old_status, new_status=new_status,
-                user=user, note='Отмена оплаты',
-            )
-
         self.logger.info(
             f'Payment cancelled for client {client_id}. '
             f'Voided bonus accruals: {voided}.'
         )
 
         return {
-            'detail': 'Оплата отменена. Теперь выберите новый тип оплаты и введите данные.',
+            'detail': 'Оплата отменена. Введите новый тип оплаты.',
             'voided_bonus': str(voided),
         }
 
@@ -352,9 +339,6 @@ class ClientService(BaseService):
         у которого нет активной оплаты (например, после отмены).
         """
         client = self.get_client_or_raise(client_id)
-
-        if client.status not in ('new', 'trial'):
-            raise ValidationError('Ввод оплаты доступен только для клиентов со статусом «Новый» или «Пробный».')
 
         existing_fp = FullPayment.objects.filter(client=client).order_by('-created_at').first()
         existing_ip = InstallmentPlan.objects.filter(client=client).order_by('-created_at').first()

@@ -550,6 +550,27 @@ class ClientViewSet(viewsets.ModelViewSet):
                 data_out = {'id': str(enrollment.id), 'detail': 'ok'}
         return Response(data_out)
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar],
+            url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/cancel-payment')
+    def cancel_enrollment_payment(self, request, pk=None, enrollment_id=None):
+        """Удалить все платежи по параллельной записи (сброс оплаты до нуля)."""
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            enrollment = ClientEnrollment.objects.get(id=enrollment_id, client=client, is_active=True)
+        except ClientEnrollment.DoesNotExist:
+            return Response({'detail': 'Запись не найдена.'}, status=status.HTTP_404_NOT_FOUND)
+
+        enrollment.payments.all().delete()
+        enrollment.refresh_from_db()
+        try:
+            data_out = ClientEnrollmentReadSerializer(enrollment).data
+        except Exception:
+            data_out = {'id': str(enrollment.id), 'amount_paid': '0', 'payments': []}
+        return Response(data_out)
+
     @action(detail=True, methods=['delete'], permission_classes=[IsAdminOrRegistrar],
             url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/remove')
     def remove_enrollment(self, request, pk=None, enrollment_id=None):
