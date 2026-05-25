@@ -1739,7 +1739,7 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onFreezeClic
         await api.post(url, { amount: payAmount, note: payNote.trim() })
       }
       setPayOpen(false); setPayAmount(''); setPayNote(''); setPayReceipt(null)
-      onSuccess()
+      setTimeout(() => onSuccess(), 150)
     } catch (e) {
       const d = e.response?.data
       setErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка сохранения')
@@ -1886,7 +1886,7 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onFreezeClic
                       {saving
                         ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                         : <CheckCircle size={16} />}
-                      {saving ? 'Сохранение...' : 'Подтвердить платёж'}
+                      {saving ? 'Сохранение...' : enrollment.payment_type === 'full' ? 'Подтвердить оплату' : 'Добавить платёж'}
                     </button>
                     <button type="button" onClick={() => { setPayOpen(false); setErr(''); setPayAmount(''); setPayNote(''); setPayReceipt(null) }}
                       className="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm touch-manipulation">
