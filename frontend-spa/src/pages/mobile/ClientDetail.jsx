@@ -495,10 +495,11 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const [open,          setOpen]         = useState(false)
   const [groups,        setGroups]       = useState([])
   const [groupsLoading, setGroupsLoading]= useState(false)
+  const [formatFilter,  setFormatFilter] = useState(client.training_format || 'offline')
   const [statusFilter,  setStatusFilter] = useState('recruitment')
   const [err,           setErr]          = useState('')
 
-  const [step,          setStep]         = useState(1) // 1=выбор группы, 2=оплата
+  const [step,          setStep]         = useState(1)
   const [selectedGroup, setSelectedGroup]= useState(null)
 
   const [payType,      setPayType]      = useState('full')
@@ -517,24 +518,11 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
 
   if (!canUseNewClientFlow) return null
 
-  const loadGroups = async (st) => {
+  const loadGroups = async (fmt, st) => {
     setGroupsLoading(true); setErr('')
     try {
-      const r = await api.get('/groups/', {
-        params: {
-          status: st, page_size: 100,
-          training_format: client.training_format,
-          ...(client.training_format === 'offline' ? { group_type: client.group_type } : {}),
-        },
-      })
-      const list = r.data.results || []
-      const tf = client.training_format
-      const gt = (client.group_type || '').trim()
-      setGroups(list.filter(g => {
-        if (g.training_format !== tf) return false
-        if (tf === 'online' && !gt) return true
-        return g.group_type === gt
-      }))
+      const r = await api.get('/groups/', { params: { status: st, page_size: 100, training_format: fmt } })
+      setGroups(r.data.results || [])
     } catch { setGroups([]) }
     finally { setGroupsLoading(false) }
   }
@@ -542,9 +530,10 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const handleToggle = () => {
     const next = !open
     setOpen(next)
-    if (next) { setStep(1); setSelectedGroup(null); setErr(''); loadGroups(statusFilter) }
+    if (next) { setStep(1); setSelectedGroup(null); setErr(''); loadGroups(formatFilter, statusFilter) }
   }
-  const switchFilter = (st) => { setStatusFilter(st); loadGroups(st) }
+  const switchFormat = (fmt) => { setFormatFilter(fmt); setSelectedGroup(null); loadGroups(fmt, statusFilter) }
+  const switchFilter = (st) => { setStatusFilter(st); loadGroups(formatFilter, st) }
 
   // Шаг 1 → 2: выбрать группу (только сохраняем в state, API не вызываем)
   const handleSelectGroup = (g) => {
@@ -603,6 +592,19 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
 
       {open && step === 1 && (
         <div className="px-4 pb-4 border-t border-gray-100 space-y-3 pt-3">
+          {/* Формат */}
+          <div className="flex gap-2">
+            {[{ val: 'offline', icon: <Dumbbell size={13} />, label: 'Оффлайн' }, { val: 'online', icon: <Globe size={13} />, label: 'Онлайн' }].map(({ val, icon, label }) => (
+              <button key={val} type="button" onClick={() => switchFormat(val)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border-2 transition touch-manipulation"
+                style={formatFilter === val
+                  ? { background: '#ede9fe', borderColor: '#7c3aed', color: '#7c3aed' }
+                  : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }}>
+                {icon} {label}
+              </button>
+            ))}
+          </div>
+          {/* Статус */}
           <div className="flex gap-2">
             {[{ val: 'recruitment', label: 'Набор' }, { val: 'active', label: 'Активный' }].map(({ val, label }) => (
               <button key={val} type="button" onClick={() => switchFilter(val)}
@@ -2885,18 +2887,6 @@ export default function MobileClientDetail() {
   return (
     <MobileLayout>
       <div className="space-y-4">
-        {justCreatedCreds && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-            <p className="text-emerald-800 font-semibold text-[15px]">Клиент успешно создан</p>
-            <p className="text-emerald-700 text-sm mt-1">
-              Логин: <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded">{justCreatedCreds.login}</span>
-            </p>
-            <p className="text-emerald-700 text-sm mt-1">
-              Пароль: <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded">{justCreatedCreds.password}</span>
-            </p>
-          </div>
-        )}
-
         <Link to="/mobile/clients"
           className="inline-flex items-center gap-2 text-sm text-blue-600 font-medium touch-manipulation min-h-[44px] -mb-1">
           <ArrowLeft size={18} /> К списку клиентов
@@ -3111,9 +3101,6 @@ export default function MobileClientDetail() {
 
         {/* Добавить в группу: шаг1 выбрать группу, шаг2 оплата, submit в правильном порядке */}
         <MobileNewClientAddPanel client={client} clientId={id} onSuccess={load} />
-
-        {/* Ввести оплату: показывается для new/trial без оплаты (после cancel или пробного) */}
-        <MobileEnterPaymentPanel client={client} clientId={id} onSuccess={load} />
 
         {/* Бронь следующей группы */}
         <MobileReservationPanel client={client} clientId={id} onSuccess={load} />
