@@ -2436,7 +2436,7 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
                             if (changeGroupSelected?.id === g.id) {
                               setChangeGroupSelected(null); setChangeGroupStep(1)
                             } else {
-                              setChangeGroupSelected(g); setChangeGroupStep(2)
+                              setChangeGroupSelected(g); setChangeGroupStep(3)
                             }
                             setChangeGroupPayAmount(''); setChangeGroupErr('')
                           }}
@@ -2462,27 +2462,6 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
                           </div>
                         </button>
                       ))}
-                    </div>
-                  )}
-
-                  {/* Step 2 — Пропустить / Доплата */}
-                  {changeGroupSelected && changeGroupStep === 2 && (
-                    <div className="space-y-2 border-t border-purple-100 pt-2">
-                      <p className="text-xs font-semibold text-gray-600">
-                        Группа #{changeGroupSelected.number} — что делаем с оплатой?
-                      </p>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => handleChangeGroup(false)} disabled={changeGroupSaving}
-                          className="flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 touch-manipulation transition disabled:opacity-60"
-                          style={{ background: '#f3f4f6', borderColor: '#e5e7eb', color: '#374151' }}>
-                          {changeGroupSaving ? '...' : 'Пропустить'}
-                        </button>
-                        <button type="button" onClick={() => setChangeGroupStep(3)}
-                          className="flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 touch-manipulation transition"
-                          style={{ background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }}>
-                          Доплата
-                        </button>
-                      </div>
                     </div>
                   )}
 
