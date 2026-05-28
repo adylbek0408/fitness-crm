@@ -2904,66 +2904,57 @@ export default function MobileClientDetail() {
 
         {/* Основная карточка */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border overflow-hidden">
-          {/* Avatar + имя + статус */}
-          <div className="flex items-start gap-3.5">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 text-white font-bold text-[17px] select-none"
-                 style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
-              {(client.first_name?.[0] || '').toUpperCase()}{(client.last_name?.[0] || '').toUpperCase()}
+          {/* Имя + статус */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-[19px] font-bold text-gray-900 leading-tight">{client.full_name}</h2>
+              <p className="text-sm text-gray-400 mt-0.5">{client.phone}</p>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="text-[19px] font-bold text-gray-900 leading-tight">{client.full_name}</h2>
-                  <p className="text-sm text-gray-400 mt-0.5">{client.phone}</p>
+            <div className="relative shrink-0" style={{ zIndex: 10 }}>
+              <button type="button" onClick={() => setStatusMenuOpen(o => !o)} disabled={statusLoading}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition whitespace-nowrap ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
+                {statusLoading
+                  ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  : <>
+                      {client.status === 'trial' && <FlaskConical size={10} />}
+                      {STATUS_LABEL[client.status]}
+                    </>
+                }
+                <ChevronDown size={10} />
+              </button>
+              {statusMenuOpen && (
+                <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
+                  {STATUS_OPTIONS.map(opt => (
+                    <button key={opt.value} type="button" onClick={() => changeStatus(opt.value)}
+                      className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition ${
+                        opt.value === client.status ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
+                      }`}>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
-                {/* Статус — правый верхний угол */}
-                <div className="relative shrink-0" style={{ zIndex: 10 }}>
-                  <button type="button" onClick={() => setStatusMenuOpen(o => !o)} disabled={statusLoading}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition whitespace-nowrap ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
-                    {statusLoading
-                      ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      : <>
-                          {client.status === 'trial' && <FlaskConical size={10} />}
-                          {STATUS_LABEL[client.status]}
-                        </>
-                    }
-                    <ChevronDown size={10} />
-                  </button>
-                  {statusMenuOpen && (
-                    <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
-                      {STATUS_OPTIONS.map(opt => (
-                        <button key={opt.value} type="button" onClick={() => changeStatus(opt.value)}
-                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition ${
-                            opt.value === client.status ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
-                          }`}>
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Формат (если нет группы) + Telegram */}
-              {!client.group && (
-                <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
-                  {client.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
-                  {client.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
-                  {client.group_type ? ` · ${GROUP_TYPE_LABEL[client.group_type] || client.group_type}` : ''}
-                </p>
-              )}
-              {client.training_format === 'online' && client.telegram_link && (
-                <p className="text-xs mt-1 flex items-center gap-1 break-all">
-                  <Send size={12} style={{ color: '#0ea5e9' }} />
-                  <a href={client.telegram_link.startsWith('http') ? client.telegram_link : `https://t.me/${client.telegram_link.replace(/^@/, '')}`}
-                     target="_blank" rel="noreferrer" style={{ color: '#0284c7' }} className="underline">
-                    {client.telegram_link}
-                  </a>
-                </p>
               )}
             </div>
           </div>
+
+          {/* Формат (если нет группы) + Telegram */}
+          {!client.group && (
+            <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+              {client.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
+              {client.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
+              {client.group_type ? ` · ${GROUP_TYPE_LABEL[client.group_type] || client.group_type}` : ''}
+            </p>
+          )}
+          {client.training_format === 'online' && client.telegram_link && (
+            <p className="text-xs mt-1.5 flex items-center gap-1 break-all">
+              <Send size={12} style={{ color: '#0ea5e9' }} />
+              <a href={client.telegram_link.startsWith('http') ? client.telegram_link : `https://t.me/${client.telegram_link.replace(/^@/, '')}`}
+                 target="_blank" rel="noreferrer" style={{ color: '#0284c7' }} className="underline">
+                {client.telegram_link}
+              </a>
+            </p>
+          )}
 
           {/* Чипы: пробный / бонусы / % / google */}
           <div className="flex flex-wrap gap-2 mt-4">
