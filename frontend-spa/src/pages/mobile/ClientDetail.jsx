@@ -2433,12 +2433,8 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
                       {changeGroupGroups.map(g => (
                         <button key={g.id} type="button"
                           onClick={() => {
-                            if (changeGroupSelected?.id === g.id) {
-                              setChangeGroupSelected(null); setChangeGroupStep(1)
-                            } else {
-                              setChangeGroupSelected(g); setChangeGroupStep(3)
-                            }
-                            setChangeGroupPayAmount(''); setChangeGroupErr('')
+                            setChangeGroupSelected(changeGroupSelected?.id === g.id ? null : g)
+                            setChangeGroupErr('')
                           }}
                           className="w-full text-left p-2.5 rounded-xl border-2 transition touch-manipulation"
                           style={changeGroupSelected?.id === g.id
@@ -2465,65 +2461,16 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
                     </div>
                   )}
 
-                  {/* Step 3 — Full payment form */}
-                  {changeGroupSelected && changeGroupStep === 3 && (
-                    <div className="space-y-3 border-t border-purple-100 pt-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Оплата — Группа #{changeGroupSelected.number}</p>
-
-                      {/* Тип оплаты */}
-                      <div className="flex gap-2">
-                        {[{ v: 'full', l: 'Полная' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
-                          <button key={v} type="button" onClick={() => setChangeGroupPayType(v)}
-                            className="flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 touch-manipulation transition"
-                            style={changeGroupPayType === v
-                              ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
-                              : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
-                            }>
-                            {l}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Полная оплата */}
-                      {changeGroupPayType === 'full' && (
-                        <input type="number" min="0" step="100" placeholder="Сумма (сом)"
-                          value={changeGroupPayAmount} onChange={e => setChangeGroupPayAmount(e.target.value)}
-                          className="crm-mobile-input w-full" />
-                      )}
-
-                      {/* Рассрочка */}
-                      {changeGroupPayType === 'installment' && (
-                        <div className="space-y-2">
-                          <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
-                            value={changeGroupTotalCost} onChange={e => setChangeGroupTotalCost(e.target.value)}
-                            className="crm-mobile-input w-full" />
-                          <DatePickerInput value={changeGroupDeadline} onChange={e => setChangeGroupDeadline(e.target.value)} />
-                          <input type="number" min="0" step="100" placeholder="Первый платёж (необяз.)"
-                            value={changeGroupInitPay} onChange={e => setChangeGroupInitPay(e.target.value)}
-                            className="crm-mobile-input w-full" />
-                        </div>
-                      )}
-
-                      {/* Бонус % */}
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-1">Бонус с оплаты (%)</p>
-                        <input type="number" min={0} max={100} step={1} placeholder="0–100"
-                          value={changeGroupBonusPercent} onChange={e => setChangeGroupBonusPercent(e.target.value)}
-                          className="crm-mobile-input w-full" />
-                      </div>
-
-                      <button type="button" onClick={() => handleChangeGroup(true)} disabled={changeGroupSaving}
+                  {changeGroupSelected && (
+                    <div className="border-t border-purple-100 pt-2">
+                      <button type="button" onClick={() => handleChangeGroup(false)} disabled={changeGroupSaving}
                         className="w-full py-2.5 rounded-2xl text-xs font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
-                        style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
+                        style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
                         {changeGroupSaving
                           ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                           : <Check size={14} />
                         }
-                        Сохранить
-                      </button>
-                      <button type="button" onClick={() => setChangeGroupStep(2)}
-                        className="w-full text-center text-xs text-gray-400 touch-manipulation py-1">
-                        ← Назад
+                        Сменить на Группу #{changeGroupSelected.number}
                       </button>
                     </div>
                   )}
