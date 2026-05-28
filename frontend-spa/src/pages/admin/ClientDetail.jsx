@@ -1538,9 +1538,6 @@ export default function ClientDetail() {
   const { user } = useOutletContext()
   const [client, setClient]             = useState(null)
   const [planId, setPlanId]             = useState(null)
-  const [newPassword, setNewPassword]   = useState(null)
-  const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
-  const [resetError, setResetError]     = useState('')
   const [statusLoading, setStatusLoading] = useState(false)
   const [confirmModal, setConfirmModal] = useState(null)
   const [alertModal, setAlertModal]     = useState(null)
@@ -1553,7 +1550,6 @@ export default function ClientDetail() {
   }
 
   useEffect(() => { load() }, [id])
-  useEffect(() => setNewPassword(null), [id])
 
   const doChangeStatus = async (newStatus) => {
     if (statusLoading) return
@@ -1574,16 +1570,6 @@ export default function ClientDetail() {
       return
     }
     doChangeStatus(newStatus)
-  }
-
-  const resetCabinetPassword = async () => {
-    setResetPasswordLoading(true); setNewPassword(null); setResetError('')
-    try {
-      const r = await api.post(`/clients/${id}/reset_cabinet_password/`)
-      setNewPassword(r.data.password); load()
-    } catch (e) {
-      setResetError(e.response?.data?.detail || e.message || 'Ошибка')
-    } finally { setResetPasswordLoading(false) }
   }
 
   if (!client) return (
@@ -1686,39 +1672,34 @@ export default function ClientDetail() {
             </div>
           </div>
 
-          {/* Кабинет */}
-          {client.cabinet_username && (
-            <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
-              <div className="flex items-center gap-2">
-                <KeyRound size={12} className="text-slate-400" />
-                <span className="text-slate-500">Логин:</span>
-                <code className="bg-white/80 px-2 py-0.5 rounded font-mono font-semibold text-slate-700 border border-slate-200">{client.cabinet_username}</code>
-                <CopyButton text={client.cabinet_username} />
-              </div>
-              {(newPassword || client.cabinet_password) && (
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-500">Пароль:</span>
-                  <code className={`px-2 py-0.5 rounded font-mono font-semibold border ${
-                    newPassword ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-white/80 text-slate-700 border-slate-200'
-                  }`}>{newPassword || client.cabinet_password}</code>
-                  <CopyButton text={newPassword || client.cabinet_password} />
-                  {newPassword && <span className="text-emerald-600 font-medium">✓ Обновлён</span>}
-                </div>
-              )}
-              <button onClick={resetCabinetPassword} disabled={resetPasswordLoading}
-                className="flex items-center gap-1 text-slate-400 hover:text-indigo-600 transition disabled:opacity-50">
-                {resetPasswordLoading
-                  ? <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                  : <KeyRound size={11} />
-                }
-                <span>Сбросить пароль</span>
-              </button>
-            </div>
-          )}
-          {!client.cabinet_username && (
-            <p className="text-xs text-slate-400 mt-3"><KeyRound size={11} className="inline mr-1" />Кабинет не создан</p>
-          )}
-          {resetError && <p className="text-red-500 text-xs mt-1">{resetError}</p>}
+          {/* Чипы: бонусы / % / Google */}
+          <div className="flex flex-wrap gap-2 mt-4">
+            {client.bonus_balance != null && Number(client.bonus_balance) !== 0 && (
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                Number(client.bonus_balance) < 0
+                  ? 'bg-red-100 text-red-700 border border-red-200'
+                  : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+              }`}>
+                <Gift size={10} />
+                {Number(client.bonus_balance) < 0 ? 'Долг ' : 'Бонус '}
+                {fmtMoney(Math.abs(Number(client.bonus_balance)))}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+              <Percent size={10} /> {bonusPercentDisplay(client.bonus_percent)}% с оплаты
+            </span>
+            {client.google_linked ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                <svg width="10" height="10" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="10" fill="#34d399"/><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Google
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-400 border border-slate-200">
+                <svg width="10" height="10" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="9" stroke="#d1d5db" strokeWidth="2"/></svg>
+                Google не подключён
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1819,23 +1800,24 @@ export default function ClientDetail() {
 
           {client.payment_type === 'full' && full && (
             <div className="space-y-3">
-              {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) && (
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                  <span className="text-sm text-slate-500">Сумма курса</span>
-                  <span className="font-bold text-slate-900 crm-money">{fmtMoney(full.course_amount)}</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl p-4" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">
+                    {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) ? 'К оплате' : 'Сумма'}
+                  </p>
+                  <p className="text-lg font-bold text-slate-900 crm-money">{fmtMoney(full.amount)}</p>
+                  {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) && (
+                    <p className="text-xs text-slate-400 mt-0.5">курс: {fmtMoney(full.course_amount)}</p>
+                  )}
                 </div>
-              )}
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                <span className="text-sm text-slate-500">
-                  {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) ? 'К оплате' : 'Сумма'}
-                </span>
-                <span className="font-bold text-slate-900 crm-money">{fmtMoney(full.amount)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                <span className="text-sm text-slate-500">Статус</span>
-                <span className={`flex items-center gap-1.5 text-sm font-semibold ${full.is_paid ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {full.is_paid ? <><CheckCircle size={14} /> Оплачено</> : <><Clock size={14} /> Не оплачено</>}
-                </span>
+                <div className="rounded-xl p-4" style={full.is_paid
+                  ? { background: '#f0fdf4', border: '1px solid #bbf7d0' }
+                  : { background: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <p className={`text-[10px] font-semibold uppercase tracking-wide mb-1 ${full.is_paid ? 'text-emerald-500' : 'text-red-400'}`}>Статус</p>
+                  <p className={`text-sm font-bold flex items-center gap-1.5 ${full.is_paid ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {full.is_paid ? <><CheckCircle size={14} /> Оплачено</> : <><Clock size={14} /> Не оплачено</>}
+                  </p>
+                </div>
               </div>
               {full.receipt && (
                 <a href={toAbsoluteUrl(full.receipt)} target="_blank" rel="noreferrer"
@@ -1844,7 +1826,7 @@ export default function ClientDetail() {
                 </a>
               )}
               {!full.is_paid && (
-                <div className="pt-2 border-t border-slate-100">
+                <div className="pt-3 border-t border-slate-100">
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Подтвердить оплату</p>
                   <ConfirmFullPaymentForm clientId={id} amount={full.amount} onSuccess={load} />
                 </div>
@@ -1854,61 +1836,66 @@ export default function ClientDetail() {
 
           {client.payment_type === 'installment' && plan && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                <span className="text-sm text-slate-500">Общая стоимость</span>
-                <span className="font-bold text-slate-900 crm-money">{fmtMoney(plan.total_cost)}</span>
+              {/* 3 metric tiles */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl p-3 text-center" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Всего</p>
+                  <p className="text-sm font-bold text-slate-900 crm-money">{fmtMoney(plan.total_cost)}</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                  <p className="text-[9px] text-emerald-500 font-semibold uppercase tracking-wide mb-1">Оплачено</p>
+                  <p className="text-sm font-bold text-emerald-700 crm-money">{fmtMoney(plan.total_paid)}</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={Number(plan.remaining) <= 0
+                  ? { background: '#f0fdf4', border: '1px solid #bbf7d0' }
+                  : { background: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <p className={`text-[9px] font-semibold uppercase tracking-wide mb-1 ${Number(plan.remaining) <= 0 ? 'text-emerald-500' : 'text-red-400'}`}>Остаток</p>
+                  <p className={`text-sm font-bold crm-money ${Number(plan.remaining) <= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {Number(plan.remaining) <= 0 ? '—' : fmtMoney(plan.remaining)}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-xl">
-                <span className="text-sm text-slate-500">Оплачено</span>
-                <span className="font-bold text-emerald-600 crm-money">{fmtMoney(plan.total_paid)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-amber-50 rounded-xl">
-                <span className="text-sm text-slate-500">Остаток</span>
-                <span className={`font-bold crm-money ${Number(plan.remaining) > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                  {fmtMoney(plan.remaining)}
-                </span>
-              </div>
+              {/* Progress bar */}
               <div>
-                <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-                  <span>Прогресс</span>
-                  <span className="font-semibold text-slate-600">{Math.round(payProgress)}%</span>
-                </div>
                 <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      payProgress >= 100 ? 'bg-emerald-500' : payProgress >= 60 ? 'bg-amber-400' : 'bg-red-400'
-                    }`}
-                    style={{ width: `${payProgress}%` }}
-                  />
+                  <div className="h-full rounded-full transition-all duration-500"
+                       style={{ width: `${payProgress}%`, background: payProgress >= 100 ? '#10b981' : 'linear-gradient(90deg,#7c3aed,#a855f7)' }} />
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  <span className="text-xs text-slate-400 font-medium">{Math.round(payProgress)}% оплачено</span>
+                  {Number(plan.remaining) <= 0
+                    ? <span className="text-xs font-semibold text-emerald-600">✓ Закрыто</span>
+                    : <span className="text-xs text-slate-400">до {plan.deadline}</span>
+                  }
                 </div>
               </div>
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                <span className="text-sm text-slate-500">Дедлайн</span>
-                <span className="text-sm font-semibold text-slate-700">{plan.deadline}</span>
-              </div>
+              {/* История платежей — timeline */}
               {plan.payments?.length > 0 && (
                 <div className="pt-2 border-t border-slate-100">
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">История платежей</p>
-                  {plan.payments.map((p, i) => (
-                    <div key={p.id} className="flex items-center justify-between py-2 text-xs border-b border-slate-50 last:border-0">
-                      <div className="flex flex-col">
-                        <span className="text-slate-500">{fmtDate(p.paid_at)}</span>
-                        {p.created_at && (
-                          <span className="text-[10px] text-slate-400">
-                            загружен {fmtDateTime(p.created_at)}
-                          </span>
-                        )}
+                  <div>
+                    {plan.payments.map((p, i) => (
+                      <div key={p.id} className="flex items-start gap-3 py-2.5 border-b border-slate-50 last:border-0">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start gap-2">
+                            <p className="text-xs font-semibold text-slate-700">Платёж {i + 1}</p>
+                            <span className="text-xs font-bold text-emerald-700 crm-money shrink-0">{fmtMoney(p.amount)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mt-0.5">
+                            <p className="text-[11px] text-slate-400">{p.created_at ? fmtDateTime(p.created_at) : (p.paid_at || '—')}</p>
+                            {p.receipt
+                              ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer"
+                                  className="flex items-center gap-1 text-indigo-500 text-[11px] font-semibold shrink-0 hover:text-indigo-700 transition">
+                                  <Receipt size={11} /> Чек
+                                </a>
+                              : null
+                            }
+                          </div>
+                        </div>
                       </div>
-                      <span className="font-semibold text-slate-700 crm-money">{fmtMoney(p.amount)}</span>
-                      {p.receipt
-                        ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer"
-                            className="text-indigo-500 hover:text-indigo-700 transition flex items-center gap-1">
-                            <Receipt size={11} /> Чек
-                          </a>
-                        : <span className="text-slate-300">—</span>
-                      }
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1925,19 +1912,26 @@ export default function ClientDetail() {
             </div>
             <h3 className="font-bold text-slate-800">История платежей</h3>
           </div>
-          <div className="space-y-2">
+          <div>
             {allReceipts.map((r, i) => (
-              <div key={`${r.id}-${i}`}
-                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-slate-50 rounded-xl">
-                <span className="text-xs text-slate-400">{r.date ? fmtDateTime(r.date) : '—'}</span>
-                <span className="text-sm font-semibold text-slate-700 crm-money">{r.label} — {fmtMoney(r.amount)}</span>
-                {r.receipt
-                  ? <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 text-xs font-semibold transition">
-                      <Receipt size={13} /> Открыть чек →
-                    </a>
-                  : <span className="text-xs text-slate-300">Без чека</span>
-                }
+              <div key={`${r.id}-${i}`} className="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start gap-3">
+                    <p className="text-sm font-semibold text-slate-700">{r.label}</p>
+                    <span className="text-sm font-bold text-emerald-700 crm-money shrink-0">{fmtMoney(r.amount)}</span>
+                  </div>
+                  <div className="flex justify-between items-center mt-0.5">
+                    <p className="text-xs text-slate-400">{r.date ? fmtDateTime(r.date) : '—'}</p>
+                    {r.receipt
+                      ? <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1.5 text-indigo-500 hover:text-indigo-700 text-xs font-semibold transition shrink-0">
+                          <Receipt size={11} /> Чек
+                        </a>
+                      : null
+                    }
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -1965,9 +1959,6 @@ export default function ClientDetail() {
 
       {/* ── Отменить оплату ── */}
       <CancelPaymentPanel client={client} clientId={id} onSuccess={load} />
-
-      {/* ── Ввод оплаты (после отмены) ── */}
-      <EnterPaymentPanel client={client} clientId={id} onSuccess={load} />
 
       {/* ── Новый клиент: в группу без новой оплаты (пробных пропускаем) ── */}
       <NewClientAddToGroupPanel client={client} clientId={id} onSuccess={load} />
