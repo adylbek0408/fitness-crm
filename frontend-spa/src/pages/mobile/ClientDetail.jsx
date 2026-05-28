@@ -1609,54 +1609,64 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
       <button type="button" onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between p-4 touch-manipulation text-left">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-               style={{ background: group.training_format === 'online' ? '#ecfdf5' : '#ede9fe' }}>
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+               style={{ background: group.training_format === 'online'
+                 ? 'linear-gradient(135deg,#d1fae5,#a7f3d0)'
+                 : 'linear-gradient(135deg,#ede9fe,#fce7f3)' }}>
             {group.training_format === 'online'
               ? <Globe size={18} style={{ color: '#059669' }} />
               : <Dumbbell size={18} style={{ color: '#7c3aed' }} />}
           </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-gray-800 text-sm truncate">
-              Группа #{group.number}
-              {trainerName && <span className="font-normal text-gray-500 ml-1.5 text-xs">· {trainerName}</span>}
-            </p>
-            <p className="text-xs text-gray-400 mt-0.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-bold text-gray-900 text-[15px]">Группа #{group.number}</p>
+              {client.payment_type === 'full'
+                ? (full?.is_paid
+                    ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Оплачено</span>
+                    : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Не оплачено</span>)
+                : (rem <= 0
+                    ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Закрыто</span>
+                    : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">{pct}%</span>)
+              }
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">
               {group.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
               {group.group_type ? ` · ${GROUP_TYPE_LABEL[group.group_type] || group.group_type}` : ''}
-              {' · '}
-              {client.payment_type === 'full'
-                ? (full?.is_paid ? <span className="text-emerald-600">Оплачено</span> : <span className="text-amber-600">Не оплачено</span>)
-                : (rem <= 0 ? <span className="text-emerald-600">Закрыто</span> : <span className="text-amber-600">{pct}% оплачено</span>)
-              }
+              {trainerName && ` · ${trainerName}`}
             </p>
           </div>
         </div>
-        {open ? <ChevronUp size={18} className="text-gray-400 shrink-0" /> : <ChevronDown size={18} className="text-gray-400 shrink-0" />}
+        <div className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+          <ChevronDown size={18} className="text-gray-400 shrink-0" />
+        </div>
       </button>
 
       {open && (
         <div className="px-4 pb-5 border-t border-gray-100 space-y-4 pt-3">
           {client.payment_type === 'full' && full && (
-            <div className="space-y-2 text-sm">
-              {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Сумма курса</span>
-                  <span className="crm-money font-semibold">{fmtMoney(full.course_amount)}</span>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl p-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">
+                    {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) ? 'К оплате' : 'Сумма'}
+                  </p>
+                  <p className="text-base font-bold text-gray-900">{fmtMoney(full.amount)}</p>
+                  {full.course_amount != null && Number(full.course_amount) !== Number(full.amount) && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">курс: {fmtMoney(full.course_amount)}</p>
+                  )}
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-gray-500">{full.course_amount != null && Number(full.course_amount) !== Number(full.amount) ? 'К оплате' : 'Сумма'}</span>
-                <span className="crm-money font-semibold">{fmtMoney(full.amount)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">Статус</span>
-                <span className={`font-medium flex items-center gap-1 ${full.is_paid ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {full.is_paid ? <><CheckCircle size={14} /> Оплачено</> : <><Clock size={14} /> Не оплачено</>}
-                </span>
+                <div className="rounded-xl p-3" style={full.is_paid
+                  ? { background: '#f0fdf4', border: '1px solid #bbf7d0' }
+                  : { background: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <p className={`text-[10px] font-semibold uppercase tracking-wide mb-1 ${full.is_paid ? 'text-emerald-500' : 'text-red-400'}`}>Статус</p>
+                  <p className={`text-sm font-bold flex items-center gap-1 ${full.is_paid ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {full.is_paid ? <><CheckCircle size={13} /> Оплачено</> : <><Clock size={13} /> Не оплачено</>}
+                  </p>
+                </div>
               </div>
               {full.receipt && (
                 <a href={toAbsoluteUrl(full.receipt)} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 text-blue-500 text-sm">
+                  className="flex items-center gap-1.5 text-blue-500 text-sm font-medium">
                   <Receipt size={14} /> Открыть чек →
                 </a>
               )}
@@ -1670,27 +1680,45 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
           )}
 
           {client.payment_type === 'installment' && plan && (
-            <div className="space-y-3 text-sm">
-              <div className="bg-gray-50 rounded-xl p-3 space-y-2">
-                <div className="flex justify-between"><span className="text-gray-500">Общая стоимость</span><span className="crm-money text-gray-800">{fmtMoney(plan.total_cost)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Оплачено</span><span className="crm-money text-emerald-600">{fmtMoney(plan.total_paid)}</span></div>
-                <div className="border-t border-gray-200 pt-2 flex justify-between">
-                  {rem < 0
-                    ? <><span className="text-gray-500">Переплата</span><span className="text-amber-600 font-semibold">+{fmtMoney(Math.abs(rem))}</span></>
-                    : <><span className="text-gray-500">Остаток</span><span className={`crm-money ${rem <= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{rem <= 0 ? '—' : fmtMoney(rem)}</span></>
+            <div className="space-y-3">
+              {/* 3 metric плашки */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl p-3 text-center" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Всего</p>
+                  <p className="text-xs font-bold text-gray-900">{fmtMoney(plan.total_cost)}</p>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                  <p className="text-[9px] text-emerald-500 font-semibold uppercase tracking-wide mb-1">Оплачено</p>
+                  <p className="text-xs font-bold text-emerald-700">{fmtMoney(plan.total_paid)}</p>
+                </div>
+                {rem < 0 ? (
+                  <div className="rounded-xl p-3 text-center" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+                    <p className="text-[9px] text-amber-500 font-semibold uppercase tracking-wide mb-1">Переплата</p>
+                    <p className="text-xs font-bold text-amber-600">+{fmtMoney(Math.abs(rem))}</p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl p-3 text-center" style={rem <= 0
+                    ? { background: '#f0fdf4', border: '1px solid #bbf7d0' }
+                    : { background: '#fef2f2', border: '1px solid #fecaca' }}>
+                    <p className={`text-[9px] font-semibold uppercase tracking-wide mb-1 ${rem <= 0 ? 'text-emerald-500' : 'text-red-400'}`}>Остаток</p>
+                    <p className={`text-xs font-bold ${rem <= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{rem <= 0 ? '—' : fmtMoney(rem)}</p>
+                  </div>
+                )}
+              </div>
+              {/* Progress bar */}
+              <div>
+                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                  <div className="h-2 rounded-full transition-all duration-500"
+                       style={{ width: `${pct}%`, background: rem < 0 ? '#f59e0b' : pct === 100 ? '#10b981' : 'linear-gradient(90deg,#7c3aed,#a855f7)' }} />
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  <span className="text-xs text-gray-400 font-medium">{pct}% оплачено</span>
+                  {rem <= 0 && rem >= 0
+                    ? <span className="text-xs font-semibold text-emerald-600">✓ Закрыто</span>
+                    : <span className="text-xs text-gray-400">до {plan.deadline}</span>
                   }
                 </div>
               </div>
-              <div>
-                <div className="w-full bg-gray-100 rounded-full h-1.5">
-                  <div className={`h-1.5 rounded-full transition-all ${rem < 0 ? 'bg-amber-400' : rem <= 0 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
-                </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-xs text-gray-400">{pct}% оплачено</span>
-                  {rem <= 0 && rem >= 0 && <span className="text-xs text-emerald-600 font-medium">Полностью закрыто</span>}
-                </div>
-              </div>
-              <div className="flex justify-between"><span className="text-gray-500">Дедлайн</span><span className="text-gray-700">{plan.deadline}</span></div>
               {rem > 0 && (
                 <div className="pt-2 border-t border-gray-100">
                   <AddPaymentForm planId={planId} onSuccess={onSuccess} />
@@ -1706,16 +1734,25 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
           {receipts.length > 0 && (
             <div className="border-t border-gray-100 pt-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">История платежей</p>
-              <div className="space-y-1.5">
+              <div>
                 {receipts.map((r, i) => (
-                  <div key={`r-${r.id}-${i}`}
-                    className="flex items-center justify-between py-1.5 px-2 bg-gray-50 rounded-lg text-xs gap-2">
-                    <span className="text-gray-400 shrink-0">{r.date ? fmtDateTime(r.date) : '—'}</span>
-                    <span className="crm-money flex-1 text-right">{r.label} — {fmtMoney(r.amount)}</span>
-                    {r.receipt
-                      ? <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold shrink-0"><Receipt size={11} /> Чек</a>
-                      : <span className="text-gray-300 shrink-0">—</span>
-                    }
+                  <div key={`r-${r.id}-${i}`} className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start gap-2">
+                        <p className="text-xs font-semibold text-gray-800">{r.label}</p>
+                        <span className="text-xs font-bold text-emerald-700 shrink-0">{fmtMoney(r.amount)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-0.5">
+                        <p className="text-[11px] text-gray-400">{r.date ? fmtDateTime(r.date) : '—'}</p>
+                        {r.receipt && (
+                          <a href={toAbsoluteUrl(r.receipt)} target="_blank" rel="noreferrer"
+                            className="flex items-center gap-1 text-blue-500 text-[11px] font-semibold shrink-0">
+                            <Receipt size={11} /> Чек
+                          </a>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2153,36 +2190,39 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
       <button type="button" onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between p-4 touch-manipulation text-left">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-               style={{ background: fmt === 'online' ? '#ecfdf5' : '#f3e8ff' }}>
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+               style={{ background: fmt === 'online'
+                 ? 'linear-gradient(135deg,#d1fae5,#a7f3d0)'
+                 : 'linear-gradient(135deg,#ede9fe,#fce7f3)' }}>
             {fmt === 'online'
               ? <Globe size={18} style={{ color: '#059669' }} />
               : <Dumbbell size={18} style={{ color: '#7c3aed' }} />}
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <p className="font-semibold text-gray-800 text-sm">Группа #{enrollment.group_number}</p>
-              {enrollment.trainer_name && <span className="text-xs text-gray-500">· {enrollment.trainer_name}</span>}
-              <span className="text-xs font-medium px-1.5 py-0.5 rounded-full" style={{ background: '#f3e8ff', color: '#7c3aed' }}>доп.</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-bold text-gray-900 text-[15px]">Группа #{enrollment.group_number}</p>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">доп.</span>
+              {enrollment.frozen
+                ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700">Заморожена</span>
+                : needsConfigure
+                  ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Нужна оплата</span>
+                  : enrollment.is_fully_paid
+                    ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Оплачено</span>
+                    : total > 0
+                      ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">{pct}%</span>
+                      : null
+              }
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-gray-400 mt-0.5 truncate">
               {fmtLabel}
               {enrollment.group_type ? ` · ${GROUP_TYPE_LABEL[enrollment.group_type] || enrollment.group_type}` : ''}
-              {' · '}
-              {enrollment.frozen
-                ? <span className="text-sky-600 font-medium">Заморожена</span>
-                : needsConfigure
-                  ? <span className="text-amber-500 font-medium">Нужна оплата</span>
-                  : enrollment.is_fully_paid
-                    ? <span className="text-emerald-600">Оплачено</span>
-                    : total > 0
-                      ? <span className="text-amber-600">{pct}% оплачено</span>
-                      : <span className="text-gray-400">Без суммы</span>
-              }
+              {enrollment.trainer_name && ` · ${enrollment.trainer_name}`}
             </p>
           </div>
         </div>
-        {open ? <ChevronUp size={18} className="text-gray-400 shrink-0" /> : <ChevronDown size={18} className="text-gray-400 shrink-0" />}
+        <div className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+          <ChevronDown size={18} className="text-gray-400 shrink-0" />
+        </div>
       </button>
 
       {open && (
@@ -2201,56 +2241,81 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
             />
           ) : (
             <>
-              <div className="bg-gray-50 rounded-xl p-3 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Тип оплаты</span>
-                  <span className="text-gray-700">{enrollment.payment_type === 'full' ? 'Полная' : 'Рассрочка'}</span>
-                </div>
-                {enrollment.payment_type === 'full' && enrollment.payment_amount && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Сумма</span>
-                    <span className="crm-money">{fmtMoney(enrollment.payment_amount)}</span>
+              {/* Metric плашки */}
+              {enrollment.payment_type === 'full' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl p-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                    <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Сумма</p>
+                    <p className="text-sm font-bold text-gray-900">{fmtMoney(enrollment.payment_amount || 0)}</p>
                   </div>
-                )}
-                {enrollment.payment_type === 'installment' && (
-                  <>
-                    {enrollment.total_cost && <div className="flex justify-between"><span className="text-gray-500">Стоимость</span><span className="crm-money">{fmtMoney(enrollment.total_cost)}</span></div>}
-                    {enrollment.deadline && <div className="flex justify-between"><span className="text-gray-500">Дедлайн</span><span className="text-gray-700">{enrollment.deadline}</span></div>}
-                  </>
-                )}
-                <div className="flex justify-between border-t border-gray-200 pt-2">
-                  <span className="text-gray-500">Оплачено</span>
-                  <span className={`crm-money ${amountPaid > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>{fmtMoney(amountPaid)}</span>
-                </div>
-                {total > 0 && rem > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Остаток</span>
-                    <span className="crm-money text-red-500">{fmtMoney(rem)}</span>
+                  <div className="rounded-xl p-3" style={enrollment.is_fully_paid
+                    ? { background: '#f0fdf4', border: '1px solid #bbf7d0' }
+                    : { background: '#fef2f2', border: '1px solid #fecaca' }}>
+                    <p className={`text-[9px] font-semibold uppercase tracking-wide mb-1 ${enrollment.is_fully_paid ? 'text-emerald-500' : 'text-red-400'}`}>Статус</p>
+                    <p className={`text-xs font-bold flex items-center gap-1 ${enrollment.is_fully_paid ? 'text-emerald-700' : 'text-red-600'}`}>
+                      {enrollment.is_fully_paid ? <><CheckCircle size={12} /> Оплачено</> : <><Clock size={12} /> Не оплачено</>}
+                    </p>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-xl p-3 text-center" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                      <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Всего</p>
+                      <p className="text-xs font-bold text-gray-900">{fmtMoney(enrollment.total_cost || 0)}</p>
+                    </div>
+                    <div className="rounded-xl p-3 text-center" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                      <p className="text-[9px] text-emerald-500 font-semibold uppercase tracking-wide mb-1">Оплачено</p>
+                      <p className="text-xs font-bold text-emerald-700">{fmtMoney(amountPaid)}</p>
+                    </div>
+                    <div className="rounded-xl p-3 text-center" style={rem <= 0
+                      ? { background: '#f0fdf4', border: '1px solid #bbf7d0' }
+                      : { background: '#fef2f2', border: '1px solid #fecaca' }}>
+                      <p className={`text-[9px] font-semibold uppercase tracking-wide mb-1 ${rem <= 0 ? 'text-emerald-500' : 'text-red-400'}`}>Остаток</p>
+                      <p className={`text-xs font-bold ${rem <= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{rem <= 0 ? '—' : fmtMoney(rem)}</p>
+                    </div>
+                  </div>
+                  {enrollment.deadline && (
+                    <p className="text-xs text-gray-400">Дедлайн: <span className="text-gray-600 font-medium">{enrollment.deadline}</span></p>
+                  )}
+                </div>
+              )}
 
               {total > 0 && (
                 <div>
-                  <div className="w-full bg-gray-100 rounded-full h-1.5">
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: pct >= 100 ? '#10b981' : '#8b5cf6' }} />
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div className="h-2 rounded-full transition-all duration-500"
+                         style={{ width: `${pct}%`, background: pct >= 100 ? '#10b981' : 'linear-gradient(90deg,#7c3aed,#a855f7)' }} />
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">{pct}% оплачено</p>
+                  <div className="flex justify-between mt-1.5">
+                    <span className="text-xs text-gray-400 font-medium">{pct}% оплачено</span>
+                    {enrollment.is_fully_paid && <span className="text-xs font-semibold text-emerald-600">✓ Закрыто</span>}
+                  </div>
                 </div>
               )}
 
               {enrollment.payments?.length > 0 && (
                 <div className="border-t border-gray-100 pt-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">История платежей</p>
-                  <div className="space-y-1.5">
-                    {enrollment.payments.map(p => (
-                      <div key={p.id} className="flex items-center justify-between py-1.5 px-2 bg-gray-50 rounded-lg text-xs gap-2">
-                        <span className="text-gray-400 shrink-0">{p.created_at ? fmtDateTime(p.created_at) : (p.paid_at || '—')}</span>
-                        <span className="crm-money flex-1 text-right">{fmtMoney(p.amount)}</span>
-                        {p.receipt
-                          ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold shrink-0"><Receipt size={11} /> Чек</a>
-                          : <span className="text-gray-300 shrink-0">—</span>
-                        }
+                  <div>
+                    {enrollment.payments.map((p, i) => (
+                      <div key={p.id} className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start gap-2">
+                            <p className="text-xs font-semibold text-gray-800">Платёж {i + 1}</p>
+                            <span className="text-xs font-bold text-emerald-700 shrink-0">{fmtMoney(p.amount)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mt-0.5">
+                            <p className="text-[11px] text-gray-400">{p.created_at ? fmtDateTime(p.created_at) : (p.paid_at || '—')}</p>
+                            {p.receipt && (
+                              <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer"
+                                className="flex items-center gap-1 text-blue-500 text-[11px] font-semibold shrink-0">
+                                <Receipt size={11} /> Чек
+                              </a>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2838,39 +2903,51 @@ export default function MobileClientDetail() {
         </Link>
 
         {/* Основная карточка */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm border">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-xl font-bold text-gray-800">{client.full_name}</h2>
-              <p className="text-sm text-gray-500 mt-1">{client.phone}</p>
-              <div className="relative mt-2" style={{ zIndex: 10 }}>
-                <button type="button" onClick={() => setStatusMenuOpen(o => !o)} disabled={statusLoading}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
-                  {statusLoading
-                    ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    : <>
-                        {client.status === 'trial' && <FlaskConical size={10} />}
-                        {STATUS_LABEL[client.status]}
-                      </>
-                  }
-                  <ChevronDown size={11} />
-                </button>
-                {statusMenuOpen && (
-                  <div className="absolute left-0 top-9 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
-                    {STATUS_OPTIONS.map(opt => (
-                      <button key={opt.value} type="button" onClick={() => changeStatus(opt.value)}
-                        className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition ${
-                          opt.value === client.status ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
-                        }`}>
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border overflow-hidden">
+          {/* Avatar + имя + статус */}
+          <div className="flex items-start gap-3.5">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 text-white font-bold text-[17px] select-none"
+                 style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
+              {(client.first_name?.[0] || '').toUpperCase()}{(client.last_name?.[0] || '').toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-[19px] font-bold text-gray-900 leading-tight">{client.full_name}</h2>
+                  <p className="text-sm text-gray-400 mt-0.5">{client.phone}</p>
+                </div>
+                {/* Статус — правый верхний угол */}
+                <div className="relative shrink-0" style={{ zIndex: 10 }}>
+                  <button type="button" onClick={() => setStatusMenuOpen(o => !o)} disabled={statusLoading}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition whitespace-nowrap ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
+                    {statusLoading
+                      ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      : <>
+                          {client.status === 'trial' && <FlaskConical size={10} />}
+                          {STATUS_LABEL[client.status]}
+                        </>
+                    }
+                    <ChevronDown size={10} />
+                  </button>
+                  {statusMenuOpen && (
+                    <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
+                      {STATUS_OPTIONS.map(opt => (
+                        <button key={opt.value} type="button" onClick={() => changeStatus(opt.value)}
+                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition ${
+                            opt.value === client.status ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
+                          }`}>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Формат (если нет группы) + Telegram */}
               {!client.group && (
-                <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
                   {client.training_format === 'online' ? <Globe size={12} /> : <Dumbbell size={12} />}
                   {client.training_format === 'online' ? 'Онлайн' : 'Оффлайн'}
                   {client.group_type ? ` · ${GROUP_TYPE_LABEL[client.group_type] || client.group_type}` : ''}
@@ -2885,35 +2962,42 @@ export default function MobileClientDetail() {
                   </a>
                 </p>
               )}
-              {client.is_trial && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold mt-1"
-                      style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa' }}>
-                  <FlaskConical size={10} /> Пробный клиент
-                </span>
-              )}
-              {client.bonus_balance != null && Number(client.bonus_balance) !== 0 && (
-                <p className={`text-sm mt-1 flex items-center gap-1 ${Number(client.bonus_balance) < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  <Gift size={13} /> {Number(client.bonus_balance) < 0 ? 'Бонус (задолженность)' : 'Бонусы'}: {fmtMoney(client.bonus_balance)}
-                </p>
-              )}
-              <p className="text-sm mt-1 flex items-center gap-1 text-slate-600">
-                <Percent size={13} className="shrink-0" />
-                Бонус с оплаты: <strong>{bonusPercentDisplay(client.bonus_percent)}%</strong> (начислится после подтверждения оплаты)
-              </p>
-              <div className="mt-2">
-                {client.google_linked ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="10" fill="#34d399"/><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Google аккаунт подключён
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-full">
-                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="10" fill="#e5e7eb"/><path d="M7 10h6M10 7v6" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                    Google не подключён
-                  </span>
-                )}
-              </div>
             </div>
+          </div>
+
+          {/* Чипы: пробный / бонусы / % / google */}
+          <div className="flex flex-wrap gap-2 mt-4">
+            {client.is_trial && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
+                    style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa' }}>
+                <FlaskConical size={10} /> Пробный
+              </span>
+            )}
+            {client.bonus_balance != null && Number(client.bonus_balance) !== 0 && (
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                Number(client.bonus_balance) < 0
+                  ? 'bg-red-50 text-red-600 border border-red-200'
+                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              }`}>
+                <Gift size={10} />
+                {Number(client.bonus_balance) < 0 ? 'Долг ' : 'Бонус '}
+                {fmtMoney(Math.abs(Number(client.bonus_balance)))}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+              <Percent size={10} /> {bonusPercentDisplay(client.bonus_percent)}% с оплаты
+            </span>
+            {client.google_linked ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <svg width="10" height="10" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="10" fill="#34d399"/><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Google
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 text-gray-400 border border-gray-200">
+                <svg width="10" height="10" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="9" stroke="#d1d5db" strokeWidth="2"/></svg>
+                Google
+              </span>
+            )}
           </div>
         </div>
 
