@@ -231,9 +231,15 @@ class ClientService(BaseService):
         if group.trainer_id:
             client.trainer = group.trainer
             fields.append('trainer')
-        if client.status in ('new', 'frozen'):  # active_frozen is intentional — don't override
+        if client.status in ('new', 'frozen'):
             client.status = 'active'
             fields.append('status')
+        if client.training_format != group.training_format:
+            client.training_format = group.training_format
+            fields.append('training_format')
+        if group.group_type and client.group_type != group.group_type:
+            client.group_type = group.group_type
+            fields.append('group_type')
         client.save(update_fields=fields)
         if old_status != client.status:
             self._record_status_change(
@@ -279,11 +285,6 @@ class ClientService(BaseService):
             raise ValidationError(f'Группа {group_id} не найдена')
         if group.status == 'completed':
             raise ValidationError('Нельзя записать в завершённую группу')
-        if group.training_format != client.training_format:
-            raise ValidationError('Формат обучения группы не совпадает с форматом клиента.')
-        ct = (client.group_type or '').strip()
-        if ct and group.group_type != ct:
-            raise ValidationError('Тип группы не совпадает с типом клиента.')
 
         return self.assign_to_group(client_id, group_id)
 
