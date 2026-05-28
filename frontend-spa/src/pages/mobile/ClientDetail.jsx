@@ -2722,11 +2722,8 @@ export default function MobileClientDetail() {
   const [client, setClient]           = useState(null)
   const [loadError, setLoadError]     = useState(null)
   const [planId, setPlanId]           = useState(null)
-  const [newPassword, setNewPassword] = useState(null)
-  const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
   const [statusLoading, setStatusLoading] = useState(false)
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
-  const [resetError, setResetError]   = useState('')
   const [statusConfirm, setStatusConfirm] = useState(null)
   const [refundOpen, setRefundOpen] = useState(false)
   const [refundMsg, setRefundMsg]     = useState(null)
@@ -2745,7 +2742,6 @@ export default function MobileClientDetail() {
   }
 
   useEffect(() => { load() }, [id])
-  useEffect(() => setNewPassword(null), [id])
 
   const handleEnrollmentUpdate = (updated) => {
     setClient(prev => !prev ? prev : {
@@ -2771,16 +2767,6 @@ export default function MobileClientDetail() {
     if (newStatus === client.status) { setStatusMenuOpen(false); return }
     setStatusMenuOpen(false)
     setStatusConfirm({ newStatus, label: STATUS_ALL_LABELS[newStatus] || newStatus })
-  }
-
-  const resetCabinetPassword = async () => {
-    setResetPasswordLoading(true); setNewPassword(null); setResetError('')
-    try {
-      const r = await api.post(`/clients/${id}/reset_cabinet_password/`)
-      setNewPassword(r.data.password); load()
-    } catch (e) {
-      setResetError(e.response?.data?.detail || e.message || 'Ошибка сброса')
-    } finally { setResetPasswordLoading(false) }
   }
 
   if (loadError) return (
@@ -2914,29 +2900,19 @@ export default function MobileClientDetail() {
                 <Percent size={13} className="shrink-0" />
                 Бонус с оплаты: <strong>{bonusPercentDisplay(client.bonus_percent)}%</strong> (начислится после подтверждения оплаты)
               </p>
-              {client.cabinet_username && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-gray-400 break-all">
-                    Логин: <span className="font-mono font-bold">{client.cabinet_username}</span>
-                  </p>
-                  {(newPassword || client.cabinet_password) && (
-                    <p className={`text-xs break-all ${newPassword ? 'text-green-700' : 'text-gray-400'}`}>
-                      {newPassword ? 'Новый пароль: ' : 'Пароль: '}
-                      <span className={`font-mono font-bold px-1 rounded ${newPassword ? 'bg-green-100' : 'bg-gray-100'}`}>
-                        {newPassword || client.cabinet_password}
-                      </span>
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    Вход: <a href="/cabinet" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">/cabinet</a>
-                  </p>
-                  {resetError && <p className="text-xs text-red-500">{resetError}</p>}
-                  <button type="button" onClick={resetCabinetPassword} disabled={resetPasswordLoading}
-                    className="text-xs text-blue-600 hover:underline disabled:opacity-60">
-                    {resetPasswordLoading ? 'Создаём...' : 'Сбросить пароль'}
-                  </button>
-                </div>
-              )}
+              <div className="mt-2">
+                {client.google_linked ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="10" fill="#34d399"/><path d="M6 10.5l3 3 5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Google аккаунт подключён
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-full">
+                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="10" fill="#e5e7eb"/><path d="M7 10h6M10 7v6" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                    Google не подключён
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
