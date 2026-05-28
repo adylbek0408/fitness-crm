@@ -745,6 +745,72 @@ class ClientViewSet(viewsets.ModelViewSet):
             'client': ClientReadSerializer(client).data,
         })
 
+    @action(detail=True, methods=['patch'], permission_classes=[IsAdminOrRegistrar],
+            url_path=r'enrollments/(?P<enrollment_id>[0-9a-f-]+)/change-group')
+    def change_enrollment_group(self, request, pk=None, enrollment_id=None):
+        """Изменить группу в параллельной записи. Опционально добавляет платёж (Доплата)."""
+        try:
+            client = self.service.get_client_or_raise(pk)
+        except NotFoundError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            enrollment = ClientEnrollment.objects.get(id=enrollment_id, client=client, is_active=True)
+        except ClientEnrollment.DoesNotExist:
+            return Response({'detail': 'Запись не найдена.'}, status=status.HTTP_404_NOT_FOUND)
+
+        group_id = request.data.get('group_id')
+        if not group_id:
+            return Response({'detail': 'group_id обязателен.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.groups.models import Group
+        try:
+            new_group = Group.objects.get(id=group_id, deleted_at__isnull=True)
+        except Group.DoesNotExist:
+            return Response({'detail': 'Группа не найдена.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if new_group.status == 'completed':
+            return Response({'detail': 'Нельзя перевести в завершённую группу.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if str(enrollment.group_id) == str(new_group.id):
+            return Response({'detail': 'Клиент уже в этой группе.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        old_group_id = enrollment.group_id
+
+        with transaction.atomic():
+            enrollment.group = new_group
+            enrollment.save(update_fields=['group'])
+
+            if client.second_group_id and str(client.second_group_id) == str(old_group_id):
+                client.second_group = new_group
+                client.save(update_fields=['second_group'])
+
+            payment_amount_raw = request.data.get('payment_amount')
+            if payment_amount_raw:
+                from decimal import Decimal as _D, InvalidOperation as _Inv
+                try:
+                    amount = _D(str(payment_amount_raw).replace(',', '.'))
+                    if amount > 0:
+                        snap = f"{request.user.last_name} {request.user.first_name}".strip() or request.user.username
+                        from datetime import date as _date
+                        EnrollmentPayment.objects.create(
+                            enrollment=enrollment,
+                            amount=amount,
+                            paid_at=_date.today(),
+                            note='Доплата при смене группы',
+                            created_by=request.user,
+                            created_by_name=snap,
+                        )
+                except (_Inv, ValueError):
+                    return Response({'detail': 'Некорректная сумма доплаты.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        enrollment.refresh_from_db()
+        try:
+            data_out = ClientEnrollmentReadSerializer(enrollment).data
+        except Exception:
+            data_out = {'id': str(enrollment.id), 'detail': 'ok'}
+        return Response(data_out)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar], url_path='leave-group')
     def leave_group(self, request, pk=None):
         """Убрать клиента из основной группы без возврата денег."""

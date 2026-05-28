@@ -7,7 +7,8 @@ import {
   Globe, Dumbbell, CreditCard, CheckCircle, Clock, Receipt,
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp, ChevronRight,
   RotateCcw, Gift, Check, Layers, X, UserPlus, Percent,
-  Pencil, Ban, AlertTriangle, Send, FlaskConical, Calendar
+  Pencil, Ban, AlertTriangle, Send, FlaskConical, Calendar,
+  ArrowRightLeft
 } from 'lucide-react'
 import {
   STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
@@ -1856,6 +1857,16 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
   const [freezeRetention,   setFreezeRetention]   = useState('')
   const [freezeLoading,     setFreezeLoading]     = useState(false)
   const [freezeErr,         setFreezeErr]         = useState('')
+  const [changeGroupOpen,         setChangeGroupOpen]         = useState(false)
+  const [changeGroupFormat,       setChangeGroupFormat]       = useState('offline')
+  const [changeGroupStatusFilter, setChangeGroupStatusFilter] = useState('recruitment')
+  const [changeGroupGroups,       setChangeGroupGroups]       = useState([])
+  const [changeGroupLoading,      setChangeGroupLoading]      = useState(false)
+  const [changeGroupSelected,     setChangeGroupSelected]     = useState(null)
+  const [changeGroupStep,         setChangeGroupStep]         = useState(1)
+  const [changeGroupPayAmount,    setChangeGroupPayAmount]    = useState('')
+  const [changeGroupSaving,       setChangeGroupSaving]       = useState(false)
+  const [changeGroupErr,          setChangeGroupErr]          = useState('')
 
   const amountPaid = Number(enrollment.amount_paid || 0)
   const total = enrollment.payment_type === 'full'
@@ -1914,6 +1925,41 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
       const d = e.response?.data
       setFreezeErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
     } finally { setFreezeLoading(false) }
+  }
+
+  const loadChangeGroups = async (fmt, st) => {
+    setChangeGroupLoading(true); setChangeGroupSelected(null)
+    try {
+      const r = await api.get('/groups/', { params: { status: st, page_size: 100, training_format: fmt } })
+      setChangeGroupGroups((r.data.results || []).filter(g => g.id !== enrollment.group))
+    } catch { setChangeGroupGroups([]) } finally { setChangeGroupLoading(false) }
+  }
+
+  const handleOpenChangeGroup = () => {
+    const fmt = enrollment.group_training_format || 'offline'
+    setChangeGroupOpen(true)
+    setChangeGroupFormat(fmt)
+    setChangeGroupStatusFilter('recruitment')
+    setChangeGroupSelected(null)
+    setChangeGroupStep(1)
+    setChangeGroupPayAmount('')
+    setChangeGroupErr('')
+    loadChangeGroups(fmt, 'recruitment')
+  }
+
+  const handleChangeGroup = async (withPayment = false) => {
+    if (!changeGroupSelected) return
+    setChangeGroupSaving(true); setChangeGroupErr('')
+    try {
+      const body = { group_id: changeGroupSelected.id }
+      if (withPayment && changeGroupPayAmount) body.payment_amount = changeGroupPayAmount
+      await api.patch(`/clients/${clientId}/enrollments/${enrollment.id}/change-group/`, body)
+      setChangeGroupOpen(false)
+      if (onSuccess) onSuccess()
+    } catch (e) {
+      const d = e.response?.data
+      setChangeGroupErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
+    } finally { setChangeGroupSaving(false) }
   }
 
   return (
@@ -2139,6 +2185,160 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
                 </div>
               )}
             </>
+          )}
+
+          {/* Изменить группу */}
+          {!enrollment.frozen && (
+            <div className="border-t border-gray-100 pt-3">
+              {!changeGroupOpen ? (
+                <button type="button" onClick={handleOpenChangeGroup}
+                  className="flex items-center gap-2 text-sm font-medium touch-manipulation py-1"
+                  style={{ color: '#7c3aed' }}>
+                  <ArrowRightLeft size={14} /> Изменить группу
+                </button>
+              ) : (
+                <div className="space-y-3 rounded-xl p-3" style={{ background: '#faf5ff', border: '1px solid #e9d5ff' }}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-800">Изменить группу</p>
+                    <button type="button" onClick={() => setChangeGroupOpen(false)} className="text-gray-400 touch-manipulation p-0.5">
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Format */}
+                  <div className="flex gap-2">
+                    {[{ v: 'offline', icon: <Dumbbell size={13} />, l: 'Оффлайн' }, { v: 'online', icon: <Globe size={13} />, l: 'Онлайн' }].map(({ v, icon, l }) => (
+                      <button key={v} type="button"
+                        onClick={() => { setChangeGroupFormat(v); setChangeGroupSelected(null); setChangeGroupStep(1); loadChangeGroups(v, changeGroupStatusFilter) }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border-2 touch-manipulation transition"
+                        style={changeGroupFormat === v
+                          ? { background: '#ede9fe', borderColor: '#7c3aed', color: '#7c3aed' }
+                          : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                        }>
+                        {icon} {l}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Status filter */}
+                  <div className="flex gap-2">
+                    {[{ v: 'recruitment', l: 'Набор' }, { v: 'active', l: 'Активный' }].map(({ v, l }) => (
+                      <button key={v} type="button"
+                        onClick={() => { setChangeGroupStatusFilter(v); setChangeGroupSelected(null); setChangeGroupStep(1); loadChangeGroups(changeGroupFormat, v) }}
+                        className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition touch-manipulation"
+                        style={changeGroupStatusFilter === v
+                          ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                          : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                        }>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Groups list */}
+                  {changeGroupLoading ? (
+                    <div className="flex justify-center py-3">
+                      <span className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#7c3aed' }} />
+                    </div>
+                  ) : changeGroupGroups.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-2">Нет подходящих групп</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                      {changeGroupGroups.map(g => (
+                        <button key={g.id} type="button"
+                          onClick={() => {
+                            if (changeGroupSelected?.id === g.id) {
+                              setChangeGroupSelected(null); setChangeGroupStep(1)
+                            } else {
+                              setChangeGroupSelected(g); setChangeGroupStep(2)
+                            }
+                            setChangeGroupPayAmount(''); setChangeGroupErr('')
+                          }}
+                          className="w-full text-left p-2.5 rounded-xl border-2 transition touch-manipulation"
+                          style={changeGroupSelected?.id === g.id
+                            ? { background: '#f3e8ff', borderColor: '#7c3aed' }
+                            : { background: '#fafafa', borderColor: '#e5e7eb' }}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-semibold text-xs text-gray-800">
+                                Группа #{g.number}
+                                {g.trainer?.full_name && <span className="font-normal text-gray-400 ml-1">· {g.trainer.full_name}</span>}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {GROUP_TYPE_LABEL[g.group_type] || g.group_type || '—'}
+                                {' · '}
+                                <span className={g.status === 'active' ? 'text-emerald-600' : 'text-amber-600'}>
+                                  {g.status === 'active' ? 'Активный' : 'Набор'}
+                                </span>
+                              </p>
+                            </div>
+                            {changeGroupSelected?.id === g.id && <Check size={13} style={{ color: '#7c3aed' }} className="shrink-0" />}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Step 2 — Пропустить / Доплата */}
+                  {changeGroupSelected && changeGroupStep === 2 && (
+                    <div className="space-y-2 border-t border-purple-100 pt-2">
+                      <p className="text-xs font-semibold text-gray-600">
+                        Группа #{changeGroupSelected.number} — что делаем с оплатой?
+                      </p>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => handleChangeGroup(false)} disabled={changeGroupSaving}
+                          className="flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 touch-manipulation transition disabled:opacity-60"
+                          style={{ background: '#f3f4f6', borderColor: '#e5e7eb', color: '#374151' }}>
+                          {changeGroupSaving ? '...' : 'Пропустить'}
+                        </button>
+                        <button type="button" onClick={() => setChangeGroupStep(3)}
+                          className="flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 touch-manipulation transition"
+                          style={{ background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }}>
+                          Доплата
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 3 — Payment amount */}
+                  {changeGroupSelected && changeGroupStep === 3 && (
+                    <div className="space-y-2 border-t border-purple-100 pt-2">
+                      <p className="text-xs font-semibold text-gray-600">Сумма доплаты (сом)</p>
+                      <input type="number" min="1" placeholder="Сумма (сом)"
+                        value={changeGroupPayAmount} onChange={e => setChangeGroupPayAmount(e.target.value)}
+                        className="crm-mobile-input w-full" />
+                      <button type="button"
+                        onClick={() => {
+                          if (!changeGroupPayAmount || Number(changeGroupPayAmount) <= 0) {
+                            setChangeGroupErr('Укажите сумму доплаты'); return
+                          }
+                          handleChangeGroup(true)
+                        }}
+                        disabled={changeGroupSaving}
+                        className="w-full py-2.5 rounded-2xl text-xs font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+                        style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
+                        {changeGroupSaving
+                          ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          : <Check size={14} />
+                        }
+                        Сохранить доплату
+                      </button>
+                      <button type="button" onClick={() => setChangeGroupStep(2)}
+                        className="w-full text-center text-xs text-gray-400 touch-manipulation py-1">
+                        ← Назад
+                      </button>
+                    </div>
+                  )}
+
+                  {changeGroupErr && (
+                    <div className="flex items-center gap-2 p-2.5 rounded-xl text-xs"
+                         style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+                      <AlertTriangle size={12} /> {changeGroupErr}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Убрать из группы — всегда */}
