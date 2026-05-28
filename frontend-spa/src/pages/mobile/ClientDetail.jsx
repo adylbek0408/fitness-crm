@@ -1530,6 +1530,14 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
   const [leaveConfirm,  setLeaveConfirm]  = useState(false)
   const [leaveLoading,  setLeaveLoading]  = useState(false)
   const [leaveErr,      setLeaveErr]      = useState('')
+  const [cpgOpen,     setCpgOpen]     = useState(false)
+  const [cpgFormat,   setCpgFormat]   = useState('offline')
+  const [cpgStatus,   setCpgStatus]   = useState('recruitment')
+  const [cpgGroups,   setCpgGroups]   = useState([])
+  const [cpgLoading,  setCpgLoading]  = useState(false)
+  const [cpgSelected, setCpgSelected] = useState(null)
+  const [cpgSaving,   setCpgSaving]   = useState(false)
+  const [cpgErr,      setCpgErr]      = useState('')
 
   const group = client.group
   const full  = client.full_payment
@@ -1559,6 +1567,33 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
       setLeaveErr(e.response?.data?.detail || 'Ошибка')
       setLeaveLoading(false)
     }
+  }
+
+  const loadCpgGroups = async (fmt, st) => {
+    setCpgLoading(true); setCpgSelected(null)
+    try {
+      const r = await api.get('/groups/', { params: { status: st, page_size: 100, training_format: fmt } })
+      setCpgGroups((r.data.results || []).filter(g => g.id !== group.id))
+    } catch { setCpgGroups([]) } finally { setCpgLoading(false) }
+  }
+
+  const handleOpenCpg = () => {
+    const fmt = group.training_format || 'offline'
+    setCpgOpen(true); setCpgFormat(fmt); setCpgStatus('recruitment')
+    setCpgSelected(null); setCpgErr('')
+    loadCpgGroups(fmt, 'recruitment')
+  }
+
+  const handleChangePrimaryGroup = async () => {
+    if (!cpgSelected) return
+    setCpgSaving(true); setCpgErr('')
+    try {
+      await api.patch(`/clients/${clientId}/edit-info/`, { group_id: cpgSelected.id })
+      setCpgOpen(false); onSuccess()
+    } catch (e) {
+      const d = e.response?.data
+      setCpgErr(d?.detail || (typeof d === 'object' ? JSON.stringify(d) : null) || 'Ошибка')
+    } finally { setCpgSaving(false) }
   }
 
   const receipts = []
@@ -1746,6 +1781,114 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
             </div>
           )}
 
+          {/* Изменить группу */}
+          <div className="border-t border-gray-100 pt-3">
+            {!cpgOpen ? (
+              <button type="button" onClick={handleOpenCpg}
+                className="flex items-center gap-2 text-sm font-medium touch-manipulation py-1"
+                style={{ color: '#7c3aed' }}>
+                <ArrowRightLeft size={14} /> Изменить группу
+              </button>
+            ) : (
+              <div className="space-y-3 rounded-xl p-3" style={{ background: '#faf5ff', border: '1px solid #e9d5ff' }}>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-800">Изменить основную группу</p>
+                  <button type="button" onClick={() => setCpgOpen(false)} className="text-gray-400 touch-manipulation p-0.5">
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  {[{ v: 'offline', icon: <Dumbbell size={13} />, l: 'Оффлайн' }, { v: 'online', icon: <Globe size={13} />, l: 'Онлайн' }].map(({ v, icon, l }) => (
+                    <button key={v} type="button"
+                      onClick={() => { setCpgFormat(v); setCpgSelected(null); loadCpgGroups(v, cpgStatus) }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold border-2 touch-manipulation transition"
+                      style={cpgFormat === v
+                        ? { background: '#ede9fe', borderColor: '#7c3aed', color: '#7c3aed' }
+                        : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                      }>
+                      {icon} {l}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex gap-2">
+                  {[{ v: 'recruitment', l: 'Набор' }, { v: 'active', l: 'Активный' }].map(({ v, l }) => (
+                    <button key={v} type="button"
+                      onClick={() => { setCpgStatus(v); setCpgSelected(null); loadCpgGroups(cpgFormat, v) }}
+                      className="flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition touch-manipulation"
+                      style={cpgStatus === v
+                        ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                        : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                      }>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+
+                {cpgLoading ? (
+                  <div className="flex justify-center py-3">
+                    <span className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#7c3aed' }} />
+                  </div>
+                ) : cpgGroups.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-2">Нет подходящих групп</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                    {cpgGroups.map(g => (
+                      <button key={g.id} type="button"
+                        onClick={() => setCpgSelected(cpgSelected?.id === g.id ? null : g)}
+                        className="w-full text-left p-2.5 rounded-xl border-2 transition touch-manipulation"
+                        style={cpgSelected?.id === g.id
+                          ? { background: '#f3e8ff', borderColor: '#7c3aed' }
+                          : { background: '#fafafa', borderColor: '#e5e7eb' }}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-xs text-gray-800">
+                              Группа #{g.number}
+                              {g.trainer?.full_name && <span className="font-normal text-gray-400 ml-1">· {g.trainer.full_name}</span>}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {GROUP_TYPE_LABEL[g.group_type] || g.group_type || '—'}
+                              {' · '}
+                              <span className={g.status === 'active' ? 'text-emerald-600' : 'text-amber-600'}>
+                                {g.status === 'active' ? 'Активный' : 'Набор'}
+                              </span>
+                            </p>
+                          </div>
+                          {cpgSelected?.id === g.id && <Check size={13} style={{ color: '#7c3aed' }} className="shrink-0" />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {cpgSelected && (
+                  <div className="border-t border-purple-100 pt-2 space-y-2">
+                    <p className="text-xs font-semibold text-gray-600">
+                      Группа #{cpgSelected.number} выбрана. Оплату настройте после смены группы.
+                    </p>
+                    <button type="button" onClick={handleChangePrimaryGroup} disabled={cpgSaving}
+                      className="w-full py-2.5 rounded-2xl text-xs font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
+                      style={{ background: 'linear-gradient(135deg,#7c3aed,#be185d)' }}>
+                      {cpgSaving
+                        ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        : <Check size={14} />
+                      }
+                      Сменить на Группу #{cpgSelected.number}
+                    </button>
+                  </div>
+                )}
+
+                {cpgErr && (
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl text-xs"
+                       style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+                    <AlertTriangle size={12} /> {cpgErr}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Убрать из группы */}
           <div className="border-t border-gray-100 pt-2">
             {!leaveConfirm ? (
@@ -1782,22 +1925,26 @@ function PrimaryGroupBlock({ client, clientId, planId, onSuccess, onFreezeClick 
 
 // ── Ввод/сброс типа оплаты для параллельной записи ───────────────────────────
 function EnrollmentConfigureInline({ enrollment, clientId, onUpdate }) {
-  const [payType,   setPayType]   = useState(enrollment.payment_type || 'full')
-  const [amount,    setAmount]    = useState('')
-  const [totalCost, setTotalCost] = useState('')
-  const [deadline,  setDeadline]  = useState('')
-  const [saving,    setSaving]    = useState(false)
-  const [err,       setErr]       = useState('')
+  const [payType,      setPayType]      = useState(enrollment.payment_type || 'full')
+  const [amount,       setAmount]       = useState('')
+  const [totalCost,    setTotalCost]    = useState('')
+  const [deadline,     setDeadline]     = useState('')
+  const [bonusPercent, setBonusPercent] = useState(String(enrollment.bonus_percent ?? 10))
+  const [saving,       setSaving]       = useState(false)
+  const [err,          setErr]          = useState('')
 
   const handleSave = async () => {
     if (payType === 'full' && (!amount || Number(amount) <= 0)) { setErr('Укажите сумму'); return }
     if (payType === 'installment' && (!totalCost || Number(totalCost) <= 0)) { setErr('Укажите стоимость'); return }
     if (payType === 'installment' && !deadline) { setErr('Укажите дедлайн'); return }
+    const bp = parseInt(String(bonusPercent).trim(), 10)
+    if (Number.isNaN(bp) || bp < 0 || bp > 100) { setErr('Процент бонуса: 0–100'); return }
     setSaving(true); setErr('')
     try {
       const res = await api.post(`/clients/${clientId}/enrollments/${enrollment.id}/configure/`, {
         payment_type: payType,
         ...(payType === 'full' ? { payment_amount: amount } : { total_cost: totalCost, deadline }),
+        bonus_percent: bp,
       })
       if (onUpdate) onUpdate(res.data)
     } catch (e) {
@@ -1830,6 +1977,12 @@ function EnrollmentConfigureInline({ enrollment, clientId, onUpdate }) {
           <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
         </div>
       )}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 mb-1">Бонус с оплаты (%)</p>
+        <input type="number" min={0} max={100} step={1} placeholder="0–100"
+          value={bonusPercent} onChange={e => setBonusPercent(e.target.value)}
+          className="crm-mobile-input w-full" />
+      </div>
       {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
       <button type="button" onClick={handleSave} disabled={saving}
         className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
@@ -1865,6 +2018,11 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
   const [changeGroupSelected,     setChangeGroupSelected]     = useState(null)
   const [changeGroupStep,         setChangeGroupStep]         = useState(1)
   const [changeGroupPayAmount,    setChangeGroupPayAmount]    = useState('')
+  const [changeGroupPayType,      setChangeGroupPayType]      = useState('full')
+  const [changeGroupTotalCost,    setChangeGroupTotalCost]    = useState('')
+  const [changeGroupDeadline,     setChangeGroupDeadline]     = useState('')
+  const [changeGroupBonusPercent, setChangeGroupBonusPercent] = useState('10')
+  const [changeGroupInitPay,      setChangeGroupInitPay]      = useState('')
   const [changeGroupSaving,       setChangeGroupSaving]       = useState(false)
   const [changeGroupErr,          setChangeGroupErr]          = useState('')
 
@@ -1943,16 +2101,44 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
     setChangeGroupSelected(null)
     setChangeGroupStep(1)
     setChangeGroupPayAmount('')
+    setChangeGroupPayType('full')
+    setChangeGroupTotalCost('')
+    setChangeGroupDeadline('')
+    setChangeGroupBonusPercent(String(enrollment.bonus_percent ?? 10))
+    setChangeGroupInitPay('')
     setChangeGroupErr('')
     loadChangeGroups(fmt, 'recruitment')
   }
 
   const handleChangeGroup = async (withPayment = false) => {
     if (!changeGroupSelected) return
+    if (withPayment) {
+      const bp = parseInt(String(changeGroupBonusPercent).trim(), 10)
+      if (changeGroupPayType === 'full') {
+        if (!changeGroupPayAmount || Number(changeGroupPayAmount) <= 0) { setChangeGroupErr('Укажите сумму'); return }
+      } else {
+        if (!changeGroupTotalCost || Number(changeGroupTotalCost) <= 0) { setChangeGroupErr('Укажите стоимость'); return }
+        if (!changeGroupDeadline) { setChangeGroupErr('Укажите дедлайн'); return }
+      }
+      if (Number.isNaN(bp) || bp < 0 || bp > 100) { setChangeGroupErr('Процент бонуса: 0–100'); return }
+    }
     setChangeGroupSaving(true); setChangeGroupErr('')
     try {
       const body = { group_id: changeGroupSelected.id }
-      if (withPayment && changeGroupPayAmount) body.payment_amount = changeGroupPayAmount
+      if (withPayment) {
+        body.payment_type = changeGroupPayType
+        body.bonus_percent = parseInt(changeGroupBonusPercent, 10)
+        if (changeGroupPayType === 'full') {
+          body.payment_amount = changeGroupPayAmount
+          body.payment_to_add = changeGroupPayAmount
+        } else {
+          body.total_cost = changeGroupTotalCost
+          body.deadline = changeGroupDeadline
+          if (changeGroupInitPay && Number(changeGroupInitPay) > 0) {
+            body.payment_to_add = changeGroupInitPay
+          }
+        }
+      }
       await api.patch(`/clients/${clientId}/enrollments/${enrollment.id}/change-group/`, body)
       setChangeGroupOpen(false)
       if (onSuccess) onSuccess()
@@ -2059,7 +2245,7 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
                   <div className="space-y-1.5">
                     {enrollment.payments.map(p => (
                       <div key={p.id} className="flex items-center justify-between py-1.5 px-2 bg-gray-50 rounded-lg text-xs gap-2">
-                        <span className="text-gray-400 shrink-0">{p.paid_at || (p.created_at ? fmtDateTime(p.created_at) : '—')}</span>
+                        <span className="text-gray-400 shrink-0">{p.created_at ? fmtDateTime(p.created_at) : (p.paid_at || '—')}</span>
                         <span className="crm-money flex-1 text-right">{fmtMoney(p.amount)}</span>
                         {p.receipt
                           ? <a href={toAbsoluteUrl(p.receipt)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold shrink-0"><Receipt size={11} /> Чек</a>
@@ -2300,28 +2486,61 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
                     </div>
                   )}
 
-                  {/* Step 3 — Payment amount */}
+                  {/* Step 3 — Full payment form */}
                   {changeGroupSelected && changeGroupStep === 3 && (
-                    <div className="space-y-2 border-t border-purple-100 pt-2">
-                      <p className="text-xs font-semibold text-gray-600">Сумма доплаты (сом)</p>
-                      <input type="number" min="1" placeholder="Сумма (сом)"
-                        value={changeGroupPayAmount} onChange={e => setChangeGroupPayAmount(e.target.value)}
-                        className="crm-mobile-input w-full" />
-                      <button type="button"
-                        onClick={() => {
-                          if (!changeGroupPayAmount || Number(changeGroupPayAmount) <= 0) {
-                            setChangeGroupErr('Укажите сумму доплаты'); return
-                          }
-                          handleChangeGroup(true)
-                        }}
-                        disabled={changeGroupSaving}
+                    <div className="space-y-3 border-t border-purple-100 pt-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Оплата — Группа #{changeGroupSelected.number}</p>
+
+                      {/* Тип оплаты */}
+                      <div className="flex gap-2">
+                        {[{ v: 'full', l: 'Полная' }, { v: 'installment', l: 'Рассрочка' }].map(({ v, l }) => (
+                          <button key={v} type="button" onClick={() => setChangeGroupPayType(v)}
+                            className="flex-1 py-2.5 rounded-xl text-xs font-semibold border-2 touch-manipulation transition"
+                            style={changeGroupPayType === v
+                              ? { background: '#fce7f3', borderColor: '#be185d', color: '#be185d' }
+                              : { background: '#fafafa', borderColor: '#e5e7eb', color: '#6b7280' }
+                            }>
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Полная оплата */}
+                      {changeGroupPayType === 'full' && (
+                        <input type="number" min="0" step="100" placeholder="Сумма (сом)"
+                          value={changeGroupPayAmount} onChange={e => setChangeGroupPayAmount(e.target.value)}
+                          className="crm-mobile-input w-full" />
+                      )}
+
+                      {/* Рассрочка */}
+                      {changeGroupPayType === 'installment' && (
+                        <div className="space-y-2">
+                          <input type="number" min="0" step="100" placeholder="Общая стоимость (сом)"
+                            value={changeGroupTotalCost} onChange={e => setChangeGroupTotalCost(e.target.value)}
+                            className="crm-mobile-input w-full" />
+                          <DatePickerInput value={changeGroupDeadline} onChange={e => setChangeGroupDeadline(e.target.value)} />
+                          <input type="number" min="0" step="100" placeholder="Первый платёж (необяз.)"
+                            value={changeGroupInitPay} onChange={e => setChangeGroupInitPay(e.target.value)}
+                            className="crm-mobile-input w-full" />
+                        </div>
+                      )}
+
+                      {/* Бонус % */}
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 mb-1">Бонус с оплаты (%)</p>
+                        <input type="number" min={0} max={100} step={1} placeholder="0–100"
+                          value={changeGroupBonusPercent} onChange={e => setChangeGroupBonusPercent(e.target.value)}
+                          className="crm-mobile-input w-full" />
+                      </div>
+
+                      <button type="button" onClick={() => handleChangeGroup(true)} disabled={changeGroupSaving}
                         className="w-full py-2.5 rounded-2xl text-xs font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
                         style={{ background: 'linear-gradient(135deg,#be185d,#7c3aed)' }}>
                         {changeGroupSaving
                           ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                           : <Check size={14} />
                         }
-                        Сохранить доплату
+                        Сохранить
                       </button>
                       <button type="button" onClick={() => setChangeGroupStep(2)}
                         className="w-full text-center text-xs text-gray-400 touch-manipulation py-1">

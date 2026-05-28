@@ -608,7 +608,7 @@ class ClientViewSet(viewsets.ModelViewSet):
             enrollment.payment_amount = amount
             enrollment.total_cost = None
             enrollment.deadline = None
-            enrollment.save(update_fields=['payment_type', 'payment_amount', 'total_cost', 'deadline'])
+            save_fields = ['payment_type', 'payment_amount', 'total_cost', 'deadline']
         else:
             try:
                 total = _D(str(request.data.get('total_cost', 0)))
@@ -623,7 +623,18 @@ class ClientViewSet(viewsets.ModelViewSet):
             enrollment.total_cost = total
             enrollment.deadline = deadline
             enrollment.payment_amount = None
-            enrollment.save(update_fields=['payment_type', 'payment_amount', 'total_cost', 'deadline'])
+            save_fields = ['payment_type', 'payment_amount', 'total_cost', 'deadline']
+
+        bp_raw = request.data.get('bonus_percent')
+        if bp_raw is not None:
+            try:
+                bp = int(bp_raw)
+                if 0 <= bp <= 100:
+                    enrollment.bonus_percent = bp
+                    save_fields = save_fields + ['bonus_percent']
+            except (ValueError, TypeError):
+                pass
+        enrollment.save(update_fields=save_fields)
 
         enrollment.refresh_from_db()
         try:
@@ -777,25 +788,68 @@ class ClientViewSet(viewsets.ModelViewSet):
 
         old_group_id = enrollment.group_id
 
+        from decimal import Decimal as _D, InvalidOperation as _Inv
+        from datetime import date as _date
+
         with transaction.atomic():
             enrollment.group = new_group
-            enrollment.save(update_fields=['group'])
+            save_fields = ['group']
 
             if client.second_group_id and str(client.second_group_id) == str(old_group_id):
                 client.second_group = new_group
                 client.save(update_fields=['second_group'])
 
-            payment_amount_raw = request.data.get('payment_amount')
-            if payment_amount_raw:
-                from decimal import Decimal as _D, InvalidOperation as _Inv
+            # Optional: update enrollment payment configuration
+            new_payment_type = request.data.get('payment_type')
+            if new_payment_type in ('full', 'installment'):
+                if new_payment_type == 'full':
+                    try:
+                        pa = _D(str(request.data.get('payment_amount', 0)).replace(',', '.'))
+                        if pa <= 0:
+                            raise ValueError
+                    except (_Inv, ValueError):
+                        return Response({'detail': 'Укажите корректную сумму.'}, status=status.HTTP_400_BAD_REQUEST)
+                    enrollment.payment_type = 'full'
+                    enrollment.payment_amount = pa
+                    enrollment.total_cost = None
+                    enrollment.deadline = None
+                else:
+                    try:
+                        tc = _D(str(request.data.get('total_cost', 0)).replace(',', '.'))
+                        if tc <= 0:
+                            raise ValueError
+                    except (_Inv, ValueError):
+                        return Response({'detail': 'Укажите корректную стоимость.'}, status=status.HTTP_400_BAD_REQUEST)
+                    dl = request.data.get('deadline')
+                    if not dl:
+                        return Response({'detail': 'Укажите дедлайн.'}, status=status.HTTP_400_BAD_REQUEST)
+                    enrollment.payment_type = 'installment'
+                    enrollment.total_cost = tc
+                    enrollment.deadline = dl
+                    enrollment.payment_amount = None
+                save_fields += ['payment_type', 'payment_amount', 'total_cost', 'deadline']
+                bp_raw = request.data.get('bonus_percent')
+                if bp_raw is not None:
+                    try:
+                        bp = int(bp_raw)
+                        if 0 <= bp <= 100:
+                            enrollment.bonus_percent = bp
+                            save_fields.append('bonus_percent')
+                    except (ValueError, TypeError):
+                        pass
+
+            enrollment.save(update_fields=save_fields)
+
+            # Optional: record a payment
+            payment_to_add_raw = request.data.get('payment_to_add')
+            if payment_to_add_raw:
                 try:
-                    amount = _D(str(payment_amount_raw).replace(',', '.'))
-                    if amount > 0:
+                    amt = _D(str(payment_to_add_raw).replace(',', '.'))
+                    if amt > 0:
                         snap = f"{request.user.last_name} {request.user.first_name}".strip() or request.user.username
-                        from datetime import date as _date
                         EnrollmentPayment.objects.create(
                             enrollment=enrollment,
-                            amount=amount,
+                            amount=amt,
                             paid_at=_date.today(),
                             note='Доплата при смене группы',
                             created_by=request.user,
