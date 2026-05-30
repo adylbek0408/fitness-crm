@@ -61,8 +61,10 @@ class ClientViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'create':
             return [IsAdminOrRegistrar()]
-        if self.action in ['update', 'partial_update', 'destroy']:
+        if self.action in ['update', 'partial_update']:
             return [IsAdmin()]
+        if self.action == 'destroy':
+            return [IsAdminOrRegistrar()]
         return [IsAuthenticated()]
 
     def get_serializer_class(self):

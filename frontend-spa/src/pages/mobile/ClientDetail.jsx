@@ -598,6 +598,13 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
               <span>Пробный клиент — после добавления в группу тип автоматически изменится на «Обычный». Введите оплату за курс.</span>
             </div>
           )}
+          {client.client_type === 'frozen' && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs"
+                 style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8' }}>
+              <Snowflake size={13} className="shrink-0 mt-0.5" />
+              <span>Замороженный клиент — после добавления в группу тип автоматически изменится на «Обычный».</span>
+            </div>
+          )}
           {/* Формат */}
           <div className="flex gap-2">
             {[{ val: 'offline', icon: <Dumbbell size={13} />, label: 'Оффлайн' }, { val: 'online', icon: <Globe size={13} />, label: 'Онлайн' }].map(({ val, icon, label }) => (
@@ -1465,22 +1472,25 @@ function MobileStatusHistory({ clientId }) {
 
 // ── Ввести оплату заново внутри блока группы (после отмены) ─────────────────
 function ReenterPaymentInline({ clientId, client, onSuccess }) {
-  const [payType,   setPayType]   = useState(client.payment_type || 'full')
-  const [amount,    setAmount]    = useState('')
-  const [totalCost, setTotalCost] = useState('')
-  const [deadline,  setDeadline]  = useState('')
-  const [loading,   setLoading]   = useState(false)
-  const [err,       setErr]       = useState('')
+  const [payType,      setPayType]      = useState(client.payment_type || 'full')
+  const [amount,       setAmount]       = useState('')
+  const [totalCost,    setTotalCost]    = useState('')
+  const [deadline,     setDeadline]     = useState('')
+  const [bonusPercent, setBonusPercent] = useState(String(client.bonus_percent ?? 10))
+  const [loading,      setLoading]      = useState(false)
+  const [err,          setErr]          = useState('')
 
   const handleSubmit = async () => {
     if (payType === 'full' && (!amount || Number(amount) <= 0)) { setErr('Укажите сумму'); return }
     if (payType === 'installment' && (!totalCost || !deadline)) { setErr('Укажите стоимость и дедлайн'); return }
+    const bp = parseInt(String(bonusPercent).trim(), 10)
+    if (isNaN(bp) || bp < 0 || bp > 100) { setErr('Бонус %: от 0 до 100'); return }
     setLoading(true); setErr('')
     try {
       await api.post(`/clients/${clientId}/enter-payment/`, {
         payment_type: payType,
         payment_data: payType === 'full' ? { amount } : { total_cost: totalCost, deadline },
-        bonus_percent: client.bonus_percent ?? 10,
+        bonus_percent: bp,
       })
       onSuccess()
     } catch (e) {
@@ -1517,6 +1527,14 @@ function ReenterPaymentInline({ clientId, client, onSuccess }) {
           <DatePickerInput value={deadline} onChange={e => setDeadline(e.target.value)} />
         </div>
       )}
+      <div className="rounded-2xl p-3" style={{ background: '#fff', border: '1px solid var(--border)' }}>
+        <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-xs)' }}>Бонус с оплаты</p>
+        <label className="block">
+          <span className="text-xs" style={{ color: 'var(--text-soft)' }}>Процент (0–100)</span>
+          <input type="number" min={0} max={100} step={1} value={bonusPercent}
+            onChange={e => setBonusPercent(e.target.value)} className="crm-mobile-input w-full mt-1" />
+        </label>
+      </div>
       {err && <p className="text-xs text-red-600 bg-red-50 rounded-xl p-2">{err}</p>}
       <button type="button" onClick={handleSubmit} disabled={loading}
         className="w-full py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-60 touch-manipulation"
@@ -2795,8 +2813,11 @@ export default function MobileClientDetail() {
   const [client, setClient]           = useState(null)
   const [loadError, setLoadError]     = useState(null)
   const [planId, setPlanId]           = useState(null)
-  const [refundOpen, setRefundOpen] = useState(false)
-  const [refundMsg, setRefundMsg]     = useState(null)
+  const [refundOpen, setRefundOpen]     = useState(false)
+  const [refundMsg, setRefundMsg]       = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteErr,     setDeleteErr]     = useState('')
 
   const load = async () => {
     setLoadError(null)
@@ -2820,6 +2841,17 @@ export default function MobileClientDetail() {
         e.id === updated.id ? updated : e
       ),
     })
+  }
+
+  const handleDeleteClient = async () => {
+    setDeleteLoading(true); setDeleteErr('')
+    try {
+      await api.delete(`/clients/${id}/`)
+      navigate('/mobile/clients')
+    } catch (e) {
+      setDeleteErr(e.response?.data?.detail || 'Ошибка удаления')
+      setDeleteLoading(false)
+    }
   }
 
   if (loadError) return (
@@ -3097,7 +3129,7 @@ export default function MobileClientDetail() {
         <MobileRepeatPanel client={client} clientId={id} onSuccess={load} />
 
         {/* Заморозить — только для клиентов без группы (с группой — внутри PrimaryGroupBlock) */}
-        {!client.group && (client.status === 'active' || client.status === 'new' || client.client_type === 'trial') && (
+        {!client.group && client.client_type !== 'frozen' && (client.status === 'active' || client.status === 'new' || client.client_type === 'trial') && (
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -3135,6 +3167,38 @@ export default function MobileClientDetail() {
           <div className={`p-3 rounded-xl text-sm border ${
             refundMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-600'
           }`}>{refundMsg.text}</div>
+        )}
+
+        {(user?.role === 'admin' || user?.role === 'registrar') && (
+          <div className="bg-white rounded-2xl shadow-sm border p-4">
+            {!deleteConfirm ? (
+              <button type="button" onClick={() => { setDeleteConfirm(true); setDeleteErr('') }}
+                className="w-full py-3 rounded-2xl text-sm font-semibold touch-manipulation"
+                style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
+                Удалить клиента
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3 rounded-xl" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <p className="text-xs font-semibold text-red-700">Удалить клиента «{client.full_name}»?</p>
+                  <p className="text-xs text-red-600 mt-0.5">Только если клиент зарегистрирован по ошибке. Это действие необратимо.</p>
+                </div>
+                {deleteErr && <p className="text-xs text-red-600">{deleteErr}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleDeleteClient} disabled={deleteLoading}
+                    className="flex-1 py-3 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-60 touch-manipulation"
+                    style={{ background: '#dc2626' }}>
+                    {deleteLoading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+                    Да, удалить
+                  </button>
+                  <button type="button" onClick={() => setDeleteConfirm(false)}
+                    className="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-medium touch-manipulation">
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </MobileLayout>

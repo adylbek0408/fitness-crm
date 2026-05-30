@@ -432,9 +432,6 @@ class ClientService(BaseService):
 
         client = self.get_client_or_raise(client_id)
 
-        if client.client_type == 'trial':
-            raise ValidationError('Пробный клиент не может быть записан в группу.')
-
         if client.status == 'new' and client.client_type != 'frozen':
             raise ValidationError(
                 'Клиент со статусом «Новый» записывается через «Добавить в группу» без новой оплаты.'
@@ -535,6 +532,9 @@ class ClientService(BaseService):
         client.group  = group
         client.status = 'active'
         save_fields = ['is_repeat', 'payment_type', 'group', 'status']
+        if client.client_type in ('frozen', 'trial'):
+            client.client_type = 'regular'
+            save_fields.append('client_type')
         if bonus_percent_updated:
             save_fields.append('bonus_percent')
         client.save(update_fields=save_fields)
@@ -714,18 +714,27 @@ class ClientService(BaseService):
             client.payment_type = 'full'
 
         old_type = client.client_type
+        old_status = client.status
         client.group = None
         client.client_type = 'frozen'
-        client.save(update_fields=['group', 'client_type', 'payment_type'])
+        client.status = 'new'
+        client.save(update_fields=['group', 'client_type', 'payment_type', 'status'])
 
         if old_type != 'frozen':
-            TYPE_LABEL = {'regular': 'Обычный', 'trial': 'Пробный', 'frozen': 'Заморозка'}
             self._record_status_change(
                 client,
                 old_status=f'тип:{old_type}',
                 new_status='тип:frozen',
                 user=user,
                 note='Возврат средств — клиент переведён в Заморозку',
+            )
+        if old_status != 'new':
+            self._record_status_change(
+                client,
+                old_status=old_status,
+                new_status='new',
+                user=user,
+                note='Возврат средств — статус сброшен до «Новый»',
             )
 
         self.logger.info(
