@@ -224,7 +224,7 @@ export default function ClientRegister() {
       group_type,
       is_repeat:       false,
       discount:        '0',
-      is_trial:        isTrial,
+      client_type:     isTrial ? 'trial' : 'regular',
       bonus_percent:   isTrial ? 0 : Number(bonusPercent),
       payment_type:    payType,
       payment_data:    paymentData,

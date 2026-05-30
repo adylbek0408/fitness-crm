@@ -128,13 +128,20 @@ class ClientViewSet(viewsets.ModelViewSet):
             r['status']: r['c']
             for r in qs.values('status').annotate(c=Count('id', distinct=True))
         }
-        return Response({'total': total, 'by_status': by_status})
+        by_client_type = {
+            r['client_type']: r['c']
+            for r in qs.values('client_type').annotate(c=Count('id', distinct=True))
+        }
+        return Response({'total': total, 'by_status': by_status, 'by_client_type': by_client_type})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminOrRegistrar])
     def change_status(self, request, pk=None):
-        new_status = request.data.get('status')
+        new_status = request.data.get('status') or None
+        new_client_type = request.data.get('client_type') or None
         try:
-            client = self.service.change_status(pk, new_status, user=request.user)
+            client = self.service.change_status(
+                pk, new_status=new_status, new_client_type=new_client_type, user=request.user
+            )
         except ValidationError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except NotFoundError as e:
@@ -161,9 +168,13 @@ class ClientViewSet(viewsets.ModelViewSet):
         """История смен статусов клиента."""
         records = ClientStatusHistory.objects.filter(client_id=pk).order_by('-created_at')
         STATUS_LABEL = {
-            '': '—', 'new': 'Новый', 'trial': 'Пробный',
-            'active': 'Активный', 'completed': 'Завершил',
-            'expelled': 'Отчислен', 'frozen': 'Заморозка', 'active_frozen': 'Активный+Заморозка',
+            '': '—',
+            'new': 'Новый', 'active': 'Активный',
+            'completed': 'Завершил', 'expelled': 'Отчислен',
+            # legacy values kept for display of old history records
+            'trial': 'Пробный (устар.)', 'frozen': 'Заморозка (устар.)',
+            'active_frozen': 'Акт.+Заморозка (устар.)',
+            'тип:regular': 'Тип: Обычный', 'тип:trial': 'Тип: Пробный', 'тип:frozen': 'Тип: Заморозка',
         }
         data = [
             {
@@ -208,9 +219,9 @@ class ClientViewSet(viewsets.ModelViewSet):
     def edit_info(self, request, pk=None):
         """
         PATCH /api/clients/{id}/edit-info/
-        Редактирование: ФИО, телефон, группа, is_trial.
-        При снятии is_trial (False) статус меняется с 'trial' → 'new'.
-        Body: { first_name?, last_name?, phone?, group_id?, is_trial? }
+        Редактирование: ФИО, телефон, группа, client_type.
+        При смене client_type 'trial' → 'regular' удаляет пробный платёж и сбрасывает статус в 'new'.
+        Body: { first_name?, last_name?, phone?, group_id?, client_type? }
         """
         instance = self.get_object()
         data = request.data.copy()
@@ -245,39 +256,28 @@ class ClientViewSet(viewsets.ModelViewSet):
             else:
                 data['second_group'] = None
 
-        # Обрабатываем is_trial — если снимается флаг, статус trial → new
-        is_trial_raw = data.get('is_trial')
-        if is_trial_raw is not None:
-            # Приводим к bool (из строки 'false'/'true' или bool)
-            if isinstance(is_trial_raw, str):
-                is_trial_val = is_trial_raw.lower() not in ('false', '0', 'no', '')
-            else:
-                is_trial_val = bool(is_trial_raw)
+        # Конвертация пробного → обычного: снять client_type='trial', удалить пробный платёж, сброс в 'new'
+        new_client_type = data.get('client_type')
+        if new_client_type == 'regular' and instance.client_type == 'trial':
+            from django.db import transaction as _tx
+            with _tx.atomic():
+                FullPayment.objects.filter(client=instance).delete()
+                for ip in InstallmentPlan.objects.filter(client=instance):
+                    ip.payments.all().delete()
+                    ip.delete()
 
-            if not is_trial_val and instance.is_trial and instance.status == 'trial':
-                # Снимаем флаг пробного — переводим статус в 'new'
-                # И УДАЛЯЕМ пробный платёж — пользователь должен ввести новую оплату
-                from django.db import transaction as _tx
-                with _tx.atomic():
-                    FullPayment.objects.filter(client=instance).delete()
-                    for ip in InstallmentPlan.objects.filter(client=instance):
-                        ip.payments.all().delete()
-                        ip.delete()
+                instance.client_type = 'regular'
+                instance.status = 'new'
+                instance.save(update_fields=['client_type', 'status'])
 
-                    old_status = instance.status
-                    instance.is_trial = False
-                    instance.status = 'new'
-                    instance.save(update_fields=['is_trial', 'status'])
+                self.service._record_status_change(
+                    instance, old_status='тип:trial', new_status='тип:regular',
+                    user=request.user, note='Конвертация: Пробный → Обычный',
+                )
 
-                    # Логируем смену статуса
-                    self.service._record_status_change(
-                        instance, old_status=old_status, new_status='new',
-                        user=request.user, note='Конвертация: Пробный → Новый',
-                    )
-
-                data.pop('is_trial', None)
-                data.pop('group', None)
-                data.pop('trainer', None)
+            data.pop('client_type', None)
+            data.pop('group', None)
+            data.pop('trainer', None)
 
         # Handle google_email separately (stored on ClientAccount, not Client)
         if 'google_email' in data:
@@ -293,7 +293,7 @@ class ClientViewSet(viewsets.ModelViewSet):
             except Exception:
                 pass
 
-        allowed = {'first_name', 'last_name', 'phone', 'group', 'second_group', 'trainer', 'telegram_link', 'notes', 'training_format', 'group_type'}
+        allowed = {'first_name', 'last_name', 'phone', 'group', 'second_group', 'trainer', 'telegram_link', 'notes', 'training_format', 'group_type', 'client_type'}
         filtered = {k: v for k, v in data.items() if k in allowed}
 
         # Detect training_format change for audit log
@@ -713,15 +713,18 @@ class ClientViewSet(viewsets.ModelViewSet):
             client.second_group_id = None
             client.save(update_fields=['second_group_id'])
 
-        # Determine client status: primary group still active → active_frozen, else frozen
-        old_status = client.status
-        new_status = 'active_frozen' if client.group_id else 'frozen'
-        client.status = new_status
-        client.save(update_fields=['status'])
-        self.service._record_status_change(
-            client, old_status, new_status, user=request.user,
-            note=f'Заморозка доп. группы #{group_number}',
-        )
+        # If client has no primary group, mark them as frozen (no active enrollment left)
+        if not client.group_id and client.client_type != 'frozen':
+            old_type = client.client_type
+            client.client_type = 'frozen'
+            client.save(update_fields=['client_type'])
+            self.service._record_status_change(
+                client,
+                old_status=f'тип:{old_type}',
+                new_status='тип:frozen',
+                user=request.user,
+                note=f'Заморозка доп. группы #{group_number}',
+            )
 
         note = (
             f'Заморозка доп. группы #{group_number}. '
@@ -739,12 +742,10 @@ class ClientViewSet(viewsets.ModelViewSet):
             created_by=request.user,
         )
 
-        STATUS_LABEL = {'active_frozen': 'Акт.+Заморозка', 'frozen': 'Заморозка'}
         detail = (
             f'Доп. группа #{group_number} заморожена.'
             + (f' К возврату клиенту: {refund_to_client} сом.' if refund_to_client > 0 else '')
             + (f' Удержано: {retention_amount} сом.' if retention_amount > 0 else '')
-            + f' Статус клиента → «{STATUS_LABEL.get(new_status, new_status)}».'
         )
 
         return Response({
@@ -752,7 +753,6 @@ class ClientViewSet(viewsets.ModelViewSet):
             'refund_to_client': str(refund_to_client),
             'retention_amount': str(retention_amount),
             'total_paid': str(total_paid),
-            'new_status': new_status,
             'client': ClientReadSerializer(client).data,
         })
 

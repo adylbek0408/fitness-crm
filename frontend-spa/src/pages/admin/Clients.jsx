@@ -9,7 +9,7 @@ import jsPDF from 'jspdf'
 import api from '../../api/axios'
 import AdminLayout from '../../components/AdminLayout'
 import DateField from '../../components/DateField'
-import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate, pickList } from '../../utils/format'
+import { STATUS_BADGE, STATUS_LABEL, CLIENT_TYPE_BADGE, CLIENT_TYPE_LABEL, fmtMoney, fmtDate, pickList } from '../../utils/format'
 import { attachRobotoFontsToPdf, PDF_BODY_FONT } from '../../utils/pdfRobotoFonts'
 import AppSelect from '../../components/ui/AppSelect'
 
@@ -17,12 +17,10 @@ import AppSelect from '../../components/ui/AppSelect'
 // STATUS DROPDOWN
 // ─────────────────────────────────────────────────────────────────────────────
 const STATUS_OPTIONS = [
-  { value: 'new',           label: 'Новый',              dot: 'bg-violet-500'  },
-  { value: 'trial',         label: 'Пробный',            dot: 'bg-orange-500'  },
-  { value: 'active',        label: 'Активный',           dot: 'bg-emerald-500' },
-  { value: 'active_frozen', label: 'Акт.+Заморозка',     dot: 'bg-teal-500'    },
-  { value: 'frozen',        label: 'Заморозка',          dot: 'bg-blue-500'    },
-  { value: 'completed',     label: 'Завершил',           dot: 'bg-slate-400'   },
+  { value: 'new',       label: 'Новый',    dot: 'bg-violet-500'  },
+  { value: 'active',    label: 'Активный', dot: 'bg-emerald-500' },
+  { value: 'completed', label: 'Завершил', dot: 'bg-slate-400'   },
+  { value: 'expelled',  label: 'Отчислен', dot: 'bg-red-500'     },
 ]
 
 function StatusDropdown({ clientId, currentStatus, onChanged }) {
@@ -100,13 +98,15 @@ function PayBadge({ c }) {
 // PDF GENERATION
 // ─────────────────────────────────────────────────────────────────────────────
 const PDF_STATUS_RGB = {
-  new:           [109, 40,  217],
-  trial:         [234, 88,   12],
-  active:        [5,   150, 105],
-  active_frozen: [20,  184, 166],
-  frozen:        [2,   132, 199],
-  completed:     [71,  85,  105],
-  expelled:      [220, 38,   38],
+  new:       [109, 40,  217],
+  active:    [5,   150, 105],
+  completed: [71,  85,  105],
+  expelled:  [220, 38,   38],
+}
+const PDF_CLIENT_TYPE_RGB = {
+  regular: [71,  85,  105],
+  trial:   [234, 88,   12],
+  frozen:  [2,   132, 199],
 }
 
 async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
@@ -244,12 +244,13 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
     const ip      = c.installment_plan
     const history = historyMap[c.id] || []
     const [sr, sg, sb] = PDF_STATUS_RGB[c.status] || [71, 85, 105]
+    const [tr, tg, tb] = PDF_CLIENT_TYPE_RGB[c.client_type] || [71, 85, 105]
 
     checkBreak(85)
 
     sz(13); bold(); rgb(28, 24, 42)
-    const trialMark = c.is_trial ? '  [Пробный]' : ''
-    pdf.text(`${idx + 1}. ${c.full_name}${c.is_repeat ? '  (повторно)' : ''}${trialMark}`, lx, y)
+    const typeMark = c.client_type && c.client_type !== 'regular' ? `  [${CLIENT_TYPE_LABEL[c.client_type] || c.client_type}]` : ''
+    pdf.text(`${idx + 1}. ${c.full_name}${c.is_repeat ? '  (повторно)' : ''}${typeMark}`, lx, y)
     y += GAP_AFTER_TITLE + 3
 
     y += rowKeyVal(lx, y, 'Статус', STATUS_LABEL[c.status] || c.status, {
@@ -257,6 +258,13 @@ async function buildClientsPDF(allClients, historyMap, summary, filterLabels) {
       valueRgb: [sr, sg, sb],
       fontSize: 9,
     })
+    if (c.client_type && c.client_type !== 'regular') {
+      y += rowKeyVal(lx, y, 'Тип клиента', CLIENT_TYPE_LABEL[c.client_type] || c.client_type, {
+        labelGray: 92,
+        valueRgb: [tr, tg, tb],
+        fontSize: 9,
+      })
+    }
     y += 2
     setGray(238)
     pdf.setLineWidth(0.22)
@@ -428,7 +436,7 @@ export default function Clients() {
   const [group,        setGroup]        = useState(_saved.group        ?? '')
   const [groupType,    setGroupType]    = useState(_saved.groupType    ?? '')
   const [isRepeat,     setIsRepeat]     = useState(_saved.isRepeat     ?? false)
-  const [isTrial,      setIsTrial]      = useState(_saved.isTrial      ?? false)
+  const [clientType,   setClientType]   = useState(_saved.clientType   ?? '')
   const [paymentStatus,setPaymentStatus]= useState(_saved.paymentStatus?? '')
   const [registeredFrom,setRegisteredFrom]= useState(_saved.registeredFrom ?? '')
   const [registeredTo,  setRegisteredTo]  = useState(_saved.registeredTo   ?? '')
@@ -462,8 +470,8 @@ export default function Clients() {
     if (format)              p.append('training_format', format)
     if (group)               p.append('group',           group)
     if (groupType)           p.append('group_type',      groupType)
-    if (isRepeat)            p.append('is_repeat',       'true')
-    if (isTrial)             p.append('is_trial',        'true')
+    if (isRepeat)            p.append('is_repeat',    'true')
+    if (clientType)          p.append('client_type',  clientType)
     if (paymentStatus)       p.append('payment_status',  paymentStatus)
     if (registeredFrom)      p.append('registered_from', registeredFrom)
     if (registeredTo)        p.append('registered_to',   registeredTo)
@@ -520,24 +528,22 @@ export default function Clients() {
     try {
       sessionStorage.setItem(FILTER_KEY, JSON.stringify({
         page, search, status, format, group, groupType,
-        isRepeat, isTrial, paymentStatus,
+        isRepeat, clientType, paymentStatus,
         registeredFrom, registeredTo, registeredBy,
         trainerFilter, onlineTagFilter, fromTelegram, showAdvanced,
       }))
     } catch { /* quota exceeded — ignore */ }
-  }, [page, search, status, format, group, groupType, isRepeat, isTrial,
+  }, [page, search, status, format, group, groupType, isRepeat, clientType,
       paymentStatus, registeredFrom, registeredTo, registeredBy,
       trainerFilter, onlineTagFilter, fromTelegram, showAdvanced])
 
   useEffect(() => {
     if (!filtersMountedRef.current) {
-      // First render: filters are restored from sessionStorage — don't reset page,
-      // just trigger an initial load via the page effect below.
       filtersMountedRef.current = true
       return
     }
     setPage(1); load(1)
-  }, [debouncedSearch, status, format, group, groupType, isRepeat, isTrial, paymentStatus,
+  }, [debouncedSearch, status, format, group, groupType, isRepeat, clientType, paymentStatus,
       registeredFrom, registeredTo, registeredBy, trainerFilter, onlineTagFilter, fromTelegram])
 
   useEffect(() => { load() }, [page])
@@ -546,7 +552,7 @@ export default function Clients() {
   const resetFilters = () => {
     sessionStorage.removeItem(FILTER_KEY)
     setSearch(''); setDebouncedSearch(''); setStatus(''); setFormat(''); setGroup('')
-    setGroupType(''); setIsRepeat(false); setIsTrial(false); setPaymentStatus('')
+    setGroupType(''); setIsRepeat(false); setClientType(''); setPaymentStatus('')
     setRegisteredFrom(''); setRegisteredTo(''); setRegisteredBy('')
     setTrainerFilter(''); setOnlineTagFilter(''); setFromTelegram('')
     setPage(1); setTimeout(() => load(1), 0)
@@ -556,7 +562,7 @@ export default function Clients() {
     setClients(prev => prev.map(c => c.id === id ? { ...c, status: newSt } : c))
 
   const hasFilters = search || debouncedSearch || status || format || group || groupType ||
-    isRepeat || isTrial || paymentStatus || registeredFrom || registeredTo || registeredBy ||
+    isRepeat || clientType || paymentStatus || registeredFrom || registeredTo || registeredBy ||
     trainerFilter || onlineTagFilter || fromTelegram
 
   const buildFilterLabels = () => {
@@ -567,7 +573,7 @@ export default function Clients() {
     if (onlineTagFilter) labels.push(`Подписка: ${onlineTagFilter}`)
     if (paymentStatus)   labels.push(`Оплата: ${paymentStatus === 'paid' ? 'Оплачено' : 'Есть остаток'}`)
     if (isRepeat)        labels.push('Повторные')
-    if (isTrial)         labels.push('Пробные')
+    if (clientType)      labels.push(`Тип: ${CLIENT_TYPE_LABEL[clientType] || clientType}`)
     if (group) {
       const g = groups.find(x => x.id === group)
       if (g) labels.push(`Группа: №${g.number}`)
@@ -654,6 +660,11 @@ export default function Clients() {
               {STATUS_LABEL[st] || st}: {n}
             </span>
           ))}
+          {Object.entries(summary.by_client_type || {}).filter(([t]) => t !== 'regular').map(([t, n]) => (
+            <span key={t} className={`px-2.5 py-1 rounded-full text-xs font-semibold ${CLIENT_TYPE_BADGE[t] || 'bg-slate-100 text-slate-600'}`}>
+              {CLIENT_TYPE_LABEL[t] || t}: {n}
+            </span>
+          ))}
         </div>
       )}
 
@@ -678,12 +689,10 @@ export default function Clients() {
             <span className="crm-filter-label">Статус</span>
             <AppSelect value={status} onChange={e => setStatus(e.target.value)} className="w-36">
               <option value="">Все</option>
-              <option value="new">Новые</option>
-              <option value="trial">Пробные</option>
-              <option value="active">Активные</option>
-              <option value="active_frozen">Акт.+Заморозка</option>
-              <option value="frozen">Заморозка</option>
-              <option value="completed">Завершили</option>
+              <option value="new">Новый</option>
+              <option value="active">Активный</option>
+              <option value="completed">Завершил</option>
+              <option value="expelled">Отчислен</option>
             </AppSelect>
           </div>
 
@@ -787,13 +796,15 @@ export default function Clients() {
               />
               Повторные
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none pb-1">
-              <input
-                type="checkbox" checked={isTrial} onChange={e => setIsTrial(e.target.checked)}
-                className="rounded border-slate-300 text-orange-500 focus:ring-orange-400/30"
-              />
-              <FlaskConical size={13} className="text-orange-400" /> Пробные
-            </label>
+            <div className="crm-filter-group">
+              <span className="crm-filter-label">Тип клиента</span>
+              <AppSelect value={clientType} onChange={e => setClientType(e.target.value)} className="w-36">
+                <option value="">Все</option>
+                <option value="regular">Обычные</option>
+                <option value="trial">Пробные</option>
+                <option value="frozen">Заморозка</option>
+              </AppSelect>
+            </div>
             <div className="flex items-end gap-2 flex-wrap">
               <div className="crm-filter-group">
                 <span className="crm-filter-label">Рег. с</span>
@@ -839,7 +850,12 @@ export default function Clients() {
                 </span>
                 {c.group && <span className="text-slate-400">· Группа {c.group.number}</span>}
                 {c.is_repeat && <span className="flex items-center gap-0.5 text-indigo-500"><RotateCcw size={11} /> Повторный</span>}
-                {c.is_trial && <span className="flex items-center gap-0.5 text-orange-500"><FlaskConical size={11} /> Пробный</span>}
+                {c.client_type && c.client_type !== 'regular' && (
+                  <span className={`flex items-center gap-0.5 ${CLIENT_TYPE_BADGE[c.client_type] || ''} px-1.5 py-0.5 rounded-full text-xs`}>
+                    {c.client_type === 'trial' ? <FlaskConical size={11} /> : null}
+                    {CLIENT_TYPE_LABEL[c.client_type] || c.client_type}
+                  </span>
+                )}
                 <span className="ml-auto"><PayBadge c={c} /></span>
               </div>
               <Link to={`/admin/clients/${c.id}`} className="text-xs text-indigo-600 font-medium hover:text-indigo-800 transition">
@@ -880,9 +896,10 @@ export default function Clients() {
                             <RotateCcw size={11} /> Повторный
                           </p>
                         )}
-                        {c.is_trial && (
-                          <p className="text-xs text-orange-500 flex items-center gap-1 mt-0.5">
-                            <FlaskConical size={11} /> Пробный
+                        {c.client_type && c.client_type !== 'regular' && (
+                          <p className={`text-xs flex items-center gap-1 mt-0.5 ${c.client_type === 'trial' ? 'text-orange-500' : 'text-sky-600'}`}>
+                            {c.client_type === 'trial' ? <FlaskConical size={11} /> : null}
+                            {CLIENT_TYPE_LABEL[c.client_type] || c.client_type}
                           </p>
                         )}
                       </td>

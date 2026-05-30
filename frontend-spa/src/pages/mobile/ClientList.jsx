@@ -169,11 +169,9 @@ export default function ClientList() {
                 <AppSelect variant="mobile" value={status} onChange={e => setStatus(e.target.value)}>
                   <option value="">Все</option>
                   <option value="new">Новые</option>
-                  <option value="trial">Пробные</option>
                   <option value="active">Активные</option>
-                  <option value="active_frozen">Акт.+Заморозка</option>
-                  <option value="frozen">Заморозка</option>
                   <option value="completed">Завершили</option>
+                  <option value="expelled">Отчислены</option>
                 </AppSelect>
               </div>
               <div>

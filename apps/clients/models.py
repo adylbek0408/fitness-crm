@@ -53,12 +53,14 @@ class Client(UUIDTimestampedModel):
     GROUP_TYPE_CHOICES = [('1.5h', '1.5 hours'), ('2.5h', '2.5 hours')]
     STATUS_CHOICES = [
         ('new', 'New'),
-        ('trial', 'Trial'),
         ('active', 'Active'),
-        ('active_frozen', 'Активный+Заморозка'),
         ('completed', 'Completed'),
         ('expelled', 'Expelled'),
-        ('frozen', 'Frozen'),
+    ]
+    CLIENT_TYPE_CHOICES = [
+        ('regular', 'Обычный'),
+        ('trial', 'Пробный'),
+        ('frozen', 'Заморозка'),
     ]
     PAYMENT_TYPE_CHOICES = [('full', 'Full Payment'), ('installment', 'Installment')]
 
@@ -89,12 +91,12 @@ class Client(UUIDTimestampedModel):
         related_name='clients', null=True, blank=True
     )
 
-    status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
-    is_repeat = models.BooleanField(default=False)
-    is_trial  = models.BooleanField(
-        default=False,
-        help_text='Пробный клиент — посещает пробное занятие; не добавляется в группу',
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    client_type = models.CharField(
+        max_length=20, choices=CLIENT_TYPE_CHOICES, default='regular',
+        help_text='Пробный — пришёл на пробное занятие; Заморозка — обучение приостановлено',
     )
+    is_repeat = models.BooleanField(default=False)
     discount  = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     bonus_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     bonus_percent = models.PositiveSmallIntegerField(
@@ -126,11 +128,11 @@ class Client(UUIDTimestampedModel):
         ordering = ['-registered_at', 'last_name']
         indexes = [
             models.Index(fields=['status']),
+            models.Index(fields=['client_type'], name='clients_client_type_idx'),
             models.Index(fields=['training_format']),
             models.Index(fields=['group']),
             models.Index(fields=['trainer']),
             models.Index(fields=['is_repeat']),
-            models.Index(fields=['is_trial']),
             models.Index(fields=['phone']),
         ]
 

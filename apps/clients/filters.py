@@ -12,10 +12,10 @@ class ClientFilter(django_filters.FilterSet):
     trainer = django_filters.CharFilter(method='filter_trainer')
     registered_by = django_filters.CharFilter(method='filter_registered_by')
     status = django_filters.CharFilter(method='filter_status')
+    client_type = django_filters.CharFilter(field_name='client_type')
     training_format = django_filters.CharFilter(method='filter_training_format')
     group_type = django_filters.ChoiceFilter(choices=Client.GROUP_TYPE_CHOICES)
     is_repeat = django_filters.BooleanFilter()
-    is_trial = django_filters.BooleanFilter()
     registered_from = django_filters.DateFilter(field_name='registered_at', lookup_expr='gte')
     registered_to = django_filters.DateFilter(field_name='registered_at', lookup_expr='lte')
     payment_status = django_filters.ChoiceFilter(
@@ -32,22 +32,13 @@ class ClientFilter(django_filters.FilterSet):
     class Meta:
         model = Client
         fields = [
-            'group', 'trainer', 'status', 'training_format',
-            'group_type', 'is_repeat', 'is_trial', 'online_subscription',
+            'group', 'trainer', 'status', 'client_type', 'training_format',
+            'group_type', 'is_repeat', 'online_subscription',
         ]
 
     def filter_status(self, queryset, name, value):
-        """
-        active  → active + active_frozen
-        frozen  → frozen + active_frozen
-        others  → exact match
-        """
         if not value:
             return queryset
-        if value == 'active':
-            return queryset.filter(status__in=['active', 'active_frozen'])
-        if value == 'frozen':
-            return queryset.filter(status__in=['frozen', 'active_frozen'])
         return queryset.filter(status=value)
 
     def filter_training_format(self, queryset, name, value):

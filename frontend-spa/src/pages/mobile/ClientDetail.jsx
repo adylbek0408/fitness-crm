@@ -8,11 +8,11 @@ import {
   ArrowLeft, AlertCircle, ChevronDown, ChevronUp, ChevronRight,
   RotateCcw, Gift, Check, Layers, X, UserPlus, Percent,
   Pencil, Ban, AlertTriangle, Send, FlaskConical, Calendar,
-  ArrowRightLeft
+  ArrowRightLeft, Snowflake
 } from 'lucide-react'
 import {
   STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
-  toAbsoluteUrl, fmtDateTime
+  toAbsoluteUrl, fmtDateTime, CLIENT_TYPE_BADGE, CLIENT_TYPE_LABEL,
 } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPaymentForm'
@@ -78,14 +78,14 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
   const [notes, setNotes] = useState(client.notes || '')
   const [googleEmail, setGoogleEmail] = useState(client.google_email || '')
-  const [isTrial, setIsTrial] = useState(client.is_trial || false)
+  const [clientTypeEdit, setClientTypeEdit] = useState(client.client_type || 'regular')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
   const handleOpen = () => {
     setFirstName(client.first_name); setLastName(client.last_name)
     setPhone(client.phone); setTelegramLink(client.telegram_link || '')
-    setNotes(client.notes || ''); setGoogleEmail(client.google_email || ''); setIsTrial(client.is_trial || false)
+    setNotes(client.notes || ''); setGoogleEmail(client.google_email || ''); setClientTypeEdit(client.client_type || 'regular')
     setErr('')
     setOpen(v => !v)
   }
@@ -101,7 +101,7 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
         telegram_link: client.training_format === 'online' ? (telegramLink || '').trim() : '',
         notes: (notes || '').trim(),
         google_email: (googleEmail || '').trim().toLowerCase(),
-        is_trial: isTrial,
+        client_type: clientTypeEdit,
       }
       await api.patch(`/clients/${clientId}/edit-info/`, body)
       setOpen(false); onSuccess()
@@ -181,59 +181,59 @@ function MobileEditInfoPanel({ client, clientId, onSuccess }) {
               {/* Обычный */}
               <button
                 type="button"
-                onClick={() => setIsTrial(false)}
+                onClick={() => setClientTypeEdit('regular')}
                 className="flex-1 flex items-center justify-between px-3 py-3 rounded-xl transition-all"
-                style={!isTrial
+                style={clientTypeEdit === 'regular'
                   ? { background: '#fce7f3', border: '2px solid #be185d' }
                   : { background: '#fafafa', border: '2px solid #e5e7eb' }
                 }
               >
-                <p className="text-sm font-semibold" style={{ color: !isTrial ? '#be185d' : '#6b7280' }}>
+                <p className="text-sm font-semibold" style={{ color: clientTypeEdit === 'regular' ? '#be185d' : '#6b7280' }}>
                   Обычный
                 </p>
                 <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                     style={!isTrial
+                     style={clientTypeEdit === 'regular'
                        ? { borderColor: '#be185d', background: '#be185d' }
                        : { borderColor: '#d1d5db', background: '#fff' }
                      }>
-                  {!isTrial && <Check size={9} className="text-white" strokeWidth={3} />}
+                  {clientTypeEdit === 'regular' && <Check size={9} className="text-white" strokeWidth={3} />}
                 </div>
               </button>
 
               {/* Пробный */}
               <button
                 type="button"
-                onClick={() => setIsTrial(true)}
+                onClick={() => setClientTypeEdit('trial')}
                 className="flex-1 flex items-center justify-between px-3 py-3 rounded-xl transition-all"
-                style={isTrial
+                style={clientTypeEdit === 'trial'
                   ? { background: '#fff7ed', border: '2px solid #ea580c' }
                   : { background: '#fafafa', border: '2px solid #e5e7eb' }
                 }
               >
                 <div className="flex items-center gap-1.5">
-                  <FlaskConical size={13} style={{ color: isTrial ? '#ea580c' : '#9ca3af' }} />
-                  <p className="text-sm font-semibold" style={{ color: isTrial ? '#ea580c' : '#6b7280' }}>
+                  <FlaskConical size={13} style={{ color: clientTypeEdit === 'trial' ? '#ea580c' : '#9ca3af' }} />
+                  <p className="text-sm font-semibold" style={{ color: clientTypeEdit === 'trial' ? '#ea580c' : '#6b7280' }}>
                     Пробный
                   </p>
                 </div>
                 <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                     style={isTrial
+                     style={clientTypeEdit === 'trial'
                        ? { borderColor: '#ea580c', background: '#ea580c' }
                        : { borderColor: '#d1d5db', background: '#fff' }
                      }>
-                  {isTrial && <Check size={9} className="text-white" strokeWidth={3} />}
+                  {clientTypeEdit === 'trial' && <Check size={9} className="text-white" strokeWidth={3} />}
                 </div>
               </button>
             </div>
 
             {/* Подсказка при смене с пробного на обычный */}
-            {client.is_trial && !isTrial && (
+            {client.client_type === 'trial' && clientTypeEdit !== 'trial' && (
               <div className="mt-2 px-3 py-2 rounded-xl text-xs"
                    style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' }}>
-                ✓ Статус изменится с «Пробный» на «Новый». Пробный платёж будет удалён — после сохранения введите новую оплату.
+                ✓ Тип изменится с «Пробный» на «Обычный». Пробный платёж будет удалён — после сохранения введите новую оплату.
               </div>
             )}
-            {!client.is_trial && isTrial && (
+            {client.client_type !== 'trial' && clientTypeEdit === 'trial' && (
               <div className="mt-2 px-3 py-2 rounded-xl text-xs"
                    style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' }}>
                 ⚗️ Клиент будет помечен как пробный. Добавление в группу станет недоступным.
@@ -512,8 +512,8 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const hasPayment = !!(client.full_payment || client.installment_plan)
 
   const canUseNewClientFlow =
-    !client.is_trial &&
-    (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat && hasPayment))
+    client.client_type !== 'trial' &&
+    (client.status === 'new' || (client.client_type === 'frozen' && !client.is_repeat && hasPayment))
     && !client.group
 
   if (!canUseNewClientFlow) return null
@@ -788,7 +788,7 @@ function MobileRepeatPanel({ client, clientId, onSuccess }) {
     } catch(e) { setError(e.response?.data?.detail || 'Ошибка') } finally { setLoading(false) }
   }
 
-  const statusAllowsReEnroll = !client.is_trial && !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
+  const statusAllowsReEnroll = client.client_type !== 'trial' && !client.group && ['completed', 'expelled'].includes(client.status)
   if (!statusAllowsReEnroll) return null
 
   const fpCheck = client.full_payment; const ipCheck = client.installment_plan
@@ -2820,20 +2820,19 @@ export default function MobileClientDetail() {
   }
 
   const STATUS_OPTIONS = [
-    { value: 'frozen',        label: 'Заморозка',       dot: 'bg-sky-500'  },
-    { value: 'active_frozen', label: 'Акт.+Заморозка',  dot: 'bg-teal-500' },
+    { value: 'frozen', label: 'Заморозка', dot: 'bg-sky-500', isClientType: true },
   ]
 
   const STATUS_ALL_LABELS = {
-    active: 'Активный', frozen: 'Заморозка', completed: 'Завершил',
-    active_frozen: 'Акт.+Заморозка', new: 'Новый', trial: 'Пробный',
-    expelled: 'Отчислен',
+    active: 'Активный', completed: 'Завершил', new: 'Новый', expelled: 'Отчислен',
+    frozen: 'Заморозка',
   }
 
-  const changeStatus = async (newStatus) => {
-    if (newStatus === client.status) { setStatusMenuOpen(false); return }
+  const changeStatus = (newValue, isClientType = false) => {
+    const current = isClientType ? client.client_type : client.status
+    if (newValue === current) { setStatusMenuOpen(false); return }
     setStatusMenuOpen(false)
-    setStatusConfirm({ newStatus, label: STATUS_ALL_LABELS[newStatus] || newStatus })
+    setStatusConfirm({ newValue, label: STATUS_ALL_LABELS[newValue] || newValue, isClientType })
   }
 
   if (loadError) return (
@@ -2905,19 +2904,16 @@ export default function MobileClientDetail() {
                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition whitespace-nowrap ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
                 {statusLoading
                   ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  : <>
-                      {client.status === 'trial' && <FlaskConical size={10} />}
-                      {STATUS_LABEL[client.status]}
-                    </>
+                  : <>{STATUS_LABEL[client.status]}</>
                 }
                 <ChevronDown size={10} />
               </button>
               {statusMenuOpen && (
                 <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
                   {STATUS_OPTIONS.map(opt => (
-                    <button key={opt.value} type="button" onClick={() => changeStatus(opt.value)}
+                    <button key={opt.value} type="button" onClick={() => changeStatus(opt.value, opt.isClientType)}
                       className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition ${
-                        opt.value === client.status ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
+                        (opt.isClientType ? opt.value === client.client_type : opt.value === client.status) ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
                       }`}>
                       <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
                       {opt.label}
@@ -2946,12 +2942,13 @@ export default function MobileClientDetail() {
             </p>
           )}
 
-          {/* Чипы: пробный / бонусы / % / google */}
+          {/* Чипы: тип клиента / бонусы / % / google */}
           <div className="flex flex-wrap gap-2 mt-4">
-            {client.is_trial && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
-                    style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa' }}>
-                <FlaskConical size={10} /> Пробный
+            {client.client_type !== 'regular' && (
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${CLIENT_TYPE_BADGE[client.client_type] || ''}`}>
+                {client.client_type === 'trial' && <FlaskConical size={10} />}
+                {client.client_type === 'frozen' && <Snowflake size={10} />}
+                {CLIENT_TYPE_LABEL[client.client_type]}
               </span>
             )}
             {client.bonus_balance != null && Number(client.bonus_balance) !== 0 && (
@@ -3133,7 +3130,7 @@ export default function MobileClientDetail() {
         <MobileRepeatPanel client={client} clientId={id} onSuccess={load} />
 
         {/* Заморозить — только для клиентов без группы (с группой — внутри PrimaryGroupBlock) */}
-        {!client.group && (client.status === 'active' || client.status === 'new' || client.status === 'trial') && (
+        {!client.group && (client.status === 'active' || client.status === 'new' || client.client_type === 'trial') && (
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -3152,13 +3149,16 @@ export default function MobileClientDetail() {
           <ConfirmModal
             open={true}
             title="Смена статуса"
-            message={`Изменить статус клиента на «${statusConfirm.label}»?`}
+            message={`Изменить ${statusConfirm.isClientType ? 'тип клиента' : 'статус'} на «${statusConfirm.label}»?`}
             variant="warning"
             confirmText="Изменить"
             onConfirm={async () => {
               setStatusLoading(true); setStatusConfirm(null)
               try {
-                await api.post(`/clients/${id}/change_status/`, { status: statusConfirm.newStatus })
+                const payload = statusConfirm.isClientType
+                  ? { client_type: statusConfirm.newValue }
+                  : { status: statusConfirm.newValue }
+                await api.post(`/clients/${id}/change_status/`, payload)
                 await load()
               } catch { } finally { setStatusLoading(false) }
             }}

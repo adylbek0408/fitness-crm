@@ -89,14 +89,14 @@ class ClientService(BaseService):
         if not data.get('is_repeat', False) and Decimal(str(data.get('discount', 0))) > 0:
             raise ValidationError("Discount can only be applied to repeat clients")
 
-        is_trial = data.get('is_trial', False)
+        client_type = data.get('client_type', 'regular')
 
         group_id = data.get('group_id')
-        if is_trial:
-            # Пробный клиент — никогда не добавляем в группу, статус = 'trial'
+        if client_type == 'trial':
+            # Пробный клиент — никогда не добавляем в группу
             data.pop('group_id', None)
             data.pop('group', None)
-            data['status'] = 'trial'
+            data['status'] = 'new'
         elif group_id:
             from apps.groups.models import Group
             try:
@@ -152,7 +152,7 @@ class ClientService(BaseService):
         else:
             raise ValidationError(f"Invalid payment_type: {payment_type}")
 
-        self.logger.info(f"Client created: {client.id}, payment_type: {payment_type}, is_trial: {is_trial}")
+        self.logger.info(f"Client created: {client.id}, payment_type: {payment_type}, client_type: {client_type}")
         client._cabinet_password_plain = plain_password
         client._cabinet_username_plain = username
         return client
@@ -197,24 +197,48 @@ class ClientService(BaseService):
         client.save()
         return client
 
-    def change_status(self, client_id: str, new_status: str, user=None) -> Client:
-        valid_statuses = ['frozen', 'active_frozen', 'expelled']
-        if new_status not in valid_statuses:
-            raise ValidationError("Ручная смена доступна только для: Заморозка, Активный+Заморозка.")
+    def change_status(
+        self,
+        client_id: str,
+        new_status: str = None,
+        new_client_type: str = None,
+        user=None,
+    ) -> Client:
         client = self.get_client_or_raise(client_id)
-        if new_status == 'active' and not client.group_id:
-            raise ValidationError('Статус «Активный» доступен только у клиента, записанного в группу.')
-        old_status = client.status
-        client.status = new_status
-        client.save(update_fields=['status'])
-        self._record_status_change(client, old_status, new_status, user=user)
+
+        if new_status is not None:
+            valid_statuses = ['expelled']
+            if new_status not in valid_statuses:
+                raise ValidationError("Ручная смена статуса доступна только для: Отчислен.")
+            old_status = client.status
+            client.status = new_status
+            client.save(update_fields=['status'])
+            self._record_status_change(client, old_status, new_status, user=user)
+
+        if new_client_type is not None:
+            valid_types = ['regular', 'frozen']
+            if new_client_type not in valid_types:
+                raise ValidationError("Ручная смена типа доступна только для: Обычный, Заморозка.")
+            old_type = client.client_type
+            client.client_type = new_client_type
+            client.save(update_fields=['client_type'])
+            if old_type != new_client_type:
+                TYPE_LABEL = {'regular': 'Обычный', 'trial': 'Пробный', 'frozen': 'Заморозка'}
+                self._record_status_change(
+                    client,
+                    old_status=f'тип:{old_type}',
+                    new_status=f'тип:{new_client_type}',
+                    user=user,
+                    note=f'Смена типа клиента: {TYPE_LABEL.get(old_type, old_type)} → {TYPE_LABEL.get(new_client_type, new_client_type)}',
+                )
+
         return client
 
     @transaction.atomic
     def assign_to_group(self, client_id: str, group_id: str, user=None) -> Client:
         from apps.groups.models import Group
         client = self.get_client_or_raise(client_id)
-        if client.is_trial:
+        if client.client_type == 'trial':
             raise ValidationError('Пробный клиент не может быть добавлен в группу.')
         if client.group_id and str(client.group_id) != str(group_id):
             raise ValidationError(f'Клиент уже в группе #{client.group.number}')
@@ -231,9 +255,12 @@ class ClientService(BaseService):
         if group.trainer_id:
             client.trainer = group.trainer
             fields.append('trainer')
-        if client.status in ('new', 'frozen'):
+        if client.status == 'new' or client.client_type == 'frozen':
             client.status = 'active'
             fields.append('status')
+            if client.client_type == 'frozen':
+                client.client_type = 'regular'
+                fields.append('client_type')
         if client.training_format != group.training_format:
             client.training_format = group.training_format
             fields.append('training_format')
@@ -255,18 +282,19 @@ class ClientService(BaseService):
 
         client = self.get_client_or_raise(client_id)
 
-        if client.is_trial:
+        if client.client_type == 'trial':
             raise ValidationError('Пробный клиент не может быть добавлен в группу.')
 
-        if client.status not in ('new', 'frozen'):
+        is_frozen = client.client_type == 'frozen'
+        if client.status != 'new' and not is_frozen:
             raise ValidationError(
-                'Доступно только для клиентов со статусом «Новый» или «Заморозка».'
+                'Доступно только для клиентов со статусом «Новый» или типом «Заморозка».'
             )
-        if client.status == 'frozen' and client.is_repeat:
+        if is_frozen and client.is_repeat:
             raise ValidationError(
                 'Замороженного повторного клиента запишите через «Повторная запись» с новой оплатой.'
             )
-        if client.status == 'frozen':
+        if is_frozen:
             has_payment = (
                 FullPayment.objects.filter(client=client).exists() or
                 InstallmentPlan.objects.filter(client=client).exists()
@@ -301,7 +329,7 @@ class ClientService(BaseService):
     def cancel_payment(self, client_id: str, user=None) -> dict:
         """
         Отмена текущей оплаты без возврата денег (коррекция ввода).
-        Клиент остаётся в базе, статус 'new' (или 'trial' если is_trial), без группы и оплаты.
+        Клиент остаётся в базе, статус 'new' (или client_type='trial' если пробный), без группы и оплаты.
         """
         from apps.clients.bonus_service import BonusService
 
@@ -408,10 +436,10 @@ class ClientService(BaseService):
 
         client = self.get_client_or_raise(client_id)
 
-        if client.is_trial:
+        if client.client_type == 'trial':
             raise ValidationError('Пробный клиент не может быть записан в группу.')
 
-        if client.status == 'new':
+        if client.status == 'new' and client.client_type != 'frozen':
             raise ValidationError(
                 'Клиент со статусом «Новый» записывается через «Добавить в группу» без новой оплаты.'
             )
@@ -689,14 +717,20 @@ class ClientService(BaseService):
         elif remaining_fp:
             client.payment_type = 'full'
 
+        old_type = client.client_type
         client.group = None
-        client.status = 'frozen'
-        client.save(update_fields=['group', 'status', 'payment_type'])
+        client.client_type = 'frozen'
+        client.save(update_fields=['group', 'client_type', 'payment_type'])
 
-        self._record_status_change(
-            client, old_status=client_status_before_refund,
-            new_status='frozen', user=user, note='Возврат средств',
-        )
+        if old_type != 'frozen':
+            TYPE_LABEL = {'regular': 'Обычный', 'trial': 'Пробный', 'frozen': 'Заморозка'}
+            self._record_status_change(
+                client,
+                old_status=f'тип:{old_type}',
+                new_status='тип:frozen',
+                user=user,
+                note='Возврат средств — клиент переведён в Заморозку',
+            )
 
         self.logger.info(
             f'Client {client_id} refunded → frozen. '

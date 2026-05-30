@@ -63,7 +63,7 @@ class ClientReadSerializer(serializers.ModelSerializer):
             'id', 'first_name', 'last_name', 'full_name',
             'phone', 'telegram_link', 'notes',
             'training_format', 'group_type', 'group', 'second_group', 'trainer',
-            'status', 'is_repeat', 'is_trial', 'discount',
+            'status', 'client_type', 'is_repeat', 'discount',
             'bonus_balance', 'bonus_percent', 'payment_type',
             'registered_at', 'registered_by_name',
             'full_payment', 'installment_plan',
@@ -217,8 +217,8 @@ class ClientCreateSerializer(serializers.Serializer):
         queryset=Trainer.objects.filter(is_active=True), required=False, allow_null=True
     )
 
-    is_repeat = serializers.BooleanField(default=False)
-    is_trial  = serializers.BooleanField(default=False)
+    is_repeat   = serializers.BooleanField(default=False)
+    client_type = serializers.ChoiceField(choices=['regular', 'trial', 'frozen'], default='regular', required=False)
     discount = serializers.DecimalField(max_digits=5, decimal_places=2, default=0)
     registered_at = serializers.DateField(required=False)
 
@@ -243,7 +243,7 @@ class ClientCreateSerializer(serializers.Serializer):
             data['group_type'] = ''
 
         # Пробный клиент не может быть добавлен в группу при регистрации
-        if data.get('is_trial') and data.get('group'):
+        if data.get('client_type') == 'trial' and data.get('group'):
             raise serializers.ValidationError(
                 {'group': 'Пробный клиент не добавляется в группу при регистрации.'}
             )
@@ -346,7 +346,7 @@ class ClientListMinimalSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Client
-        fields = ('id', 'full_name', 'phone', 'registered_at', 'status', 'is_trial')
+        fields = ('id', 'full_name', 'phone', 'registered_at', 'status', 'client_type')
 
 
 class ClientUpdateSerializer(serializers.ModelSerializer):
@@ -355,6 +355,6 @@ class ClientUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'first_name', 'last_name', 'phone', 'telegram_link', 'notes',
             'training_format', 'group_type', 'group', 'second_group', 'trainer',
-            'status', 'is_repeat', 'is_trial', 'discount',
+            'status', 'client_type', 'is_repeat', 'discount',
             'bonus_balance', 'bonus_percent',
         ]

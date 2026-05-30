@@ -11,8 +11,8 @@ import {
   Pencil, X, Ban, Send, FlaskConical
 } from 'lucide-react'
 import {
-  STATUS_BADGE, STATUS_LABEL, fmtMoney, GROUP_TYPE_LABEL,
-  toAbsoluteUrl, fmtDateTime, fmtDate
+  STATUS_BADGE, STATUS_LABEL, CLIENT_TYPE_BADGE, CLIENT_TYPE_LABEL,
+  fmtMoney, GROUP_TYPE_LABEL, toAbsoluteUrl, fmtDateTime, fmtDate
 } from '../../utils/format'
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPaymentForm'
@@ -199,7 +199,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
   const [telegramLink, setTelegramLink] = useState(client.telegram_link || '')
   const [notes,        setNotes]        = useState(client.notes || '')
   const [googleEmail,  setGoogleEmail]  = useState(client.google_email || '')
-  const [isTrial,        setIsTrial]        = useState(client.is_trial || false)
+  const [clientTypeEdit, setClientTypeEdit] = useState(client.client_type || 'regular')
   const [trainingFormat, setTrainingFormat] = useState(client.training_format || 'offline')
   const [groupType,      setGroupType]      = useState(client.group_type || '')
   const [groupId,        setGroupId]        = useState(client.group?.id || '')
@@ -217,7 +217,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
     setTelegramLink(client.telegram_link || '')
     setNotes(client.notes || '')
     setGoogleEmail(client.google_email || '')
-    setIsTrial(client.is_trial || false)
+    setClientTypeEdit(client.client_type || 'regular')
     setTrainingFormat(client.training_format || 'offline')
     setGroupType(client.group_type || '')
     setGroupId(client.group?.id || '')
@@ -251,11 +251,11 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
         telegram_link:    trainingFormat === 'online' ? (telegramLink || '').trim() : '',
         notes:            (notes || '').trim(),
         google_email:     (googleEmail || '').trim().toLowerCase(),
-        is_trial:         isTrial,
+        client_type:      clientTypeEdit,
         training_format:  trainingFormat,
         group_type:       trainingFormat === 'offline' ? groupType : '',
       }
-      if (!isTrial) {
+      if (clientTypeEdit !== 'trial') {
         body.group_id = groupId || null
         body.second_group_id = secondGroupId || null
       }
@@ -398,37 +398,37 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
           <div>
             <label className="crm-label">Тип клиента</label>
             <div className="flex gap-2 mt-1">
-              <button type="button" onClick={() => setIsTrial(false)}
+              <button type="button" onClick={() => setClientTypeEdit('regular')}
                 className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition text-sm font-medium ${
-                  !isTrial ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-500'
+                  clientTypeEdit === 'regular' ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-slate-200 text-slate-500'
                 }`}>
                 Обычный
                 <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                  !isTrial ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300 bg-white'
+                  clientTypeEdit === 'regular' ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300 bg-white'
                 }`}>
-                  {!isTrial && <Check size={9} className="text-white" strokeWidth={3} />}
+                  {clientTypeEdit === 'regular' && <Check size={9} className="text-white" strokeWidth={3} />}
                 </div>
               </button>
-              <button type="button" onClick={() => setIsTrial(true)}
+              <button type="button" onClick={() => setClientTypeEdit('trial')}
                 className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition text-sm font-medium ${
-                  isTrial ? 'bg-orange-50 border-orange-400 text-orange-700' : 'bg-white border-slate-200 text-slate-500'
+                  clientTypeEdit === 'trial' ? 'bg-orange-50 border-orange-400 text-orange-700' : 'bg-white border-slate-200 text-slate-500'
                 }`}>
                 <span className="flex items-center gap-1.5">
                   <FlaskConical size={13} />Пробный
                 </span>
                 <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                  isTrial ? 'border-orange-500 bg-orange-500' : 'border-slate-300 bg-white'
+                  clientTypeEdit === 'trial' ? 'border-orange-500 bg-orange-500' : 'border-slate-300 bg-white'
                 }`}>
-                  {isTrial && <Check size={9} className="text-white" strokeWidth={3} />}
+                  {clientTypeEdit === 'trial' && <Check size={9} className="text-white" strokeWidth={3} />}
                 </div>
               </button>
             </div>
-            {client.is_trial && !isTrial && (
+            {client.client_type === 'trial' && clientTypeEdit === 'regular' && (
               <p className="text-xs mt-1.5 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700">
-                ✓ Статус изменится с «Пробный» на «Новый». Пробный платёж будет удалён — после сохранения введите новую оплату.
+                ✓ Тип сменится с «Пробный» на «Обычный». Пробный платёж будет удалён — после сохранения введите новую оплату.
               </p>
             )}
-            {!client.is_trial && isTrial && (
+            {client.client_type !== 'trial' && clientTypeEdit === 'trial' && (
               <p className="text-xs mt-1.5 px-3 py-2 rounded-xl bg-orange-50 border border-orange-200 text-orange-700">
                 ⚗️ Клиент будет помечен как пробный. Добавление в группу станет недоступным.
               </p>
@@ -436,7 +436,7 @@ function EditInfoPanel({ client, clientId, onSuccess }) {
           </div>
 
           {/* Группа — только для НЕ пробных */}
-          {!isTrial && (
+          {clientTypeEdit !== 'trial' && (
             <>
               <div>
                 <label className="crm-label">Основная группа (оставить пустым — без группы)</label>
@@ -607,7 +607,7 @@ function EnterPaymentPanel({ client, clientId, onSuccess }) {
   // Show for new/trial clients without payment, and also for 'active' clients
   // without payment (e.g. after trial→regular conversion then add-to-group)
   if (hasPayment) return null
-  if (!['new', 'trial', 'active'].includes(client.status)) return null
+  if (!['new', 'active'].includes(client.status)) return null
 
   const handleSubmit = async () => {
     if (payType === 'full' && (!payAmount || Number(payAmount) <= 0)) {
@@ -629,7 +629,7 @@ function EnterPaymentPanel({ client, clientId, onSuccess }) {
           : { total_cost: totalCost, deadline },
         bonus_percent: bp,
       })
-      setOk(client.is_trial
+      setOk(client.client_type === 'trial'
         ? 'Оплата введена!'
         : 'Оплата введена! Теперь добавьте клиента в группу.')
       setOpen(false)
@@ -651,7 +651,7 @@ function EnterPaymentPanel({ client, clientId, onSuccess }) {
         <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Требуется</span>
       </div>
       <p className="text-xs text-slate-400 mb-3">
-        {client.is_trial
+        {client.client_type === 'trial'
           ? 'Оплата была отменена. Выберите тип оплаты и введите данные заново.'
           : 'Оплата была отменена. Выберите тип оплаты и введите данные заново — затем добавьте клиента в группу.'}
       </p>
@@ -751,8 +751,8 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
 
   // Пробных клиентов НЕ добавляем. Frozen без оплаты (возврат) — только через Повторная запись.
   const canUseNewClientFlow =
-    !client.is_trial &&
-    (client.status === 'new' || (client.status === 'frozen' && !client.is_repeat && hasPayment))
+    client.client_type !== 'trial' &&
+    (client.status === 'new' || (client.client_type === 'frozen' && !client.is_repeat && hasPayment))
     && !client.group
 
   if (!canUseNewClientFlow) return null
@@ -1177,7 +1177,9 @@ function RepeatClientPanel({ client, clientId, onSuccess }) {
   }
 
   // Пробных не показываем + обычные условия
-  const statusAllowsReEnroll = !client.is_trial && !client.group && ['completed', 'expelled', 'frozen'].includes(client.status)
+  const statusAllowsReEnroll = client.client_type !== 'trial' && !client.group
+    && (client.status === 'completed' || client.status === 'expelled'
+        || (client.status === 'active' && client.client_type === 'frozen'))
   if (!statusAllowsReEnroll) return null
 
   const fp = client.full_payment
@@ -1397,17 +1399,6 @@ const STATUS_CONFIG = [
     activeBg:  'bg-violet-50 border-violet-300',
     activeText:'text-violet-700',
     iconColor: 'text-violet-500',
-    dot:       'bg-violet-500',
-  },
-  {
-    value:     'trial',
-    label:     'Пробный',
-    desc:      'Пробное занятие',
-    Icon:      FlaskConical,
-    activeBg:  'bg-orange-50 border-orange-300',
-    activeText:'text-orange-700',
-    iconColor: 'text-orange-500',
-    dot:       'bg-orange-500',
   },
   {
     value:     'active',
@@ -1417,17 +1408,6 @@ const STATUS_CONFIG = [
     activeBg:  'bg-emerald-50 border-emerald-300',
     activeText:'text-emerald-700',
     iconColor: 'text-emerald-500',
-    dot:       'bg-emerald-500',
-  },
-  {
-    value:     'frozen',
-    label:     'Заморозка',
-    desc:      'Временно заморожен',
-    Icon:      Snowflake,
-    activeBg:  'bg-sky-50 border-sky-300',
-    activeText:'text-sky-700',
-    iconColor: 'text-sky-500',
-    dot:       'bg-sky-500',
   },
   {
     value:     'completed',
@@ -1437,17 +1417,45 @@ const STATUS_CONFIG = [
     activeBg:  'bg-slate-100 border-slate-300',
     activeText:'text-slate-700',
     iconColor: 'text-slate-500',
-    dot:       'bg-slate-400',
   },
   {
-    value:     'active_frozen',
-    label:     'Акт.+Заморозка',
-    desc:      'Активен в части групп',
-    Icon:      Layers,
-    activeBg:  'bg-teal-50 border-teal-300',
-    activeText:'text-teal-700',
-    iconColor: 'text-teal-500',
-    dot:       'bg-teal-500',
+    value:     'expelled',
+    label:     'Отчислен',
+    desc:      'Удалён из школы',
+    Icon:      Ban,
+    activeBg:  'bg-red-50 border-red-300',
+    activeText:'text-red-700',
+    iconColor: 'text-red-500',
+  },
+]
+
+const CLIENT_TYPE_CONFIG = [
+  {
+    value:     'regular',
+    label:     'Обычный',
+    desc:      'Стандартный студент',
+    Icon:      User,
+    activeBg:  'bg-slate-50 border-slate-300',
+    activeText:'text-slate-700',
+    iconColor: 'text-slate-500',
+  },
+  {
+    value:     'trial',
+    label:     'Пробный',
+    desc:      'Пробное занятие',
+    Icon:      FlaskConical,
+    activeBg:  'bg-orange-50 border-orange-300',
+    activeText:'text-orange-700',
+    iconColor: 'text-orange-500',
+  },
+  {
+    value:     'frozen',
+    label:     'Заморозка',
+    desc:      'Временно заморожен',
+    Icon:      Snowflake,
+    activeBg:  'bg-sky-50 border-sky-300',
+    activeText:'text-sky-700',
+    iconColor: 'text-sky-500',
   },
 ]
 
@@ -1551,10 +1559,10 @@ export default function ClientDetail() {
 
   useEffect(() => { load() }, [id])
 
-  const doChangeStatus = async (newStatus) => {
+  const doChangeStatus = async (payload) => {
     if (statusLoading) return
     setStatusLoading(true)
-    try { await api.post(`/clients/${id}/change_status/`, { status: newStatus }); await load() }
+    try { await api.post(`/clients/${id}/change_status/`, payload); await load() }
     finally { setStatusLoading(false) }
   }
 
@@ -1565,11 +1573,15 @@ export default function ClientDetail() {
         message: `${client.full_name} сейчас в группе #${client.group.number}.\n\nЛучше закрыть группу целиком через страницу группы — тогда все клиенты обработаются автоматически.`,
         variant: 'warning',
         confirmText: 'Всё равно изменить',
-        onConfirm: async () => { setConfirmModal(null); await doChangeStatus(newStatus) },
+        onConfirm: async () => { setConfirmModal(null); await doChangeStatus({ status: newStatus }) },
       })
       return
     }
-    doChangeStatus(newStatus)
+    doChangeStatus({ status: newStatus })
+  }
+
+  const changeClientType = (newType) => {
+    doChangeStatus({ client_type: newType })
   }
 
   if (!client) return (
@@ -1610,17 +1622,17 @@ export default function ClientDetail() {
     : null
 
   const STATUS_GRADIENT = {
-    new:           'linear-gradient(135deg,#ede9fe,#fdf4ff)',
-    trial:         'linear-gradient(135deg,#fff7ed,#ffedd5)',
-    active:        'linear-gradient(135deg,#d1fae5,#ecfdf5)',
-    active_frozen: 'linear-gradient(135deg,#ccfbf1,#e0f2fe)',
-    frozen:        'linear-gradient(135deg,#e0f2fe,#f0f9ff)',
-    completed:     'linear-gradient(135deg,#f1f5f9,#f8fafc)',
-    expelled:      'linear-gradient(135deg,#ffe4e6,#fff1f2)',
+    new:       'linear-gradient(135deg,#ede9fe,#fdf4ff)',
+    active:    'linear-gradient(135deg,#d1fae5,#ecfdf5)',
+    completed: 'linear-gradient(135deg,#f1f5f9,#f8fafc)',
+    expelled:  'linear-gradient(135deg,#ffe4e6,#fff1f2)',
   }
   const STATUS_LINE_COLOR = {
-    new: '#7c3aed', trial: '#ea580c', active: '#059669',
-    active_frozen: '#0d9488', frozen: '#0284c7', completed: '#94a3b8', expelled: '#e11d48',
+    new: '#7c3aed', active: '#059669', completed: '#94a3b8', expelled: '#e11d48',
+  }
+  const CLIENT_TYPE_LINE_OVERLAY = {
+    trial:  '#ea580c',
+    frozen: '#0284c7',
   }
 
   return (
@@ -1643,9 +1655,11 @@ export default function ClientDetail() {
                     <RotateCcw size={10} /> Повторный
                   </span>
                 )}
-                {client.is_trial && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 flex items-center gap-1 shrink-0">
-                    <FlaskConical size={10} /> Пробный
+                {client.client_type !== 'regular' && (
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 shrink-0 ${CLIENT_TYPE_BADGE[client.client_type] || ''}`}>
+                    {client.client_type === 'trial' && <FlaskConical size={10} />}
+                    {client.client_type === 'frozen' && <Snowflake size={10} />}
+                    {CLIENT_TYPE_LABEL[client.client_type]}
                   </span>
                 )}
               </div>
@@ -1653,8 +1667,6 @@ export default function ClientDetail() {
                 <span className="text-sm text-slate-500">{client.phone}</span>
                 <span className="text-slate-300">·</span>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[client.status] || 'bg-slate-100 text-slate-600'}`}>
-                  {client.status === 'frozen' && <Snowflake size={10} className="inline mr-1" />}
-                  {client.status === 'trial' && <FlaskConical size={10} className="inline mr-1" />}
                   {STATUS_LABEL[client.status]}
                 </span>
                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -1704,7 +1716,7 @@ export default function ClientDetail() {
       </div>
 
       {/* ── Пробный клиент — информационный блок ── */}
-      {client.is_trial && (
+      {client.client_type === 'trial' && (
         <div className="crm-card p-4 mb-5 border-l-4 border-orange-400 bg-orange-50">
           <div className="flex items-start gap-3">
             <FlaskConical size={18} className="text-orange-500 shrink-0 mt-0.5" />
@@ -1760,13 +1772,19 @@ export default function ClientDetail() {
             <InfoRow icon={Calendar} label="Дата регистрации" value={client.registered_at} />
             <InfoRow icon={Gift} label="Бонусный баланс" value={fmtMoney(client.bonus_balance ?? 0)} color={Number(client.bonus_balance) < 0 ? 'text-red-600' : 'text-amber-600'} />
             <InfoRow icon={Percent} label="Бонус с оплаты (%)" value={`${bonusPercentDisplay(client.bonus_percent)}% — начислится после подтверждения оплаты`} color="text-slate-700" />
-            {client.is_trial && (
+            {client.client_type !== 'regular' && (
               <div className="flex items-center gap-3 py-3 border-b border-slate-50">
-                <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center shrink-0">
-                  <FlaskConical size={14} className="text-orange-400" />
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  client.client_type === 'trial' ? 'bg-orange-50' : 'bg-sky-50'
+                }`}>
+                  {client.client_type === 'trial'
+                    ? <FlaskConical size={14} className="text-orange-400" />
+                    : <Snowflake size={14} className="text-sky-400" />}
                 </div>
-                <span className="text-sm text-slate-500 flex-1">Статус клиента</span>
-                <span className="text-sm font-semibold text-orange-600">Пробный</span>
+                <span className="text-sm text-slate-500 flex-1">Тип клиента</span>
+                <span className={`text-sm font-semibold ${CLIENT_TYPE_BADGE[client.client_type]?.match(/text-\S+/)?.[0] || 'text-slate-700'}`}>
+                  {CLIENT_TYPE_LABEL[client.client_type]}
+                </span>
               </div>
             )}
             <div className="flex items-center gap-3 py-3">
@@ -1963,43 +1981,72 @@ export default function ClientDetail() {
       {/* ── Новый клиент: в группу без новой оплаты (пробных пропускаем) ── */}
       <NewClientAddToGroupPanel client={client} clientId={id} onSuccess={load} />
 
-      {/* ── Изменить статус ── */}
+      {/* ── Статус и тип клиента ── */}
       <div className="crm-card p-5 mb-5">
-        <h3 className="font-bold text-slate-800 mb-1">Изменить статус</h3>
-        <p className="text-xs text-slate-400 mb-4">
-          Статусы меняются автоматически при оплате, добавлении в группу и закрытии группы.
-          Ручная смена: Заморозка, Активный+Заморозка.
+        <h3 className="font-bold text-slate-800 mb-1">Статус</h3>
+        <p className="text-xs text-slate-400 mb-3">
+          Меняется автоматически при оплате, добавлении в группу и закрытии группы.
+          Ручная смена: только «Отчислен».
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           {STATUS_CONFIG.map(s => {
             const isActive = client.status === s.value
-            const canManuallySet = ['frozen', 'active_frozen'].includes(s.value)
+            const canManuallySet = s.value === 'expelled'
             const canClick = canManuallySet && !isActive
             return (
               <button key={s.value} type="button"
                 onClick={() => canClick && changeStatus(s.value)}
                 disabled={!canClick || statusLoading}
                 title={!canManuallySet && !isActive ? 'Меняется автоматически' : undefined}
-                className={`
-                relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border-2 text-sm
-                font-medium transition-all duration-150 text-center
-                ${isActive
-                  ? `${s.activeBg} ${s.activeText} shadow-sm`
-                  : canClick
-                    ? 'bg-white border-slate-200 text-slate-500 hover:border-teal-300 hover:bg-teal-50 cursor-pointer'
-                    : 'bg-white border-slate-100 text-slate-300 cursor-not-allowed opacity-50'
-                }
-                ${statusLoading ? 'opacity-50 cursor-not-allowed' : ''}
-              `}
+                className={`relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border-2 text-sm
+                  font-medium transition-all duration-150 text-center
+                  ${isActive
+                    ? `${s.activeBg} ${s.activeText} shadow-sm`
+                    : canClick
+                      ? 'bg-white border-slate-200 text-slate-500 hover:border-red-300 hover:bg-red-50 cursor-pointer'
+                      : 'bg-white border-slate-100 text-slate-300 cursor-not-allowed opacity-50'
+                  } ${statusLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isActive ? 'bg-white/60' : 'bg-slate-100'}`}>
-                  <s.Icon size={18} className={isActive ? s.iconColor : canClick ? 'text-teal-500' : 'text-slate-300'} />
+                  <s.Icon size={18} className={isActive ? s.iconColor : canClick ? 'text-red-400' : 'text-slate-300'} />
                 </div>
                 <span className="font-semibold leading-tight">{s.label}</span>
                 <span className="text-xs opacity-60 font-normal leading-tight">{isActive ? s.desc : (canManuallySet ? s.desc : 'Авто')}</span>
-                {isActive && (
-                  <span className="absolute top-2 right-2 text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 opacity-80">✓</span>
-                )}
+                {isActive && <span className="absolute top-2 right-2 text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 opacity-80">✓</span>}
+              </button>
+            )
+          })}
+        </div>
+
+        <h3 className="font-bold text-slate-800 mb-1">Тип клиента</h3>
+        <p className="text-xs text-slate-400 mb-3">
+          Задаётся при регистрации. Ручная смена: «Заморозка» (временная пауза) и «Обычный» (разморозить).
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          {CLIENT_TYPE_CONFIG.map(s => {
+            const isActive = client.client_type === s.value
+            const canManuallySet = ['frozen', 'regular'].includes(s.value)
+            const canClick = canManuallySet && !isActive
+            return (
+              <button key={s.value} type="button"
+                onClick={() => canClick && changeClientType(s.value)}
+                disabled={!canClick || statusLoading}
+                title={!canManuallySet && !isActive ? 'Задаётся при регистрации' : undefined}
+                className={`relative flex flex-col items-center gap-2 px-3 py-4 rounded-2xl border-2 text-sm
+                  font-medium transition-all duration-150 text-center
+                  ${isActive
+                    ? `${s.activeBg} ${s.activeText} shadow-sm`
+                    : canClick
+                      ? 'bg-white border-slate-200 text-slate-500 hover:border-sky-300 hover:bg-sky-50 cursor-pointer'
+                      : 'bg-white border-slate-100 text-slate-300 cursor-not-allowed opacity-50'
+                  } ${statusLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isActive ? 'bg-white/60' : 'bg-slate-100'}`}>
+                  <s.Icon size={18} className={isActive ? s.iconColor : canClick ? 'text-sky-500' : 'text-slate-300'} />
+                </div>
+                <span className="font-semibold leading-tight">{s.label}</span>
+                <span className="text-xs opacity-60 font-normal leading-tight">{isActive ? s.desc : (canManuallySet ? s.desc : 'Авто')}</span>
+                {isActive && <span className="absolute top-2 right-2 text-xs font-bold px-1.5 py-0.5 rounded-full bg-white/70 opacity-80">✓</span>}
               </button>
             )
           })}
@@ -2007,7 +2054,7 @@ export default function ClientDetail() {
       </div>
 
       {/* ── Возврат средств ── */}
-      {(client.group || (full && !full.is_paid) || (plan && !plan.is_closed) || client.status === 'new' || client.status === 'trial') && (
+      {(client.group || (full && !full.is_paid) || (plan && !plan.is_closed) || client.status === 'new' || client.client_type === 'trial') && (
         <div className="crm-card p-5 mb-5">
           <div className="flex items-center justify-between">
             <div>
