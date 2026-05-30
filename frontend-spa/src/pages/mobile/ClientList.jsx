@@ -5,7 +5,7 @@ import MobileLayout from '../../components/MobileLayout'
 import MobileDateField from '../../components/MobileDateField'
 import { useRefresh } from '../../contexts/RefreshContext'
 import { CheckCircle, Clock, Globe, Dumbbell, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
-import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate, GROUP_TYPE_LABEL } from '../../utils/format'
+import { STATUS_BADGE, STATUS_LABEL, fmtMoney, fmtDate, GROUP_TYPE_LABEL, CLIENT_TYPE_LABEL } from '../../utils/format'
 import AppSelect from '../../components/ui/AppSelect'
 
 export default function ClientList() {
@@ -15,6 +15,7 @@ export default function ClientList() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  const [clientType, setClientType] = useState('')
   const [format, setFormat] = useState('')
   const [paymentStatus, setPaymentStatus] = useState('')
   const [registeredFrom, setRegisteredFrom] = useState('')
@@ -32,6 +33,7 @@ export default function ClientList() {
 
   const activeFiltersCount = [
     status,
+    clientType,
     format,
     paymentStatus,
     registeredFrom,
@@ -53,6 +55,7 @@ export default function ClientList() {
       const params = new URLSearchParams({ page: p })
       if (search) params.append('search', search)
       if (status) params.append('status', status)
+      if (clientType) params.append('client_type', clientType)
       if (format) params.append('training_format', format)
       if (paymentStatus) params.append('payment_status', paymentStatus)
       if (registeredFrom) params.append('registered_from', registeredFrom)
@@ -93,6 +96,7 @@ export default function ClientList() {
   const resetFilters = () => {
     setSearch('')
     setStatus('')
+    setClientType('')
     setFormat('')
     setPaymentStatus('')
     setRegisteredFrom('')
@@ -154,6 +158,7 @@ export default function ClientList() {
         {!filtersOpen && activeFiltersCount > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
             {status && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>{STATUS_LABEL[status]}</span>}
+            {clientType && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>{CLIENT_TYPE_LABEL[clientType]}</span>}
             {format && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>{format === 'online' ? 'Онлайн' : 'Оффлайн'}</span>}
             {paymentStatus && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>{paymentStatus === 'paid' ? 'Оплачено' : 'Есть остаток'}</span>}
             {registeredFrom && <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#fce7f3', color: '#be185d' }}>С: {registeredFrom}</span>}
@@ -174,6 +179,17 @@ export default function ClientList() {
                   <option value="expelled">Отчислены</option>
                 </AppSelect>
               </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Тип клиента</label>
+                <AppSelect variant="mobile" value={clientType} onChange={e => setClientType(e.target.value)}>
+                  <option value="">Все</option>
+                  <option value="regular">Обычные</option>
+                  <option value="trial">Пробные</option>
+                  <option value="frozen">Заморозка</option>
+                </AppSelect>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Формат</label>
                 <AppSelect variant="mobile" value={format} onChange={e => setFormat(e.target.value)}>

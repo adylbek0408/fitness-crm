@@ -238,8 +238,6 @@ class ClientService(BaseService):
     def assign_to_group(self, client_id: str, group_id: str, user=None) -> Client:
         from apps.groups.models import Group
         client = self.get_client_or_raise(client_id)
-        if client.client_type == 'trial':
-            raise ValidationError('Пробный клиент не может быть добавлен в группу.')
         if client.group_id and str(client.group_id) != str(group_id):
             raise ValidationError(f'Клиент уже в группе #{client.group.number}')
         try:
@@ -255,10 +253,10 @@ class ClientService(BaseService):
         if group.trainer_id:
             client.trainer = group.trainer
             fields.append('trainer')
-        if client.status == 'new' or client.client_type == 'frozen':
+        if client.status == 'new' or client.client_type in ('frozen', 'trial'):
             client.status = 'active'
             fields.append('status')
-            if client.client_type == 'frozen':
+            if client.client_type in ('frozen', 'trial'):
                 client.client_type = 'regular'
                 fields.append('client_type')
         if client.training_format != group.training_format:
@@ -277,16 +275,14 @@ class ClientService(BaseService):
 
     @transaction.atomic
     def add_new_client_to_group(self, client_id: str, group_id: str) -> Client:
-        """Запись в поток без новой оплаты (оплата уже закрыта): «Новый» или «Заморозка» без флага повторного клиента."""
+        """Запись в поток без новой оплаты (оплата уже закрыта): «Новый», «Пробный» или «Заморозка» без флага повторного клиента."""
         from apps.groups.models import Group
 
         client = self.get_client_or_raise(client_id)
 
-        if client.client_type == 'trial':
-            raise ValidationError('Пробный клиент не может быть добавлен в группу.')
-
         is_frozen = client.client_type == 'frozen'
-        if client.status != 'new' and not is_frozen:
+        is_trial = client.client_type == 'trial'
+        if client.status != 'new' and not is_frozen and not is_trial:
             raise ValidationError(
                 'Доступно только для клиентов со статусом «Новый» или типом «Заморозка».'
             )

@@ -749,10 +749,11 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
 
   const hasPayment = !!(client.full_payment || client.installment_plan)
 
-  // Пробных клиентов НЕ добавляем. Frozen без оплаты (возврат) — только через Повторная запись.
+  // Trial clients always need fresh course payment — the trial fee doesn't count.
+  const hasPaymentForFlow = client.client_type !== 'trial' && hasPayment
+  // Frozen without payment (refund path) — only via Повторная запись.
   const canUseNewClientFlow =
-    client.client_type !== 'trial' &&
-    (client.status === 'new' || (client.client_type === 'frozen' && !client.is_repeat && hasPayment))
+    (client.status === 'new' || (client.client_type === 'frozen' && !client.is_repeat && hasPaymentForFlow))
     && !client.group
 
   if (!canUseNewClientFlow) return null
@@ -821,6 +822,13 @@ function NewClientAddToGroupPanel({ client, clientId, onSuccess }) {
           ? 'Группы подходят под формат клиента (онлайн).'
           : `Группы подходят под тип (${GROUP_TYPE_LABEL[client.group_type] || '—'}) и формат клиента.`}
       </p>
+      {client.client_type === 'trial' && (
+        <div className="flex items-start gap-2 p-3 rounded-xl text-xs mb-3"
+             style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' }}>
+          <FlaskConical size={13} className="shrink-0 mt-0.5" />
+          <span>Пробный клиент — после добавления в группу тип автоматически изменится на «Обычный». Укажите новую оплату за курс.</span>
+        </div>
+      )}
       {msg && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 mb-3 flex items-center gap-2">
           <Check size={15} /> {msg}

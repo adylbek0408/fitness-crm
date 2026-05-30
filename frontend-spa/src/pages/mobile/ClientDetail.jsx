@@ -17,7 +17,6 @@ import {
 import AddPaymentForm from '../../components/payments/AddPaymentForm'
 import ConfirmFullPaymentForm from '../../components/payments/ConfirmFullPaymentForm'
 import EnrollmentPaymentForm from '../../components/payments/EnrollmentPaymentForm'
-import ConfirmModal from '../../components/ConfirmModal'
 import RefundModal from '../../components/RefundModal'
 
 const GROUP_TYPE_SHORT = { '1.5h': '1.5 ч', '2.5h': '2.5 ч' }
@@ -509,10 +508,10 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
   const [bonusPercent, setBonusPercent] = useState(String(bonusPercentDisplay(client.bonus_percent)))
   const [loading,      setLoading]      = useState(false)
 
-  const hasPayment = !!(client.full_payment || client.installment_plan)
+  // Trial clients always need a fresh course payment — the trial fee doesn't count.
+  const hasPayment = client.client_type !== 'trial' && !!(client.full_payment || client.installment_plan)
 
   const canUseNewClientFlow =
-    client.client_type !== 'trial' &&
     (client.status === 'new' || (client.client_type === 'frozen' && !client.is_repeat && hasPayment))
     && !client.group
 
@@ -592,6 +591,13 @@ function MobileNewClientAddPanel({ client, clientId, onSuccess }) {
 
       {open && step === 1 && (
         <div className="px-4 pb-4 border-t border-gray-100 space-y-3 pt-3">
+          {client.client_type === 'trial' && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs"
+                 style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' }}>
+              <FlaskConical size={13} className="shrink-0 mt-0.5" />
+              <span>Пробный клиент — после добавления в группу тип автоматически изменится на «Обычный». Введите оплату за курс.</span>
+            </div>
+          )}
           {/* Формат */}
           <div className="flex gap-2">
             {[{ val: 'offline', icon: <Dumbbell size={13} />, label: 'Оффлайн' }, { val: 'online', icon: <Globe size={13} />, label: 'Онлайн' }].map(({ val, icon, label }) => (
@@ -2789,9 +2795,6 @@ export default function MobileClientDetail() {
   const [client, setClient]           = useState(null)
   const [loadError, setLoadError]     = useState(null)
   const [planId, setPlanId]           = useState(null)
-  const [statusLoading, setStatusLoading] = useState(false)
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false)
-  const [statusConfirm, setStatusConfirm] = useState(null)
   const [refundOpen, setRefundOpen] = useState(false)
   const [refundMsg, setRefundMsg]     = useState(null)
 
@@ -2817,22 +2820,6 @@ export default function MobileClientDetail() {
         e.id === updated.id ? updated : e
       ),
     })
-  }
-
-  const STATUS_OPTIONS = [
-    { value: 'frozen', label: 'Заморозка', dot: 'bg-sky-500', isClientType: true },
-  ]
-
-  const STATUS_ALL_LABELS = {
-    active: 'Активный', completed: 'Завершил', new: 'Новый', expelled: 'Отчислен',
-    frozen: 'Заморозка',
-  }
-
-  const changeStatus = (newValue, isClientType = false) => {
-    const current = isClientType ? client.client_type : client.status
-    if (newValue === current) { setStatusMenuOpen(false); return }
-    setStatusMenuOpen(false)
-    setStatusConfirm({ newValue, label: STATUS_ALL_LABELS[newValue] || newValue, isClientType })
   }
 
   if (loadError) return (
@@ -2899,29 +2886,9 @@ export default function MobileClientDetail() {
               <h2 className="text-[19px] font-bold text-gray-900 leading-tight">{client.full_name}</h2>
               <p className="text-sm text-gray-400 mt-0.5">{client.phone}</p>
             </div>
-            <div className="relative shrink-0" style={{ zIndex: 10 }}>
-              <button type="button" onClick={() => setStatusMenuOpen(o => !o)} disabled={statusLoading}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition whitespace-nowrap ${STATUS_BADGE[client.status] || 'border-gray-200'} disabled:opacity-60`}>
-                {statusLoading
-                  ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  : <>{STATUS_LABEL[client.status]}</>
-                }
-                <ChevronDown size={10} />
-              </button>
-              {statusMenuOpen && (
-                <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[160px]">
-                  {STATUS_OPTIONS.map(opt => (
-                    <button key={opt.value} type="button" onClick={() => changeStatus(opt.value, opt.isClientType)}
-                      className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition ${
-                        (opt.isClientType ? opt.value === client.client_type : opt.value === client.status) ? 'font-semibold text-gray-900 bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
-                      }`}>
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${STATUS_BADGE[client.status] || 'border-gray-200'}`}>
+              {STATUS_LABEL[client.status]}
+            </span>
           </div>
 
           {/* Формат (если нет группы) + Telegram */}
@@ -3143,27 +3110,6 @@ export default function MobileClientDetail() {
               </button>
             </div>
           </div>
-        )}
-
-        {statusConfirm && (
-          <ConfirmModal
-            open={true}
-            title="Смена статуса"
-            message={`Изменить ${statusConfirm.isClientType ? 'тип клиента' : 'статус'} на «${statusConfirm.label}»?`}
-            variant="warning"
-            confirmText="Изменить"
-            onConfirm={async () => {
-              setStatusLoading(true); setStatusConfirm(null)
-              try {
-                const payload = statusConfirm.isClientType
-                  ? { client_type: statusConfirm.newValue }
-                  : { status: statusConfirm.newValue }
-                await api.post(`/clients/${id}/change_status/`, payload)
-                await load()
-              } catch { } finally { setStatusLoading(false) }
-            }}
-            onClose={() => setStatusConfirm(null)}
-          />
         )}
 
         <RefundModal
