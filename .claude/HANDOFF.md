@@ -1,51 +1,48 @@
-# HANDOFF — 2026-05-30 (bug fixes: freeze, bonus, delete, re-enroll)
+# HANDOFF — 2026-06-01 (freeze flow полный цикл)
 
-## Что сделано в этой сессии
+## Что сделано в этой сессии (все коммиты)
 
-### Commit `efd2081` — clients: fix primary freeze bug, add bonus% to reenter form, manager delete, re-enroll fixes
+### `efd2081` — основные баги заморозки + UX
+- `refund_client`: `client.status = 'new'` после заморозки (было stuck как `'active'`)
+- `re_enroll_client`: убран устаревший trial-блок; сброс `client_type` frozen/trial→regular
+- `views.destroy`: разрешён `registrar` удалять клиентов
+- `ReenterPaymentInline`: добавлено редактируемое поле «Бонус %»
+- Mobile ClientDetail: кнопка «Удалить клиента» для admin/registrar
+- Баннер для замороженного клиента в панели «Добавить в группу»
+- Кнопка «Заморозить без группы» не показывается уже-замороженным
 
-**Баг 1: Заморозка основной группы → сломанный статус**
+### `5045d50` — параллельные записи исчезали после заморозки основной
+`ParallelEnrollmentBlock` был вложен в `{client.group ? ... : ...}` → исчезал
+при очистке `client.group`. Перенесен наружу, рендерится всегда.
+`AddEnrollmentPanel` (+ доп. группу) остаётся за `client.group`.
 
-`refund_client` в `services.py` не сбрасывал `status` после заморозки — клиент
-оставался `status='active'` без группы. Никаких кнопок больше нельзя было нажать.
+### `37cc9f2` — история группы пустела после заморозки
+`refund_client` не создавал `ClientGroupHistory` при очистке `client.group`.
+Теперь создаёт snapshot (группа, тренер, оплата) до `client.group = None`.
 
-Исправлено: после `client.group = None` добавлено `client.status = 'new'`.
-Включено в `update_fields` и записано в историю через `_record_status_change`.
+### `c6ff0a2` — редизайн карточек истории
+- `group-history` endpoint: добавлен `group_training_format` (select_related)
+- `MobileStreamsHistory`: история рендерится как карточки параллельных записей —
+  иконка онлайн/офлайн, цветной фон, бейджи «осн.»/«Заморожен»/«Завершён»
 
-**Баг 2: Поле «Бонус %» отсутствовало в форме "Ввести оплату заново"**
+### `f17c5e7` — мелкие чистки
+- Описание «Заморозить эту запись»: убран «Акт.+Заморозка» → «Заморожен»
+- `MobileStreamsHistory` / `MobileStatusHistory`: заменён length-cache на
+  in-flight guard — история перезагружается при каждом открытии аккордеона
 
-`ReenterPaymentInline` в `mobile/ClientDetail.jsx` хардкодил `bonus_percent: client.bonus_percent ?? 10`.
-Теперь добавлено состояние `bonusPercent` и редактируемый инпут, аналогично параллельному блоку.
+## Текущее состояние после freeze-цикла
 
-**Фича: Менеджер (registrar) может удалить клиента**
-
-- `views.py` `get_permissions`: `destroy` переведён с `IsAdmin()` на `IsAdminOrRegistrar()`
-- Добавлена кнопка «Удалить клиента» в `mobile/ClientDetail.jsx` внизу страницы
-- Видна только для `user.role === 'admin'` или `'registrar'`
-- Двойное подтверждение перед удалением
-
-**Фикс: `re_enroll_client` блокировал пробных клиентов**
-
-Убрана устаревшая проверка `if client.client_type == 'trial': raise ValidationError(...)`.
-Добавлен сброс `client_type` из `frozen`/`trial` → `regular` при повторной записи.
-
-**Доп. улучшения:**
-- Кнопка «Заморозить клиента» не показывается для уже замороженных клиентов (`client.client_type !== 'frozen'`)
-- Информационный баннер для замороженного клиента в панели «Добавить в группу»
-
-## Логика после фикса заморозки
-
-После `refund_client`:
-- `client.status = 'new'` (было `'active'`)
-- `client.client_type = 'frozen'`
-- `client.group = null`
-
-→ `canUseNewClientFlow = true` (условие `client.status === 'new' && !client.group`)
-→ Отображается панель «Добавить в группу» с баннером о заморозке
-→ При добавлении в группу: `client_type` автоматически → `'regular'`, `status` → `'active'`
+После `refund_client` (заморозка основной группы):
+- `client.status = 'new'` ✅
+- `client.client_type = 'frozen'` ✅
+- `client.group = null` ✅
+- `ClientGroupHistory` создана ✅
+- Параллельные записи остаются ✅
+- Панель «Добавить в группу» появляется ✅
+- «История группы» показывает замороженную группу ✅
 
 ## Незакоммиченные изменения
-Нет. Всё запушено (`git push origin main` → `efd2081`).
+Нет. Всё запушено (`git push origin main` → `f17c5e7`).
 
 ## Следующие шаги
 
@@ -54,14 +51,14 @@
    bash /var/www/fitness-crm/deploy/update.sh
    ```
 
-2. **Проверить на проде:**
-   - Заморозить клиента в основном блоке → должна появиться кнопка «Добавить в группу»
-   - Ввести оплату заново в основном блоке → должно быть поле «Бонус %»
-   - Менеджер должен видеть кнопку «Удалить клиента» внизу карточки
-   - Заморозить клиента → баннер о заморозке в панели добавления
+2. **Проверить на проде** полный цикл:
+   - Добавить клиента → добавить в основную группу → заморозить
+   - После заморозки: статус «Новый», тип «Заморозка», панель «Добавить в группу»
+   - «История группы» показывает замороженную основную группу
+   - Параллельные доп. записи не исчезают
 
 3. **Education module** — Sprint 1.2–1.5, 3.7, 9.6.
 
 ## Открытые задачи
 - Education module (Sprint 1.2–1.5, 3.7, 9.6)
-- Frontend desktop ClientDetail — enrollment accordion — не сделан
+- Frontend desktop `ClientDetail` — enrollment accordion — не сделан
