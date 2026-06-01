@@ -1,40 +1,51 @@
-# HANDOFF — 2026-05-30 (client_type рефакторинг)
+# HANDOFF — 2026-05-30 (bug fixes: freeze, bonus, delete, re-enroll)
 
 ## Что сделано в этой сессии
 
-### Commit `bb188a8` — clients: add client_type field, remove is_trial + active_frozen/frozen/trial statuses
+### Commit `efd2081` — clients: fix primary freeze bug, add bonus% to reenter form, manager delete, re-enroll fixes
 
-Полный рефакторинг поля статуса клиента — разделение «жизненного цикла» и «типа клиента».
+**Баг 1: Заморозка основной группы → сломанный статус**
 
-**Мотивация:** `active_frozen` — хак для параллельных групп. Клиент в двух группах
-(одна активна, другая заморожена) не может иметь один осмысленный статус.
+`refund_client` в `services.py` не сбрасывал `status` после заморозки — клиент
+оставался `status='active'` без группы. Никаких кнопок больше нельзя было нажать.
 
-**Новая модель:**
-- `Client.status` (4 значения): `new`, `active`, `completed`, `expelled`
-- `Client.client_type` (3 значения): `regular`, `trial`, `frozen`
-- Заморозка отдельной записи: `ClientEnrollment.frozen` (уже было)
+Исправлено: после `client.group = None` добавлено `client.status = 'new'`.
+Включено в `update_fields` и записано в историю через `_record_status_change`.
 
-**Файлы изменены:**
-- `apps/clients/models.py` — добавлен `client_type`, убран `is_trial`, `status` теперь 4 вар.
-- `apps/clients/migrations/0033_add_client_type_remove_is_trial.py` — data-migration
-- `apps/clients/serializers.py` — `is_trial` → `client_type`
-- `apps/clients/services.py` — `create_client`, freeze-логика, статус-переходы
-- `apps/clients/views.py` — `change_status` принимает `{status}` или `{client_type}`
-- `apps/clients/filters.py` — `is_trial` → `client_type`
-- `apps/clients/admin.py` — `list_display`, `list_filter`
-- `frontend-spa/src/utils/format.js` — `STATUS_BADGE/LABEL` (4 ключа) + новые `CLIENT_TYPE_BADGE/LABEL`
-- `frontend-spa/src/pages/admin/Clients.jsx` — фильтры, таблица, PDF
-- `frontend-spa/src/pages/admin/ClientDetail.jsx` — весь `is_trial` → `client_type`
-- `frontend-spa/src/pages/mobile/ClientDetail.jsx` — полный рефакторинг
-- `frontend-spa/src/pages/mobile/ClientList.jsx` — фильтр статуса
-- `frontend-spa/src/pages/mobile/ClientRegister.jsx` — `is_trial: isTrial` → `client_type: isTrial ? 'trial' : 'regular'`
+**Баг 2: Поле «Бонус %» отсутствовало в форме "Ввести оплату заново"**
 
-**Нюанс с миграцией:** migration 0021 переименовала индекс `clients_cli_is_tria_idx`
-→ `clients_cli_is_tria_5ebcf2_idx`. Migration 0033 исправлена соответственно.
-Также явно именован индекс `client_type` в models.py.
+`ReenterPaymentInline` в `mobile/ClientDetail.jsx` хардкодил `bonus_percent: client.bonus_percent ?? 10`.
+Теперь добавлено состояние `bonusPercent` и редактируемый инпут, аналогично параллельному блоку.
+
+**Фича: Менеджер (registrar) может удалить клиента**
+
+- `views.py` `get_permissions`: `destroy` переведён с `IsAdmin()` на `IsAdminOrRegistrar()`
+- Добавлена кнопка «Удалить клиента» в `mobile/ClientDetail.jsx` внизу страницы
+- Видна только для `user.role === 'admin'` или `'registrar'`
+- Двойное подтверждение перед удалением
+
+**Фикс: `re_enroll_client` блокировал пробных клиентов**
+
+Убрана устаревшая проверка `if client.client_type == 'trial': raise ValidationError(...)`.
+Добавлен сброс `client_type` из `frozen`/`trial` → `regular` при повторной записи.
+
+**Доп. улучшения:**
+- Кнопка «Заморозить клиента» не показывается для уже замороженных клиентов (`client.client_type !== 'frozen'`)
+- Информационный баннер для замороженного клиента в панели «Добавить в группу»
+
+## Логика после фикса заморозки
+
+После `refund_client`:
+- `client.status = 'new'` (было `'active'`)
+- `client.client_type = 'frozen'`
+- `client.group = null`
+
+→ `canUseNewClientFlow = true` (условие `client.status === 'new' && !client.group`)
+→ Отображается панель «Добавить в группу» с баннером о заморозке
+→ При добавлении в группу: `client_type` автоматически → `'regular'`, `status` → `'active'`
 
 ## Незакоммиченные изменения
-Нет. Всё запушено (`git push origin main` → `bb188a8`).
+Нет. Всё запушено (`git push origin main` → `efd2081`).
 
 ## Следующие шаги
 
@@ -42,15 +53,14 @@
    ```bash
    bash /var/www/fitness-crm/deploy/update.sh
    ```
-   *(включает migrate — нужна migration 0033)*
 
 2. **Проверить на проде:**
-   - Список клиентов: фильтры статуса (4 варианта: Новый/Активный/Завершил/Отчислен)
-   - Фильтр «Тип клиента» в расширенных фильтрах (Все/Обычные/Пробные/Заморозка)
-   - Карточка клиента: секция «Тип клиента» под статусом
-   - Регистрация клиента: поле «Тип клиента» (Обычный/Пробный)
+   - Заморозить клиента в основном блоке → должна появиться кнопка «Добавить в группу»
+   - Ввести оплату заново в основном блоке → должно быть поле «Бонус %»
+   - Менеджер должен видеть кнопку «Удалить клиента» внизу карточки
+   - Заморозить клиента → баннер о заморозке в панели добавления
 
-3. **Education module** — Sprint 1.2–1.5, 3.7, 9.6 без изменений.
+3. **Education module** — Sprint 1.2–1.5, 3.7, 9.6.
 
 ## Открытые задачи
 - Education module (Sprint 1.2–1.5, 3.7, 9.6)
