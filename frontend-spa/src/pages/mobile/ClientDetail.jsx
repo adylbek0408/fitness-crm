@@ -1212,7 +1212,7 @@ function MobileStreamsHistory({ client, clientId }) {
   const [selected, setSelected] = useState(null)
 
   const load = async () => {
-    if (history.length > 0) return
+    if (loading) return
     setLoading(true)
     try { const r = await api.get(`/clients/${clientId}/group-history/`); setHistory(r.data) }
     catch { } finally { setLoading(false) }
@@ -1414,7 +1414,7 @@ function MobileStatusHistory({ clientId }) {
   const [loading, setLoading] = useState(false)
 
   const load = async () => {
-    if (history.length > 0) return
+    if (loading) return
     setLoading(true)
     try {
       const r = await api.get(`/clients/${clientId}/status-history/`)
@@ -2412,7 +2412,7 @@ function ParallelEnrollmentBlock({ enrollment, clientId, onSuccess, onUpdate }) 
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-semibold text-gray-700">Заморозить эту запись</p>
-                      <p className="text-xs text-gray-400">Удержание за посещения; остаток — клиенту. Статус → «Акт.+Заморозка».</p>
+                      <p className="text-xs text-gray-400">Удержание за посещения; остаток — клиенту. Запись переходит в «Заморожен».</p>
                     </div>
                     <button type="button" onClick={() => { setFreezeOpen(true); setFreezeRetention(''); setFreezeErr('') }}
                       className="px-3 py-2 rounded-xl text-xs font-medium touch-manipulation shrink-0 ml-2"
