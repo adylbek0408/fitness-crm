@@ -2990,10 +2990,6 @@ export default function MobileClientDetail() {
         {client.group ? (
           <>
             <PrimaryGroupBlock client={client} clientId={id} planId={planId} onSuccess={load} onFreezeClick={() => setRefundOpen(true)} />
-            {(client.parallel_enrollments || []).filter(e => !e.frozen).map(e => (
-              <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} onUpdate={handleEnrollmentUpdate} />
-            ))}
-            <AddEnrollmentPanel client={client} clientId={id} onSuccess={load} />
           </>
         ) : (
           <>
@@ -3088,6 +3084,14 @@ export default function MobileClientDetail() {
 
           </>
         )}
+
+        {/* Доп. группы — показываются всегда, независимо от наличия основной группы */}
+        {(client.parallel_enrollments || []).filter(e => !e.frozen).map(e => (
+          <ParallelEnrollmentBlock key={e.id} enrollment={e} clientId={id} onSuccess={load} onUpdate={handleEnrollmentUpdate} />
+        ))}
+
+        {/* Добавить доп. группу — только когда есть основная группа */}
+        {client.group && <AddEnrollmentPanel client={client} clientId={id} onSuccess={load} />}
 
         {/* Редактировать (с переключателем Пробный/Обычный) */}
         <MobileEditInfoPanel client={client} clientId={id} onSuccess={load} />
