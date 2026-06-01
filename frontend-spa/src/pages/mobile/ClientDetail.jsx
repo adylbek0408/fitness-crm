@@ -1307,60 +1307,88 @@ function MobileStreamsHistory({ client, clientId }) {
               ))}
               {history.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-3">Прошлых групп нет</p>
-              ) : history.map(h => (
-                <div key={h.id} className="rounded-xl border border-gray-100 overflow-hidden">
-                  <button type="button" onClick={() => setSelected(s => s?.id === h.id ? null : h)}
-                    className="w-full flex items-center justify-between p-3 touch-manipulation" style={{ background: '#f9fafb' }}>
-                    <div className="text-left">
-                      <span className="font-semibold text-gray-700 text-sm">Группа #{h.group_number}</span>
-                      <span className="ml-2 text-xs text-gray-400">{GROUP_TYPE_SHORT[h.group_type]}</span>
-                      <span className="ml-2 text-xs text-gray-300">·</span>
-                      <span className="ml-2 text-xs text-gray-400">{h.ended_at}</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-xs font-semibold ${h.payment_is_closed ? 'text-green-600' : 'text-red-500'}`}>
-                        {h.payment_is_closed ? '✓' : '!'}
-                      </span>
-                      {selected?.id === h.id ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
-                    </div>
-                  </button>
-                  {selected?.id === h.id && (
-                    <div className="px-3 py-3 bg-white space-y-2">
-                      {[['Тренер', h.trainer_name || '—'], ['Старт', h.start_date || '—'],
-                        ['Тип оплаты', h.payment_type === 'full' ? 'Полная' : 'Рассрочка'],
-                        ['Сумма курса', fmtMoney(h.payment_amount)], ['Оплачено', fmtMoney(h.payment_paid)]
-                      ].map(([lbl, val]) => (
-                        <div key={lbl} className="flex justify-between text-xs">
-                          <span className="text-gray-400">{lbl}</span>
-                          <span className="font-medium text-gray-700">{val}</span>
+              ) : history.map(h => {
+                const isFrozen = !h.payment_is_closed
+                const isOnline = h.group_training_format === 'online'
+                const bg        = isFrozen ? '#f0f9ff' : '#fff1f2'
+                const txtColor  = isFrozen ? '#0369a1' : '#be185d'
+                const subColor  = isFrozen ? '#075985' : '#9d174d'
+                const fmtDate = (d) => d
+                  ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+                  : null
+                return (
+                  <div key={h.id} className="rounded-xl overflow-hidden" style={{ background: bg }}>
+                    <button type="button" onClick={() => setSelected(s => s?.id === h.id ? null : h)}
+                      className="w-full flex items-center justify-between p-3 touch-manipulation">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isOnline
+                          ? <Globe size={14} style={{ color: '#059669', flexShrink: 0 }} />
+                          : <Dumbbell size={14} style={{ color: txtColor, flexShrink: 0 }} />}
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm" style={{ color: txtColor }}>
+                            Группа #{h.group_number}
+                            <span className="ml-1.5 font-normal text-xs" style={{ color: subColor }}>
+                              {isOnline ? '· Онлайн' : '· Оффлайн'}
+                              {h.group_type ? ` · ${GROUP_TYPE_SHORT[h.group_type] || h.group_type}` : ''}
+                            </span>
+                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: subColor }}>
+                            {isFrozen
+                              ? (fmtDate(h.ended_at) ? `Заморожен с ${fmtDate(h.ended_at)}` : 'Заморожен')
+                              : (fmtDate(h.ended_at) ? `Завершён ${fmtDate(h.ended_at)}` : 'Завершён')}
+                          </p>
                         </div>
-                      ))}
-                      {h.receipts?.length > 0 && (
-                        <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Чеки</p>
-                          {h.receipts.map((rec, i) => (
-                            <div key={i} className="flex items-center justify-between text-xs">
-                              <div>
-                                <span className="text-gray-500">{rec.label}</span>
-                                {rec.paid_at && <span className="ml-2 text-gray-300">{rec.paid_at}</span>}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                          style={{ background: isFrozen ? '#e0f2fe' : '#fce7f3', color: txtColor }}>осн.</span>
+                        {isFrozen
+                          ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                              style={{ background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd' }}>Заморожен</span>
+                          : <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                              style={{ background: '#fff1f2', color: '#be185d', border: '1px solid #fca5a5' }}>Завершён</span>
+                        }
+                        {selected?.id === h.id ? <ChevronUp size={14} style={{ color: subColor }} /> : <ChevronDown size={14} style={{ color: subColor }} />}
+                      </div>
+                    </button>
+                    {selected?.id === h.id && (
+                      <div className="px-3 py-3 space-y-2" style={{ background: 'rgba(255,255,255,0.7)', borderTop: `1px solid ${isFrozen ? '#bae6fd' : '#fca5a5'}` }}>
+                        {[['Тренер', h.trainer_name || '—'], ['Старт', fmtDate(h.start_date) || '—'],
+                          ['Тип оплаты', h.payment_type === 'full' ? 'Полная' : 'Рассрочка'],
+                          ['Сумма курса', fmtMoney(h.payment_amount)], ['Оплачено', fmtMoney(h.payment_paid)]
+                        ].map(([lbl, val]) => (
+                          <div key={lbl} className="flex justify-between text-xs">
+                            <span style={{ color: subColor }}>{lbl}</span>
+                            <span className="font-medium" style={{ color: txtColor }}>{val}</span>
+                          </div>
+                        ))}
+                        {h.receipts?.length > 0 && (
+                          <div className="pt-2 space-y-1.5" style={{ borderTop: `1px solid ${isFrozen ? '#bae6fd' : '#fca5a5'}` }}>
+                            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: subColor }}>Чеки</p>
+                            {h.receipts.map((rec, i) => (
+                              <div key={i} className="flex items-center justify-between text-xs">
+                                <div>
+                                  <span style={{ color: subColor }}>{rec.label}</span>
+                                  {rec.paid_at && <span className="ml-2 text-gray-300">{rec.paid_at}</span>}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium" style={{ color: txtColor }}>{fmtMoney(rec.amount)}</span>
+                                  {rec.url
+                                    ? <a href={toAbsoluteUrl(rec.url)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold">
+                                        <Receipt size={11} /> Чек
+                                      </a>
+                                    : <span className="text-gray-300">Без чека</span>
+                                  }
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-gray-700">{fmtMoney(rec.amount)}</span>
-                                {rec.url
-                                  ? <a href={toAbsoluteUrl(rec.url)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-semibold">
-                                      <Receipt size={11} /> Чек
-                                    </a>
-                                  : <span className="text-gray-300">Без чека</span>
-                                }
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </>
           )}
         </div>

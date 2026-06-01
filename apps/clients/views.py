@@ -197,21 +197,22 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='group-history')
     def group_history(self, request, pk=None):
-        records = ClientGroupHistory.objects.filter(client_id=pk).order_by('-ended_at')
+        records = ClientGroupHistory.objects.filter(client_id=pk).select_related('group').order_by('-ended_at')
         data = [
             {
-                'id':                str(r.id),
-                'group_id':          str(r.group_id) if r.group_id else None,
-                'group_number':      r.group_number,
-                'group_type':        r.group_type,
-                'trainer_name':      r.trainer_name,
-                'start_date':        str(r.start_date) if r.start_date else None,
-                'ended_at':          str(r.ended_at),
-                'payment_type':      r.payment_type,
-                'payment_amount':    str(r.payment_amount),
-                'payment_paid':      str(r.payment_paid),
-                'payment_is_closed': r.payment_is_closed,
-                'receipts':          r.receipts if r.receipts else [],
+                'id':                     str(r.id),
+                'group_id':               str(r.group_id) if r.group_id else None,
+                'group_number':           r.group_number,
+                'group_type':             r.group_type,
+                'group_training_format':  r.group.training_format if r.group else '',
+                'trainer_name':           r.trainer_name,
+                'start_date':             str(r.start_date) if r.start_date else None,
+                'ended_at':               str(r.ended_at),
+                'payment_type':           r.payment_type,
+                'payment_amount':         str(r.payment_amount),
+                'payment_paid':           str(r.payment_paid),
+                'payment_is_closed':      r.payment_is_closed,
+                'receipts':               r.receipts if r.receipts else [],
             }
             for r in records
         ]
