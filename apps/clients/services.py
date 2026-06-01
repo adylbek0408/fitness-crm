@@ -713,6 +713,28 @@ class ClientService(BaseService):
         elif remaining_fp:
             client.payment_type = 'full'
 
+        # Сохраняем историю группы до того, как очистим client.group
+        if client.group_id:
+            from .models import ClientGroupHistory
+            grp = client.group
+            try:
+                trainer_name = grp.trainer.full_name if grp.trainer_id else ''
+            except Exception:
+                trainer_name = ''
+            ClientGroupHistory.objects.create(
+                client=client,
+                group=grp,
+                group_number=str(grp.number),
+                group_type=grp.group_type or '',
+                trainer_name=trainer_name,
+                start_date=grp.start_date,
+                payment_type=refunded_pay_type,
+                payment_amount=total_paid,
+                payment_paid=total_paid,
+                payment_is_closed=False,
+                receipts=[],
+            )
+
         old_type = client.client_type
         old_status = client.status
         client.group = None
